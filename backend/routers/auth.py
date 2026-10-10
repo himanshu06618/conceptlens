@@ -21,7 +21,8 @@ try:
         verify_google_id_token,
         verify_csrf,
         get_current_user,
-        claim_guest_documents
+        claim_guest_documents,
+        GOOGLE_CLIENT_ID
     )
     from backend.database import (
         create_user,
@@ -57,7 +58,8 @@ except ImportError:
         verify_google_id_token,
         verify_csrf,
         get_current_user,
-        claim_guest_documents
+        claim_guest_documents,
+        GOOGLE_CLIENT_ID
     )
     from database import (
         create_user,
@@ -362,3 +364,10 @@ async def delete_account(
 
     clear_auth_cookie(response)
     return {"success": True, "message": "Account and all associated workspace data have been permanently deleted."}
+
+@router.get("/config")
+def get_auth_config():
+    """Returns public client configuration including Google Client ID for OAuth login."""
+    return {
+        "google_client_id": GOOGLE_CLIENT_ID or ""
+    }

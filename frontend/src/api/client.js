@@ -271,6 +271,16 @@ export async function googleLogin(credential) {
   return data;
 }
 
+export async function getAuthConfig() {
+  try {
+    const res = await apiFetch('/auth/config');
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
 export async function logoutUser() {
   const res = await apiFetch('/auth/logout', {
     method: 'POST',

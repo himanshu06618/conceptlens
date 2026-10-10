@@ -11,9 +11,9 @@ import {
   Zap,
   Info
 } from 'lucide-react';
-import { GoogleLogin } from '@react-oauth/google';
+import { GoogleLogin, GoogleOAuthProvider } from '@react-oauth/google';
 import { useAuth } from '../context/AuthContext';
-import { checkUsernameAvailability } from '../api/client';
+import { checkUsernameAvailability, getAuthConfig } from '../api/client';
 import { LogoMark, BookshelfLoader, SegmentedTabs } from './ui';
 
 const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID?.trim() || '';
@@ -166,6 +166,20 @@ export default function AuthModal({ onSuccess, guestStatus }) {
   const [isShaking, setIsShaking] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
+
+  const [activeGoogleClientId, setActiveGoogleClientId] = useState(
+    () => googleClientId
+  );
+
+  useEffect(() => {
+    if (!activeGoogleClientId) {
+      getAuthConfig().then((cfg) => {
+        if (cfg?.google_client_id) {
+          setActiveGoogleClientId(cfg.google_client_id.trim());
+        }
+      }).catch(() => {});
+    }
+  }, [activeGoogleClientId]);
 
   // Username live availability status
   const [usernameStatus, setUsernameStatus] = useState(null);
@@ -586,21 +600,23 @@ export default function AuthModal({ onSuccess, guestStatus }) {
           )}
 
           {/* "Continue with Google" at top (if GOOGLE_CLIENT_ID configured) */}
-          {googleClientId && (
+          {activeGoogleClientId && (
             <div className="auth-google-section">
               <div className="google-btn-wrapper">
-                <GoogleLogin
-                  onSuccess={handleGoogleSuccess}
-                  onError={() => {
-                    setServerError('Google sign-in was canceled or failed.');
-                    triggerShake();
-                  }}
-                  theme="outline"
-                  size="large"
-                  text="continue_with"
-                  shape="rectangular"
-                  width="100%"
-                />
+                <GoogleOAuthProvider clientId={activeGoogleClientId}>
+                  <GoogleLogin
+                    onSuccess={handleGoogleSuccess}
+                    onError={() => {
+                      setServerError('Google sign-in was canceled or failed.');
+                      triggerShake();
+                    }}
+                    theme="outline"
+                    size="large"
+                    text="continue_with"
+                    shape="rectangular"
+                    width="100%"
+                  />
+                </GoogleOAuthProvider>
               </div>
               <div className="auth-or-divider" aria-hidden="true">
                 <span className="divider-line" />
