@@ -184,15 +184,20 @@ def verify_csrf(request: Request) -> None:
 def get_current_user(request: Request) -> Dict[str, Any]:
     """
     FastAPI dependency to authenticate requests.
-    Checks httpOnly cookie first, then falls back to Authorization Bearer header.
+    Checks Authorization Bearer header first, then falls back to httpOnly cookie.
     """
-    from backend.database import get_user_by_id
+    try:
+        from backend.database import get_user_by_id
+    except ImportError:
+        from database import get_user_by_id
 
-    token = request.cookies.get("access_token")
+    token = None
+    auth_header = request.headers.get("authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.split(" ", 1)[1].strip()
+
     if not token:
-        auth_header = request.headers.get("authorization")
-        if auth_header and auth_header.startswith("Bearer "):
-            token = auth_header.split(" ", 1)[1]
+        token = request.cookies.get("access_token")
 
     if not token:
         raise HTTPException(status_code=401, detail="Authentication required.")
@@ -216,17 +221,31 @@ def get_current_user(request: Request) -> Dict[str, Any]:
 
     return user
 
+def require_role(required_role: str):
+    """Dependency that verifies the authenticated user has the specified role."""
+    def role_dependency(current_user: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, Any]:
+        user_role = (current_user.get("role") or "").strip().lower()
+        if user_role != required_role.lower():
+            raise HTTPException(
+                status_code=403,
+                detail=f"Access denied: {required_role.capitalize()} role required."
+            )
+        return current_user
+    return role_dependency
+
 def get_current_user_or_guest(request: Request, response: Response) -> Dict[str, Any]:
     """
     FastAPI dependency:
     Returns the authenticated user dict if signed in,
     or a guest session dict if unauthenticated.
     """
-    token = request.cookies.get("access_token")
+    token = None
+    auth_header = request.headers.get("authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.split(" ", 1)[1].strip()
+
     if not token:
-        auth_header = request.headers.get("authorization")
-        if auth_header and auth_header.startswith("Bearer "):
-            token = auth_header.split(" ", 1)[1]
+        token = request.cookies.get("access_token")
 
     if token:
         try:
@@ -243,9 +262,12 @@ def get_current_user_or_guest(request: Request, response: Response) -> Dict[str,
                         "is_authenticated": True,
                         "id": user["id"],
                         "username": user["username"],
+                        "name": user.get("name") or user.get("display_name"),
                         "display_name": user["display_name"],
                         "email": user.get("email"),
+                        "avatar": user.get("avatar") or user.get("avatar_url"),
                         "avatar_url": user.get("avatar_url"),
+                        "role": user.get("role"),
                         "has_password": bool(user.get("password_hash")),
                         "created_at": user["created_at"]
                     }

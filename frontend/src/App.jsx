@@ -467,7 +467,7 @@ export default function App() {
   const handleAuthSuccess = async (userData) => {
     await refreshGuestStatus();
     await refreshDocumentsList();
-    const name = userData?.display_name || userData?.username || 'scholar';
+    const name = userData?.name || userData?.display_name || userData?.username || 'scholar';
     addToast(`Welcome back, ${name}!`, 'success');
 
     // Resume pending upload after sign-in if triggered by guest limit
@@ -477,6 +477,15 @@ export default function App() {
       setTimeout(() => {
         handleUpload(fileToResume);
       }, 350);
+      return;
+    }
+
+    // Requirement 7: Send students to Student Dashboard and teachers to Teacher Dashboard
+    const userRole = (userData?.role || user?.role || '').toLowerCase();
+    if (userRole === 'teacher') {
+      navigate('/teacher/dashboard');
+    } else {
+      navigate('/student/dashboard');
     }
   };
 

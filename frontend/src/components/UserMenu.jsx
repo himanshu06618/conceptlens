@@ -156,9 +156,9 @@ export default function UserMenu({ onToast }) {
         onClick={() => setIsOpen((prev) => !prev)}
         aria-expanded={isOpen}
         aria-haspopup="true"
-        aria-label={`${user.display_name} user menu`}
+        aria-label={`${user.name || user.display_name} user menu`}
       >
-        <Avatar name={user.display_name} size={34} />
+        <Avatar name={user.name || user.display_name} src={user.avatar || user.avatar_url} size={34} />
       </button>
 
       {isOpen && (
@@ -166,9 +166,9 @@ export default function UserMenu({ onToast }) {
           <div className="user-dropdown-header">
             <span className="user-dropdown-eyebrow">YOUR ACCOUNT</span>
             <div className="user-dropdown-identity">
-              <Avatar name={user.display_name} size={46} className="user-dropdown-avatar" />
+              <Avatar name={user.name || user.display_name} src={user.avatar || user.avatar_url} size={46} className="user-dropdown-avatar" />
               <div className="user-dropdown-details">
-                <span className="user-name">{user.display_name}</span>
+                <span className="user-name">{user.name || user.display_name}</span>
                 <span className="user-username">@{user.username}</span>
               </div>
             </div>

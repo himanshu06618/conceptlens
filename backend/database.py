@@ -121,10 +121,13 @@ def init_db() -> None:
                     id TEXT PRIMARY KEY,
                     username TEXT UNIQUE NOT NULL COLLATE NOCASE,
                     display_name TEXT NOT NULL,
+                    name TEXT,
                     email TEXT UNIQUE,
                     password_hash TEXT,
                     google_sub TEXT UNIQUE,
+                    avatar TEXT,
                     avatar_url TEXT,
+                    role TEXT,
                     created_at TEXT NOT NULL,
                     last_login_at TEXT NOT NULL
                 );
@@ -211,6 +214,51 @@ def init_db() -> None:
                 conn.execute("ALTER TABLE documents ADD COLUMN ocr_total_pages INTEGER DEFAULT 0;")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_user_id ON documents(user_id);")
 
+            # Migration: Ensure role, name, avatar exist on users and role is nullable
+            u_info = list(conn.execute("PRAGMA table_info(users);"))
+            u_cols = {row["name"] for row in u_info}
+            role_col = next((row for row in u_info if row["name"] == "role"), None)
+
+            if "name" not in u_cols:
+                conn.execute("ALTER TABLE users ADD COLUMN name TEXT;")
+                conn.execute("UPDATE users SET name = COALESCE(display_name, username) WHERE name IS NULL;")
+            if "avatar" not in u_cols:
+                conn.execute("ALTER TABLE users ADD COLUMN avatar TEXT;")
+                conn.execute("UPDATE users SET avatar = avatar_url WHERE avatar IS NULL;")
+
+            if "role" not in u_cols:
+                conn.execute("ALTER TABLE users ADD COLUMN role TEXT;")
+            elif role_col and role_col["notnull"] == 1:
+                # Make role nullable by rebuilding users table
+                conn.execute("PRAGMA foreign_keys = OFF;")
+                conn.execute("""
+                    CREATE TABLE users_migrated (
+                        id TEXT PRIMARY KEY,
+                        username TEXT UNIQUE NOT NULL COLLATE NOCASE,
+                        display_name TEXT NOT NULL,
+                        name TEXT,
+                        email TEXT UNIQUE,
+                        password_hash TEXT,
+                        google_sub TEXT UNIQUE,
+                        avatar TEXT,
+                        avatar_url TEXT,
+                        role TEXT,
+                        created_at TEXT NOT NULL,
+                        last_login_at TEXT NOT NULL
+                    );
+                """)
+                conn.execute("""
+                    INSERT INTO users_migrated (id, username, display_name, name, email, password_hash, google_sub, avatar, avatar_url, role, created_at, last_login_at)
+                    SELECT id, username, display_name, COALESCE(name, display_name), email, password_hash, google_sub, avatar, avatar_url, role, created_at, last_login_at
+                    FROM users;
+                """)
+                conn.execute("DROP TABLE users;")
+                conn.execute("ALTER TABLE users_migrated RENAME TO users;")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_users_google_sub ON users(google_sub);")
+                conn.execute("PRAGMA foreign_keys = ON;")
+
             # Migration: Re-clean topics and normalize concept names for existing notes
             try:
                 cursor = conn.execute("SELECT id, name, topic FROM concepts")
@@ -243,6 +291,18 @@ def init_db() -> None:
 
 # ==================== User Operations ====================
 
+def _normalize_user_row(row: Optional[sqlite3.Row]) -> Optional[Dict[str, Any]]:
+    if not row:
+        return None
+    d = dict(row)
+    name_val = d.get("name") or d.get("display_name") or d.get("username") or ""
+    avatar_val = d.get("avatar") or d.get("avatar_url")
+    d["name"] = name_val
+    d["display_name"] = name_val
+    d["avatar"] = avatar_val
+    d["avatar_url"] = avatar_val
+    return d
+
 def create_user(
     user_id: str,
     username: str,
@@ -251,29 +311,43 @@ def create_user(
     password_hash: Optional[str] = None,
     google_sub: Optional[str] = None,
     avatar_url: Optional[str] = None,
-    role: str = "student"
+    role: Optional[str] = "student",
+    name: Optional[str] = None,
+    avatar: Optional[str] = None
 ) -> Dict[str, Any]:
     now_iso = datetime.now(timezone.utc).isoformat()
+    clean_name = (name or display_name or username).strip()
+    clean_avatar = avatar or avatar_url
     conn = get_connection()
     try:
         with conn:
             conn.execute(
                 """
-                INSERT INTO users (id, username, display_name, email, password_hash, google_sub, avatar_url, role, created_at, last_login_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO users (id, username, display_name, name, email, password_hash, google_sub, avatar, avatar_url, role, created_at, last_login_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (user_id, username.strip().lower(), display_name.strip(), email, password_hash, google_sub, avatar_url, role, now_iso, now_iso)
+                (user_id, username.strip().lower(), clean_name, clean_name, email, password_hash, google_sub, clean_avatar, clean_avatar, role, now_iso, now_iso)
             )
         return {
             "id": user_id,
             "username": username.strip().lower(),
-            "display_name": display_name.strip(),
+            "display_name": clean_name,
+            "name": clean_name,
             "email": email,
-            "avatar_url": avatar_url,
+            "avatar": clean_avatar,
+            "avatar_url": clean_avatar,
             "role": role,
             "has_password": password_hash is not None,
             "created_at": now_iso
         }
+    finally:
+        conn.close()
+
+def update_user_role(user_id: str, role: str) -> None:
+    conn = get_connection()
+    try:
+        with conn:
+            conn.execute("UPDATE users SET role = ? WHERE id = ?", (role.strip().lower(), user_id))
     finally:
         conn.close()
 
@@ -282,7 +356,7 @@ def get_user_by_id(user_id: str) -> Optional[Dict[str, Any]]:
     try:
         cursor = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,))
         row = cursor.fetchone()
-        return dict(row) if row else None
+        return _normalize_user_row(row)
     finally:
         conn.close()
 
@@ -291,7 +365,7 @@ def get_user_by_username(username: str) -> Optional[Dict[str, Any]]:
     try:
         cursor = conn.execute("SELECT * FROM users WHERE LOWER(username) = LOWER(?)", (username.strip(),))
         row = cursor.fetchone()
-        return dict(row) if row else None
+        return _normalize_user_row(row)
     finally:
         conn.close()
 
@@ -302,7 +376,7 @@ def get_user_by_email(email: str) -> Optional[Dict[str, Any]]:
     try:
         cursor = conn.execute("SELECT * FROM users WHERE LOWER(email) = LOWER(?)", (email.strip(),))
         row = cursor.fetchone()
-        return dict(row) if row else None
+        return _normalize_user_row(row)
     finally:
         conn.close()
 
@@ -313,7 +387,7 @@ def get_user_by_google_sub(google_sub: str) -> Optional[Dict[str, Any]]:
     try:
         cursor = conn.execute("SELECT * FROM users WHERE google_sub = ?", (google_sub,))
         row = cursor.fetchone()
-        return dict(row) if row else None
+        return _normalize_user_row(row)
     finally:
         conn.close()
 

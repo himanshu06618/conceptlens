@@ -21,6 +21,12 @@ async function apiFetch(endpoint, options = {}) {
   const url = endpoint.startsWith('http') ? endpoint : `${API_BASE}${endpoint.startsWith('/') ? '' : '/'}${endpoint}`;
   const headers = { ...options.headers };
 
+  // Attach Authorization Bearer token from localStorage if available
+  const token = localStorage.getItem('conceptlens_token');
+  if (token && !headers['Authorization'] && !headers['authorization']) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
   // Attach guest session ID from localStorage if available
   const guestSession = localStorage.getItem('conceptlens_guest_session');
   if (guestSession && !headers['X-Guest-Session']) {
@@ -224,14 +230,19 @@ export async function checkBackendHealth() {
 
 // ==================== Authentication API ====================
 
-export async function registerUser({ username, password, confirmPassword, displayName }) {
+export async function registerUser({ email, username, password, confirmPassword, name, displayName, role = 'student' }) {
+  const cleanEmail = email?.trim() || (username && username.includes('@') ? username.trim() : undefined);
+  const cleanUsername = username && !username.includes('@') ? username.trim() : undefined;
   const res = await apiFetch('/auth/register', {
     method: 'POST',
     body: JSON.stringify({
-      username,
+      email: cleanEmail,
+      username: cleanUsername,
       password,
       confirm_password: confirmPassword,
-      display_name: displayName || undefined,
+      name: name?.trim() || displayName?.trim() || undefined,
+      display_name: displayName?.trim() || name?.trim() || undefined,
+      role: role || 'student',
     }),
   });
 
@@ -239,19 +250,33 @@ export async function registerUser({ username, password, confirmPassword, displa
   if (!res.ok) {
     throw new Error(data.detail || 'Registration failed');
   }
+  const token = data.token || data.access_token;
+  if (token) {
+    localStorage.setItem('conceptlens_token', token);
+  }
   localStorage.removeItem('conceptlens_guest_session');
   return data;
 }
 
-export async function loginUser({ username, password }) {
+export async function loginUser({ email, username, password }) {
+  const cleanEmail = email?.trim() || (username && username.includes('@') ? username.trim() : undefined);
+  const cleanUsername = username && !username.includes('@') ? username.trim() : undefined;
   const res = await apiFetch('/auth/login', {
     method: 'POST',
-    body: JSON.stringify({ username, password }),
+    body: JSON.stringify({
+      email: cleanEmail,
+      username: cleanUsername,
+      password,
+    }),
   });
 
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     throw new Error(data.detail || 'Login failed');
+  }
+  const token = data.token || data.access_token;
+  if (token) {
+    localStorage.setItem('conceptlens_token', token);
   }
   localStorage.removeItem('conceptlens_guest_session');
   return data;
@@ -267,7 +292,24 @@ export async function googleLogin(credential) {
   if (!res.ok) {
     throw new Error(data.detail || 'Google sign-in failed');
   }
+  const token = data.token || data.access_token;
+  if (token) {
+    localStorage.setItem('conceptlens_token', token);
+  }
   localStorage.removeItem('conceptlens_guest_session');
+  return data;
+}
+
+export async function setUserRole(role) {
+  const res = await apiFetch('/auth/role', {
+    method: 'PATCH',
+    body: JSON.stringify({ role }),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.detail || 'Failed to set account role');
+  }
   return data;
 }
 
@@ -282,6 +324,7 @@ export async function getAuthConfig() {
 }
 
 export async function logoutUser() {
+  localStorage.removeItem('conceptlens_token');
   const res = await apiFetch('/auth/logout', {
     method: 'POST',
   });

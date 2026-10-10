@@ -77,28 +77,43 @@ class UploadResponse(BaseModel):
 
 # User & Auth Models
 class UserRegisterRequest(BaseModel):
-    username: str
+    email: Optional[str] = None
+    username: Optional[str] = None
     password: str
     confirm_password: Optional[str] = None
+    name: Optional[str] = None
     display_name: Optional[str] = None
     role: Optional[str] = "student"
 
 class UserLoginRequest(BaseModel):
-    username: str
+    email: Optional[str] = None
+    username: Optional[str] = None
     password: str
 
 class GoogleAuthRequest(BaseModel):
     credential: str
 
+class SetRoleRequest(BaseModel):
+    role: str
+
 class UserResponse(BaseModel):
     id: str
     username: str
+    name: Optional[str] = None
     display_name: str
     email: Optional[str] = None
+    avatar: Optional[str] = None
     avatar_url: Optional[str] = None
-    role: str = "student"
-    has_password: bool
+    role: Optional[str] = None
+    has_password: bool = False
     created_at: str
+
+class AuthResponse(BaseModel):
+    user: UserResponse
+    token: str
+    access_token: str
+    token_type: str = "bearer"
+    requires_role: bool = False
 
 class UpdateUserRequest(BaseModel):
     display_name: str

@@ -33,7 +33,7 @@ import NotesAnalysisSection from '../components/planner/NotesAnalysisSection';
 import '../styles/planner.css';
 
 export default function StudentDashboard({ onToast = () => {} }) {
-  const { user, isAuthenticated, loading: authLoading } = useAuth();
+  const { user, isAuthenticated, loading: authLoading, openAuthModal } = useAuth();
   const navigate = useNavigate();
 
   // Overview data from backend
@@ -57,11 +57,12 @@ export default function StudentDashboard({ onToast = () => {} }) {
   // Redirect teachers or unauthenticated users
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
+      openAuthModal('signin', 'Sign in to access your study planner, reminders, and progress tracking.');
       navigate('/');
     } else if (user?.role === 'teacher') {
       navigate('/teacher/dashboard');
     }
-  }, [isAuthenticated, authLoading, user, navigate]);
+  }, [isAuthenticated, authLoading, user, navigate, openAuthModal]);
 
   // Load planner overview
   const loadOverview = useCallback(async (subId = null) => {

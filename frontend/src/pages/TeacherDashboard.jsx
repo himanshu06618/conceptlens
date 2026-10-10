@@ -5,8 +5,17 @@ import { useAuth } from '../context/AuthContext';
 import '../styles/planner.css';
 
 export default function TeacherDashboard() {
-  const { user } = useAuth();
+  const { user, isAuthenticated, loading: authLoading, openAuthModal } = useAuth();
   const navigate = useNavigate();
+
+  React.useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      openAuthModal('signin', 'Sign in to access the Teacher Portal.');
+      navigate('/');
+    } else if (user && user.role === 'student') {
+      navigate('/student/dashboard');
+    }
+  }, [isAuthenticated, authLoading, user, navigate, openAuthModal]);
 
   return (
     <div className="planner-container" style={{ maxWidth: '960px' }}>

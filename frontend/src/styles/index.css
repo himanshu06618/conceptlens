@@ -5801,6 +5801,126 @@ mark.search-highlight {
   color: var(--ink);
 }
 
+/* Role Selector for Sign up */
+.auth-role-group {
+  margin-bottom: 14px;
+  text-align: left;
+}
+
+.role-selector-pills {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  width: 100%;
+}
+
+.role-pill-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border-strong);
+  background-color: var(--surface);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 0.88rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+[data-theme='dark'] .role-pill-btn {
+  background-color: var(--surface-2);
+  border-color: var(--border);
+  color: var(--ink);
+}
+
+.role-pill-btn:hover {
+  border-color: #316F5B;
+  background-color: var(--surface-hover);
+}
+
+.role-pill-btn.selected {
+  border-color: #316F5B;
+  background: rgba(57, 127, 105, 0.12);
+  color: #316F5B;
+  font-weight: 600;
+  box-shadow: 0 0 0 1px #316F5B;
+}
+
+[data-theme='dark'] .role-pill-btn.selected {
+  background: rgba(57, 127, 105, 0.22);
+  color: #A8D5C2;
+  border-color: #A8D5C2;
+  box-shadow: 0 0 0 1px #A8D5C2;
+}
+
+/* First-time Google Role Picker Screen */
+.google-role-picker-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 0 16px 0;
+}
+
+.google-role-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1.5px solid var(--border-strong);
+  background-color: var(--surface);
+  cursor: pointer;
+  text-align: left;
+  transition: all var(--transition-fast);
+  width: 100%;
+}
+
+[data-theme='dark'] .google-role-card {
+  background-color: var(--surface-2);
+  border-color: var(--border);
+}
+
+.google-role-card:hover {
+  border-color: #316F5B;
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+
+.google-role-card.selected {
+  border-color: #316F5B;
+  background: rgba(57, 127, 105, 0.08);
+  box-shadow: 0 0 0 1.5px #316F5B;
+}
+
+[data-theme='dark'] .google-role-card.selected {
+  border-color: #A8D5C2;
+  background: rgba(57, 127, 105, 0.18);
+  box-shadow: 0 0 0 1.5px #A8D5C2;
+}
+
+.google-role-icon {
+  font-size: 1.4rem;
+  line-height: 1;
+  margin-top: 2px;
+}
+
+.google-role-title {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--ink);
+  margin-bottom: 2px;
+}
+
+.google-role-desc {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
 /* =====================================================================
    MOBILE (UNDER 768px): Single-Column Centered Dialog
    ===================================================================== */

@@ -57,6 +57,7 @@ try:
     from backend.auth import (
         get_current_user,
         get_current_user_or_guest,
+        require_role,
         verify_csrf,
         ALLOWED_ORIGINS
     )
@@ -121,6 +122,7 @@ except ImportError:
     from auth import (
         get_current_user,
         get_current_user_or_guest,
+        require_role,
         verify_csrf,
         ALLOWED_ORIGINS
     )
@@ -228,8 +230,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount authentication router
+# Mount authentication router under both /api/auth and /auth
 app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
+app.include_router(auth_router, prefix="/auth", tags=["auth"])
 
 # Mount planner router
 app.include_router(planner_router)
@@ -833,6 +836,47 @@ def export_document_concepts(
                 "Content-Disposition": f'attachment; filename="{base_name}_concepts.csv"'
             }
         )
+
+@app.get("/api/teacher/dashboard")
+@app.get("/teacher/dashboard")
+async def get_teacher_dashboard(current_user: Dict[str, Any] = Depends(require_role("teacher"))):
+    """Teacher dashboard data: requires teacher role (403 for students, 401 unauthenticated)."""
+    return {
+        "success": True,
+        "role": "teacher",
+        "user": {
+            "id": current_user["id"],
+            "name": current_user.get("name") or current_user.get("display_name"),
+            "email": current_user.get("email"),
+            "role": current_user.get("role")
+        },
+        "stats": {
+            "students_count": 0,
+            "classes_count": 0,
+            "published_guides": 0
+        },
+        "message": "Welcome to your Teacher Dashboard. Course management and student insights are available here."
+    }
+
+@app.get("/api/student/dashboard")
+@app.get("/student/dashboard")
+async def get_student_dashboard(current_user: Dict[str, Any] = Depends(require_role("student"))):
+    """Student dashboard data: requires student role (403 for teachers, 401 unauthenticated)."""
+    return {
+        "success": True,
+        "role": "student",
+        "user": {
+            "id": current_user["id"],
+            "name": current_user.get("name") or current_user.get("display_name"),
+            "email": current_user.get("email"),
+            "role": current_user.get("role")
+        },
+        "stats": {
+            "enrolled_topics": 0,
+            "study_sessions": 0
+        },
+        "message": "Welcome to your Student Dashboard. Track your progress, study planner, and concepts."
+    }
 
 # Serve production frontend build if available (unified single-service deployment)
 from fastapi.staticfiles import StaticFiles

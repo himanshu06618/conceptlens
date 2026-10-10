@@ -4,6 +4,7 @@ import {
   loginUser,
   registerUser,
   googleLogin,
+  setUserRole,
   logoutUser,
   updateUserProfile,
   changePassword,
@@ -62,25 +63,37 @@ export const AuthProvider = ({ children }) => {
     };
   }, [openAuthModal]);
 
-  const signIn = async (username, password) => {
-    const userData = await loginUser({ username, password });
-    setUser(userData);
-    closeAuthModal();
-    return userData;
+  const signIn = async (usernameOrEmail, password) => {
+    const isEmail = usernameOrEmail && usernameOrEmail.includes('@');
+    const res = await loginUser({
+      email: isEmail ? usernameOrEmail : undefined,
+      username: !isEmail ? usernameOrEmail : undefined,
+      password,
+    });
+    const finalUser = res.user || res;
+    setUser(finalUser);
+    return res;
   };
 
   const signUp = async (formData) => {
-    const userData = await registerUser(formData);
-    setUser(userData);
-    closeAuthModal();
-    return userData;
+    const res = await registerUser(formData);
+    const finalUser = res.user || res;
+    setUser(finalUser);
+    return res;
   };
 
   const signInWithGoogle = async (credential) => {
-    const userData = await googleLogin(credential);
-    setUser(userData);
-    closeAuthModal();
-    return userData;
+    const res = await googleLogin(credential);
+    const finalUser = res.user || res;
+    setUser(finalUser);
+    return res;
+  };
+
+  const setRole = async (role) => {
+    const res = await setUserRole(role);
+    const updatedUser = res.user || res;
+    setUser((prev) => ({ ...(prev || {}), ...updatedUser, role }));
+    return res;
   };
 
   const signOut = async () => {
@@ -89,6 +102,7 @@ export const AuthProvider = ({ children }) => {
     } catch (e) {
       console.warn('Sign out request failed:', e);
     } finally {
+      localStorage.removeItem('conceptlens_token');
       setUser(null);
     }
   };
@@ -117,6 +131,7 @@ export const AuthProvider = ({ children }) => {
         signIn,
         signUp,
         signInWithGoogle,
+        setRole,
         signOut,
         updateProfile,
         updatePassword,
