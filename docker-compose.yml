@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  conceptlens:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: conceptlens
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - OCR_ENGINE=auto
+      - USE_KEYBERT=false
+      - TOP_CONCEPTS_LIMIT=40
+      - DATABASE_PATH=conceptlens.db
+      - UPLOAD_DIR=uploads
+    volumes:
+      # Persist SQLite database and uploaded note files across container updates
+      - conceptlens_data:/app/backend
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  conceptlens_data:

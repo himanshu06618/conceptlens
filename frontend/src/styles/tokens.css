@@ -1,0 +1,193 @@
+/**
+ * ConceptLens Design Tokens — "Mint Green + Orange"
+ * Aesthetic: Clean, premium educational SaaS with warm primary actions and calm green accents.
+ */
+
+:root {
+  /* =====================================================================
+     1. Light Theme Colors (Default)
+     ===================================================================== */
+  --bg: #F7F8F5;
+  --surface: #FFFFFF;
+  --surface-2: #E8F3ED;
+  --surface-hover: #F1F7F3;
+  --border: #E2E8E3;
+  --border-strong: #C9D5CD;
+  --border-subtle: rgba(37, 45, 42, 0.08);
+
+  /* Typography Colors */
+  --ink: #252D2A;
+  --text: #252D2A;
+  --text-2: #68736D;
+  --text-secondary: #68736D;
+  --text-muted: #68736D;
+
+  /* Brand Green Accent (legacy token names kept to preserve component APIs) */
+  --gold: #397F69;
+  --gold-bright: #5D9A83;
+  --gold-deep: #316F5B;
+  --gold-soft: #E8F3ED;
+  --text-on-gold: #252D2A;
+  --logo-accent: #D47B2A;
+
+  /* Midnight Stage & Contrast Accents */
+  --midnight: #252D2A;
+  --midnight-2: #34443D;
+  --midnight-border: rgba(255, 255, 255, 0.14);
+  --midnight-text: #FFFFFF;
+  --midnight-text-muted: #C8D2CC;
+
+  /* Focus & Interactive */
+  --focus-ring-color: #397F69;
+  --focus-ring: 0 0 0 2px var(--bg), 0 0 0 4px var(--focus-ring-color);
+
+  /* Semantic Feedback Colors */
+  --success: #18794E;
+  --success-bg: rgba(24, 121, 78, 0.10);
+  --warning: #A15C00;
+  --warning-bg: rgba(161, 92, 0, 0.10);
+  --danger: #C9303A;
+  --danger-bg: rgba(201, 48, 58, 0.08);
+
+  /* Concept-Tree Branch Colors (Soft tint for node bg, strong tone for edges) */
+  --branch-gold: #397F69;
+  --branch-gold-bg: #E8F3ED;
+  --branch-gold-border: rgba(57, 127, 105, 0.35);
+
+  --branch-indigo: #6A8C78;
+  --branch-indigo-bg: #EDF3EE;
+  --branch-indigo-border: rgba(106, 140, 120, 0.35);
+
+  --branch-teal: #7C9C83;
+  --branch-teal-bg: #F0F5EF;
+  --branch-teal-border: rgba(124, 156, 131, 0.35);
+
+  --branch-rose: #C17D55;
+  --branch-rose-bg: #FBF1E9;
+  --branch-rose-border: rgba(193, 125, 85, 0.35);
+
+  --branch-violet: #8A9A7A;
+  --branch-violet-bg: #F2F4EC;
+  --branch-violet-border: rgba(138, 154, 122, 0.35);
+
+  --branch-sky: #8BA99A;
+  --branch-sky-bg: #EFF5F1;
+  --branch-sky-border: rgba(139, 169, 154, 0.35);
+
+  /* Shared translucent surfaces for the glassmorphism UI */
+  --glass-header-bg: #A8D5C2;
+  --glass-header-border: rgba(57, 127, 105, 0.16);
+  --glass-control-bg: rgba(255, 255, 255, 0.85);
+  --glass-control-border: rgba(226, 232, 227, 0.90);
+  --glass-surface: rgba(248, 252, 249, 0.56);
+  --glass-surface-border: rgba(255, 255, 255, 0.88);
+
+  /* Layered Soft Shadows (Shadow-sm, md, lg only) */
+  --shadow-sm: 0 2px 8px rgba(37, 45, 42, 0.045);
+  --shadow-md: 0 8px 24px rgba(37, 45, 42, 0.07);
+  --shadow-lg: 0 16px 40px rgba(37, 45, 42, 0.09);
+  --shadow-gold: 0 4px 18px rgba(57, 127, 105, 0.16);
+  --shadow-midnight: 0 20px 50px rgba(37, 45, 42, 0.24);
+
+  /* Border Radii */
+  --radius-card: 18px;             /* 16px to 20px radius */
+  --radius-control: 12px;
+  --radius-modal: 24px;
+  --radius-pill: 999px;
+
+  /* =====================================================================
+     2. Typography & Font Families
+     ===================================================================== */
+  --font-display: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-heading: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-logo-display: 'Rubik Dirt', 'Arial Black', sans-serif;
+  --font-body: 'Berlin Sans FB', 'Berlin Sans FB Demi', Arial, sans-serif;
+  --font-bell: 'Bell MT', 'Bell MT MT', Georgia, serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  /* Fluid Typography Scale */
+  --font-hero: clamp(3.2rem, 5.5vw, 4.75rem);     /* 56px to 80px */
+  --font-section: clamp(1.85rem, 3.2vw, 2.6rem);  /* 32px to 44px */
+  --font-h1: clamp(1.5rem, 2.4vw, 1.85rem);
+  --font-h2: clamp(1.2rem, 1.8vw, 1.45rem);
+  --font-h3: clamp(1.0rem, 1.4vw, 1.15rem);
+  --font-size-hero: var(--font-hero);
+  --font-size-h1: var(--font-h1);
+  --font-size-h2: var(--font-h2);
+  --font-size-h3: var(--font-h3);
+  --font-size-body: 16px;                         /* 16px to 18px */
+  --font-size-sm: 0.875rem;                       /* 14px */
+  --font-size-xs: 0.78rem;                        /* 12.5px */
+
+  --line-height-hero: 1.05;
+  --line-height-heading: 1.25;
+  --line-height-body: 1.65;
+  --reading-max-width: 65ch;
+
+  /* =====================================================================
+     3. Motion & Springs
+     ===================================================================== */
+  --ease-smooth: cubic-bezier(0.22, 1, 0.36, 1);
+  --transition-fast: 180ms cubic-bezier(0.22, 1, 0.36, 1);
+  --transition-normal: 320ms cubic-bezier(0.22, 1, 0.36, 1);
+  --transition-slow: 540ms cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* Primary Orange Button */
+  --btn-gold-gradient: #E89545;
+  --btn-gold-hover: #D47B2A;
+  --btn-gold-active: #BD6920;
+}
+
+/* Dark theme retains the mint-and-orange brand accents. */
+[data-theme='dark'] {
+  --bg: #17211C;
+  --surface: #202D26;
+  --surface-2: #293A30;
+  --surface-hover: #304238;
+  --border: #3A4A40;
+  --border-strong: #526257;
+  --border-subtle: rgba(255, 255, 255, 0.05);
+
+  --ink: #F2F5F2;
+  --text: #F2F5F2;
+  --text-2: #C7D1CA;
+  --text-secondary: #C7D1CA;
+  --text-muted: #AAB7AE;
+
+  --gold: #82B7A0;
+  --gold-bright: #A8D5C2;
+  --gold-deep: #72A88F;
+  --gold-soft: rgba(130, 183, 160, 0.16);
+  --text-on-gold: #252D2A;
+  --logo-accent: #E89545;
+
+  --midnight: #111813;
+  --midnight-2: #1B251E;
+  --midnight-border: rgba(255, 255, 255, 0.12);
+  --midnight-text: #F2F5F2;
+  --midnight-text-muted: #AAB7AE;
+
+  --focus-ring: 0 0 0 2px var(--bg), 0 0 0 4px #A8D5C2;
+
+  /* Branch color dark adjustments */
+  --branch-gold-bg: #263B30;
+  --branch-indigo-bg: #2B3A30;
+  --branch-teal-bg: #304033;
+  --branch-rose-bg: #3A2D25;
+  --branch-violet-bg: #33392B;
+  --branch-sky-bg: #2A3A32;
+
+  /* Glass on Dark */
+  --glass-header-bg: #263D32;
+  --glass-header-border: rgba(168, 213, 194, 0.18);
+  --glass-control-bg: rgba(32, 45, 38, 0.92);
+  --glass-control-border: rgba(199, 209, 202, 0.18);
+  --glass-surface: rgba(32, 45, 38, 0.64);
+  --glass-surface-border: rgba(199, 209, 202, 0.24);
+
+  /* Shadows on Dark */
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 16px 44px rgba(0, 0, 0, 0.60);
+  --shadow-gold: 0 4px 24px rgba(130, 183, 160, 0.18);
+}

@@ -1,0 +1,57 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+ENV/
+.pytest_cache/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+backend/*.db
+backend/*.db-wal
+backend/*.db-shm
+backend/test_*.db
+
+# Uploads
+uploads/
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+# Node.js & Frontend build
+node_modules/
+dist/
+build/
+.vite/
+
+# Environment variables
+.env
+.env.*
+!.env.example
+backend/.env
+backend/.env.*
+!backend/.env.example
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
+
+# Scratch, large binary archives, and media
+*.zip
+PROJECT.docx
+WhatsApp Chat with Meta AI/
+"MIT OCW Introduction to Algorithms Algorithms/"
+MIT OCW Introduction to Algorithms Algorithms/
+scratch/
+CTP_UNIT1_*
+FINAL_CTP_*
+
+# OS and editor files
+*.log
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

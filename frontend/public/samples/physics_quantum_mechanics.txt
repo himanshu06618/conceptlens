@@ -1,0 +1,49 @@
+# Quantum Mechanics and Atomic Physics
+
+Course Notes - Physics 401: Foundations of Quantum Physics
+Department of Physics and Astronomy
+
+1. Introduction to Quantum Physics
+
+Classical mechanics failed to explain blackbody radiation, atomic spectra, and the photoelectric effect. 
+Quantum mechanics is defined as the fundamental branch of physics that describes the physical properties of nature at atomic and subatomic scales.
+Unlike classical physics, where physical quantities are continuous, quantum mechanics asserts that energy, momentum, and angular momentum are often restricted to discrete values, known as quanta.
+
+Planck's constant refers to the fundamental physical constant that sets the scale of quantum effects, denoted by the symbol h, with a value of approximately 6.626 x 10^-34 Joule-seconds.
+Max Planck proposed that electromagnetic radiation is emitted and absorbed in discrete packets called photons.
+The photoelectric effect demonstrated that light exhibits particle-like behavior when interacting with electrons in metals.
+
+2. Wave-Particle Duality
+
+Wave-particle duality is the concept in quantum mechanics that every quantum entity exhibits both particle and wave properties.
+Louis de Broglie proposed that particles with mass and momentum also possess a characteristic wavelength.
+The de Broglie wavelength is defined as Planck's constant divided by the momentum of the particle: lambda = h / p.
+Davisson and Germer confirmed this experimentally through electron diffraction through nickel crystals.
+
+3. The Wave Function and the Schrödinger Equation
+
+In quantum theory, the state of a particle is completely described by a mathematical entity called the wave function.
+The wave function is defined as a complex-valued mathematical function whose square magnitude gives the probability density of finding a particle at a given position and time.
+Max Born formulated the statistical interpretation of the wave function, linking quantum states directly to observational probabilities.
+
+The Schrödinger equation is the fundamental differential equation that describes how the quantum state of a physical system changes over time.
+Erwin Schrödinger formulated this equation in 1925 for non-relativistic quantum systems.
+A stationary state refers to a quantum state with a definite energy where probability distributions remain constant over time.
+The Hamiltonian operator represents the total energy operator of the physical system, including kinetic energy and potential energy.
+
+4. Heisenberg Uncertainty Principle
+
+Werner Heisenberg established that certain pairs of physical variables cannot be simultaneously measured with arbitrary precision.
+The Heisenberg uncertainty principle is defined as the mathematical inequality stating that the product of the uncertainties in position and momentum is at least h-bar divided by two: delta x * delta p >= hbar / 2.
+This uncertainty is not a consequence of experimental measurement limitations, but an intrinsic mathematical property of wave mechanics.
+Similarly, energy-time uncertainty asserts that a quantum state with a short lifetime must possess an intrinsic uncertainty in its energy.
+
+5. Quantum Superposition and Entanglement
+
+Quantum superposition refers to the principle that a physical system can exist simultaneously in a linear combination of multiple distinct quantum states until a measurement is performed.
+When a measurement occurs, the wave function collapses to one of the eigenstates of the observable operator.
+
+Quantum entanglement is defined as a physical phenomenon where pairs or groups of particles interact in ways such that the quantum state of each particle cannot be described independently of the state of the others, even when separated by large distances.
+Albert Einstein famously questioned this feature, referring to it as "spooky action at a distance" in the Einstein-Podolsky-Rosen paradox.
+John Stewart Bell formulated Bell's theorem, demonstrating that local hidden variable theories are incompatible with quantum mechanical predictions.
+Quantum teleportation and quantum cryptography rely on entanglement as a fundamental computational resource.

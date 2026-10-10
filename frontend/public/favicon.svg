@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" fill="none">
+  <defs>
+    <linearGradient id="goldGrad" x1="8" y1="8" x2="56" y2="56" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFD35A"/>
+      <stop offset="50%" stop-color="#F5C327"/>
+      <stop offset="100%" stop-color="#E8B100"/>
+    </linearGradient>
+    <radialGradient id="glassGrad" cx="24" cy="24" r="19" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.65"/>
+      <stop offset="70%" stop-color="#F5EFE0" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#E2D4B7" stop-opacity="0.20"/>
+    </radialGradient>
+    <filter id="scopeGlow" x="0" y="0" width="64" height="64" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#E8B100" flood-opacity="0.30"/>
+    </filter>
+  </defs>
+
+  <!-- Background Midnight Tile with rounded corners -->
+  <rect x="2" y="2" width="60" height="60" rx="16" fill="#0B1020"/>
+
+  <!-- Tapered Handle at Bottom-Right -->
+  <path d="M40 40 L53 53" stroke="url(#goldGrad)" stroke-width="5.5" stroke-linecap="round"/>
+  <circle cx="53" cy="53" r="2.8" fill="#E8B100"/>
+
+  <!-- Circular Scope Lens Ring -->
+  <circle cx="27" cy="27" r="19" stroke="url(#goldGrad)" stroke-width="4.2" filter="url(#scopeGlow)"/>
+
+  <!-- Glass Fill -->
+  <circle cx="27" cy="27" r="16.8" fill="url(#glassGrad)"/>
+
+  <!-- Concept Tree Inside Lens -->
+  <g>
+    <!-- Branch lines -->
+    <path d="M27 19.5 L19.5 30" stroke="#FFD35A" stroke-width="1.8" stroke-linecap="round"/>
+    <path d="M27 19.5 L27 33.5" stroke="#FFD35A" stroke-width="1.8" stroke-linecap="round"/>
+    <path d="M27 19.5 L34.5 30" stroke="#FFD35A" stroke-width="1.8" stroke-linecap="round"/>
+
+    <!-- Root Node -->
+    <circle cx="27" cy="19.5" r="3.2" fill="#FFD35A"/>
+    <circle cx="27" cy="19.5" r="1.2" fill="#0B1020"/>
+
+    <!-- Child Nodes -->
+    <circle cx="19.5" cy="30" r="2.6" fill="#FFD35A"/>
+    <circle cx="27" cy="33.5" r="2.6" fill="#FFD35A"/>
+    <circle cx="34.5" cy="30" r="2.6" fill="#FFD35A"/>
+  </g>
+
+  <!-- Glass Highlight Arc -->
+  <path d="M13 24 A 14.5 14.5 0 0 1 24 13" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round" stroke-opacity="0.9"/>
+</svg>

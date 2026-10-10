@@ -1,0 +1,1137 @@
+/* =====================================================================
+   ConceptLens Study Planner Styles
+   Palette: Mint (#2f7d65), Peach (#f6dfc8), Orange (#c9701c)
+   Greeting: Purple (#6a3fc2 light, #b9a0ff dark)
+   Fonts: Titles "Berlin Sans FB", Fredoka; Body "Bell MT", Georgia
+   ===================================================================== */
+
+:root {
+  --planner-mint: #2f7d65;
+  --planner-mint-light: #e8f4f0;
+  --planner-mint-hover: #266854;
+  --planner-mint-border: #a3d2c3;
+  --planner-peach: #f6dfc8;
+  --planner-peach-light: #fff8f1;
+  --planner-peach-border: #e8c7a7;
+  --planner-orange: #c9701c;
+  --planner-orange-light: #fef3e7;
+  --planner-orange-hover: #ad5d11;
+  --planner-orange-border: #f4c28f;
+  
+  --planner-greeting: #6a3fc2;
+  --planner-bg: #f9fbf9;
+  --planner-card-bg: #ffffff;
+  --planner-card-border: #e2e9e4;
+  --planner-text-main: #1f2a24;
+  --planner-text-muted: #5e6d65;
+  --planner-chip-bg: #eef4f0;
+  --planner-chip-text: #2f7d65;
+  
+  --planner-font-title: "Berlin Sans FB", Fredoka, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --planner-font-body: "Bell MT", Georgia, "Times New Roman", serif;
+  
+  --planner-radius-sm: 8px;
+  --planner-radius-md: 14px;
+  --planner-radius-lg: 20px;
+  --planner-shadow-sm: 0 2px 8px rgba(47, 125, 101, 0.06);
+  --planner-shadow-md: 0 6px 20px rgba(47, 125, 101, 0.09);
+  --planner-shadow-hover: 0 10px 28px rgba(47, 125, 101, 0.14);
+}
+
+[data-theme="dark"],
+.dark {
+  --planner-mint: #3ea587;
+  --planner-mint-light: rgba(62, 165, 135, 0.15);
+  --planner-mint-hover: #4dbb9b;
+  --planner-mint-border: rgba(62, 165, 135, 0.35);
+  --planner-peach: #3a2e26;
+  --planner-peach-light: rgba(246, 223, 200, 0.08);
+  --planner-peach-border: #524033;
+  --planner-orange: #f28b2e;
+  --planner-orange-light: rgba(242, 139, 46, 0.15);
+  --planner-orange-hover: #ffa34d;
+  --planner-orange-border: rgba(242, 139, 46, 0.4);
+  
+  --planner-greeting: #b9a0ff;
+  --planner-bg: #141716;
+  --planner-card-bg: #1b201e;
+  --planner-card-border: #28332e;
+  --planner-text-main: #edf2ee;
+  --planner-text-muted: #9aa8a1;
+  --planner-chip-bg: #232d28;
+  --planner-chip-text: #59cbb1;
+  
+  --planner-shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.25);
+  --planner-shadow-md: 0 6px 24px rgba(0, 0, 0, 0.35);
+  --planner-shadow-hover: 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+
+/* ==================== Layout & Container ==================== */
+
+.planner-container {
+  width: 100%;
+  max-width: 1360px;
+  margin: 0 auto;
+  padding: 24px 20px 80px;
+  box-sizing: border-box;
+  font-family: var(--planner-font-body);
+  color: var(--planner-text-main);
+  text-align: left;
+}
+
+.planner-header-section {
+  margin-bottom: 24px;
+}
+
+.planner-greeting {
+  font-family: var(--planner-font-title);
+  font-size: 2.2rem;
+  font-weight: 600;
+  color: var(--planner-greeting);
+  margin: 0 0 6px;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+
+.planner-greeting-date {
+  font-size: 0.95rem;
+  color: var(--planner-text-muted);
+  font-style: italic;
+  margin-bottom: 6px;
+}
+
+.planner-status-line {
+  font-size: 1.08rem;
+  color: var(--planner-text-main);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+}
+
+.planner-status-line .badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  background: var(--planner-peach);
+  color: #7a3a00;
+}
+
+[data-theme="dark"] .planner-status-line .badge {
+  background: rgba(242, 139, 46, 0.2);
+  color: #ffb169;
+}
+
+/* ==================== Subject Pills ==================== */
+
+.planner-subject-pills {
+  display: flex;
+  gap: 10px;
+  margin: 20px 0 16px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-width: thin;
+}
+
+.planner-subject-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 18px;
+  border-radius: 999px;
+  background: var(--planner-card-bg);
+  border: 1.5px solid var(--planner-card-border);
+  color: var(--planner-text-muted);
+  font-family: var(--planner-font-title);
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  white-space: nowrap;
+}
+
+.planner-subject-pill:hover {
+  border-color: var(--planner-mint-border);
+  color: var(--planner-mint);
+  transform: translateY(-1px);
+}
+
+.planner-subject-pill.active {
+  background: var(--planner-mint);
+  border-color: var(--planner-mint);
+  color: #ffffff;
+  box-shadow: 0 4px 12px rgba(47, 125, 101, 0.28);
+}
+
+.planner-subject-pill:focus-visible {
+  outline: 2px solid var(--planner-orange);
+  outline-offset: 2px;
+}
+
+/* ==================== 4 Stat Cards ==================== */
+
+.planner-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 28px;
+}
+
+.planner-stat-card {
+  background: var(--planner-card-bg);
+  border: 1px solid var(--planner-card-border);
+  border-radius: var(--planner-radius-md);
+  padding: 18px 20px;
+  box-shadow: var(--planner-shadow-sm);
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.planner-stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--planner-shadow-md);
+}
+
+.planner-stat-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.planner-stat-label {
+  font-family: var(--planner-font-title);
+  font-size: 0.92rem;
+  color: var(--planner-text-muted);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.planner-stat-icon-wrap {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--planner-mint-light);
+  color: var(--planner-mint);
+}
+
+.planner-stat-val {
+  font-family: var(--planner-font-title);
+  font-size: 2.1rem;
+  font-weight: 700;
+  color: var(--planner-text-main);
+  line-height: 1.1;
+  margin-bottom: 6px;
+}
+
+.planner-stat-context {
+  font-size: 0.88rem;
+  color: var(--planner-text-muted);
+  line-height: 1.35;
+}
+
+/* ==================== Grid Layout: Left / Right Panels ==================== */
+
+.planner-main-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.8fr) minmax(360px, 1.2fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.planner-left-col {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.planner-right-col {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* ==================== Section Cards ==================== */
+
+.planner-section-card {
+  background: var(--planner-card-bg);
+  border: 1px solid var(--planner-card-border);
+  border-radius: var(--planner-radius-lg);
+  padding: 24px;
+  box-shadow: var(--planner-shadow-sm);
+  position: relative;
+}
+
+.planner-section-title {
+  font-family: var(--planner-font-title);
+  font-size: 1.35rem;
+  font-weight: 600;
+  color: var(--planner-text-main);
+  margin: 0 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* ==================== Notes Analysis (Books & Chapters) ==================== */
+
+.planner-book-tabs {
+  display: flex;
+  gap: 8px;
+  border-bottom: 1px solid var(--planner-card-border);
+  padding-bottom: 8px;
+  margin-bottom: 16px;
+  overflow-x: auto;
+}
+
+.planner-book-tab {
+  padding: 7px 16px;
+  border-radius: var(--planner-radius-sm);
+  background: transparent;
+  border: none;
+  font-family: var(--planner-font-title);
+  font-size: 0.94rem;
+  color: var(--planner-text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.planner-book-tab:hover {
+  background: var(--planner-chip-bg);
+  color: var(--planner-text-main);
+}
+
+.planner-book-tab.active {
+  background: var(--planner-peach);
+  color: #5c3005;
+  font-weight: 600;
+}
+
+[data-theme="dark"] .planner-book-tab.active {
+  background: rgba(246, 223, 200, 0.18);
+  color: #ffcca0;
+}
+
+.planner-book-tab .mastery-badge {
+  font-size: 0.78rem;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.planner-chapters-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.planner-chapter-row {
+  display: grid;
+  grid-template-columns: 2.2fr 0.9fr 0.8fr 1.2fr auto;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 16px;
+  border-radius: var(--planner-radius-md);
+  border: 1px solid var(--planner-card-border);
+  background: var(--planner-card-bg);
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.planner-chapter-row:hover {
+  border-color: var(--planner-mint-border);
+  background: var(--planner-mint-light);
+}
+
+.chapter-title-col {
+  display: flex;
+  flex-direction: column;
+}
+
+.chapter-name {
+  font-family: var(--planner-font-title);
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--planner-text-main);
+}
+
+.chapter-meta-sub {
+  font-size: 0.82rem;
+  color: var(--planner-text-muted);
+}
+
+.difficulty-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: capitalize;
+  width: fit-content;
+}
+
+.diff-easy {
+  background: #e2f5ec;
+  color: #177348;
+}
+
+.diff-med {
+  background: #fdf0df;
+  color: #a45a0b;
+}
+
+.diff-hard {
+  background: #fce6e6;
+  color: #b72b2b;
+}
+
+[data-theme="dark"] .diff-easy {
+  background: rgba(23, 115, 72, 0.25);
+  color: #49df92;
+}
+[data-theme="dark"] .diff-med {
+  background: rgba(164, 90, 11, 0.25);
+  color: #f7a852;
+}
+[data-theme="dark"] .diff-hard {
+  background: rgba(183, 43, 43, 0.25);
+  color: #ff7575;
+}
+
+.chapter-progress-bar-wrap {
+  width: 100%;
+  height: 7px;
+  background: var(--planner-card-border);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.chapter-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+
+.fill-not-started {
+  width: 0%;
+  background: transparent;
+}
+.fill-in-progress {
+  width: 50%;
+  background: var(--planner-orange);
+}
+.fill-done {
+  width: 100%;
+  background: var(--planner-mint);
+}
+
+.status-cycle-btn {
+  padding: 6px 14px;
+  border-radius: var(--planner-radius-sm);
+  font-family: var(--planner-font-title);
+  font-size: 0.84rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.15s ease;
+  min-width: 108px;
+  text-align: center;
+}
+
+.status-btn-0 {
+  background: var(--planner-chip-bg);
+  color: var(--planner-text-muted);
+  border-color: var(--planner-card-border);
+}
+.status-btn-0:hover {
+  background: var(--planner-card-border);
+  color: var(--planner-text-main);
+}
+
+.status-btn-1 {
+  background: var(--planner-orange-light);
+  color: var(--planner-orange);
+  border-color: var(--planner-orange-border);
+}
+.status-btn-1:hover {
+  background: var(--planner-orange);
+  color: #ffffff;
+}
+
+.status-btn-2 {
+  background: var(--planner-mint-light);
+  color: var(--planner-mint);
+  border-color: var(--planner-mint-border);
+}
+.status-btn-2:hover {
+  background: var(--planner-mint);
+  color: #ffffff;
+}
+
+/* ==================== Study Route Planner Controls ==================== */
+
+.planner-controls-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 20px;
+  background: var(--planner-peach-light);
+  border: 1px solid var(--planner-peach-border);
+  border-radius: var(--planner-radius-md);
+  margin-bottom: 20px;
+}
+
+.deadline-chips-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.deadline-chip {
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: var(--planner-card-bg);
+  border: 1.5px solid var(--planner-peach-border);
+  font-family: var(--planner-font-title);
+  font-size: 0.88rem;
+  color: var(--planner-text-main);
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.deadline-chip:hover {
+  border-color: var(--planner-orange);
+  color: var(--planner-orange);
+}
+
+.deadline-chip.active {
+  background: var(--planner-orange);
+  border-color: var(--planner-orange);
+  color: #ffffff;
+  font-weight: 600;
+  box-shadow: 0 3px 10px rgba(201, 112, 28, 0.28);
+}
+
+.planner-select-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.planner-select {
+  padding: 7px 14px;
+  border-radius: var(--planner-radius-sm);
+  background: var(--planner-card-bg);
+  border: 1.5px solid var(--planner-card-border);
+  color: var(--planner-text-main);
+  font-family: var(--planner-font-title);
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+
+.planner-select:focus-visible {
+  outline: 2px solid var(--planner-mint);
+}
+
+.start-plan-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 22px;
+  border-radius: var(--planner-radius-sm);
+  background: var(--planner-mint);
+  color: #ffffff;
+  border: none;
+  font-family: var(--planner-font-title);
+  font-size: 0.96rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(47, 125, 101, 0.3);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.start-plan-btn:hover {
+  background: var(--planner-mint-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(47, 125, 101, 0.38);
+}
+
+.start-plan-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.view-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: var(--planner-radius-sm);
+  background: var(--planner-card-bg);
+  border: 1.5px solid var(--planner-card-border);
+  color: var(--planner-text-muted);
+  font-family: var(--planner-font-title);
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+
+.view-toggle-btn:hover {
+  color: var(--planner-text-main);
+  border-color: var(--planner-mint-border);
+}
+
+/* ==================== RouteMap SVG Component ==================== */
+
+.routemap-scroll-wrapper {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--planner-card-border);
+  border-radius: var(--planner-radius-md);
+  background: var(--planner-card-bg);
+  padding: 24px 16px;
+  box-sizing: border-box;
+  scrollbar-width: thin;
+  position: relative;
+}
+
+.routemap-svg {
+  display: block;
+  user-select: none;
+}
+
+/* Grow animations */
+@media (prefers-reduced-motion: no-preference) {
+  .routemap-animating .route-branch-path {
+    stroke-dasharray: 600;
+    stroke-dashoffset: 600;
+    animation: drawPath 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  .routemap-animating .route-box-group {
+    opacity: 0;
+    transform-origin: center center;
+    animation: scaleInBox 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+}
+
+@keyframes drawPath {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes scaleInBox {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.day-box-clickable {
+  cursor: pointer;
+  transition: transform 0.15s ease, filter 0.15s ease;
+}
+
+.day-box-clickable:hover rect.day-box-rect {
+  filter: drop-shadow(0 4px 10px rgba(47, 125, 101, 0.2));
+  stroke: var(--planner-mint);
+  stroke-width: 2px;
+}
+
+.day-box-clickable:focus-visible rect.day-box-rect {
+  stroke: var(--planner-orange);
+  stroke-width: 2.5px;
+}
+
+.day-box-done rect.day-box-rect {
+  fill: #ebf7f2 !important;
+  stroke: var(--planner-mint) !important;
+  stroke-width: 2px !important;
+}
+
+[data-theme="dark"] .day-box-done rect.day-box-rect {
+  fill: rgba(62, 165, 135, 0.2) !important;
+  stroke: var(--planner-mint) !important;
+}
+
+.day-box-today rect.day-box-rect {
+  stroke: var(--planner-orange) !important;
+  stroke-width: 3px !important;
+  stroke-dasharray: 6 3;
+}
+
+/* Tooltip */
+.routemap-tooltip {
+  position: absolute;
+  pointer-events: none;
+  background: #1e2421;
+  color: #f7faf8;
+  padding: 10px 14px;
+  border-radius: var(--planner-radius-sm);
+  font-size: 0.84rem;
+  max-width: 280px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  z-index: 100;
+  line-height: 1.4;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.routemap-tooltip strong {
+  color: var(--planner-peach);
+  font-family: var(--planner-font-title);
+  display: block;
+  margin-bottom: 4px;
+}
+
+.routemap-tooltip .tt-sub {
+  color: #b7c7be;
+  font-size: 0.78rem;
+  margin-top: 4px;
+}
+
+.routemap-tooltip .tt-highlight {
+  color: #ffb873;
+}
+
+/* ==================== Related Topics Card ==================== */
+
+.related-topics-legend {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.legend-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.legend-chip-prereq {
+  background: var(--planner-orange-light);
+  color: var(--planner-orange);
+  border: 1px solid var(--planner-orange-border);
+}
+
+.legend-chip-related {
+  background: var(--planner-mint-light);
+  color: var(--planner-mint);
+  border: 1px solid var(--planner-mint-border);
+}
+
+.clusters-accordion-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-height: 480px;
+  overflow-y: auto;
+  padding-right: 4px;
+  scrollbar-width: thin;
+}
+
+.cluster-card {
+  border: 1px solid var(--planner-card-border);
+  border-radius: var(--planner-radius-md);
+  background: var(--planner-card-bg);
+  overflow: hidden;
+  transition: border-color 0.15s ease;
+}
+
+.cluster-card:hover {
+  border-color: var(--planner-mint-border);
+}
+
+.cluster-card-header {
+  padding: 12px 16px;
+  background: var(--planner-chip-bg);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  user-select: none;
+}
+
+.cluster-card-title {
+  font-family: var(--planner-font-title);
+  font-size: 0.98rem;
+  font-weight: 600;
+  color: var(--planner-text-main);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cluster-card-body {
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cluster-topic-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed var(--planner-card-border);
+}
+
+.cluster-topic-item:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.cluster-topic-main-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: var(--planner-font-title);
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+.cluster-topic-relations-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: var(--planner-text-muted);
+}
+
+.relation-inline-tag {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 600;
+}
+
+.rel-tag-prereq {
+  background: var(--planner-orange-light);
+  color: var(--planner-orange);
+}
+
+.rel-tag-related {
+  background: var(--planner-mint-light);
+  color: var(--planner-mint);
+}
+
+.cluster-footer-note {
+  margin-top: 8px;
+  padding: 10px 14px;
+  border-radius: var(--planner-radius-sm);
+  background: var(--planner-peach-light);
+  border: 1px solid var(--planner-peach-border);
+  font-size: 0.82rem;
+  color: #723c03;
+  line-height: 1.4;
+}
+
+[data-theme="dark"] .cluster-footer-note {
+  background: rgba(246, 223, 200, 0.07);
+  color: #ffcca0;
+  border-color: rgba(246, 223, 200, 0.2);
+}
+
+/* ==================== Course Status Card ==================== */
+
+.course-status-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.course-status-day {
+  font-family: var(--planner-font-title);
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--planner-text-main);
+}
+
+.ontrack-chip {
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.chip-ontrack {
+  background: #e2f5ec;
+  color: #177348;
+}
+
+.chip-behind {
+  background: #fdf0df;
+  color: #a45a0b;
+}
+
+.chip-complete {
+  background: var(--planner-mint);
+  color: #ffffff;
+}
+
+[data-theme="dark"] .chip-ontrack {
+  background: rgba(23, 115, 72, 0.25);
+  color: #49df92;
+}
+
+[data-theme="dark"] .chip-behind {
+  background: rgba(164, 90, 11, 0.25);
+  color: #f7a852;
+}
+
+.course-progress-bar-wrap {
+  width: 100%;
+  height: 10px;
+  background: var(--planner-card-border);
+  border-radius: 999px;
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+
+.course-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--planner-mint) 0%, var(--planner-orange) 100%);
+  border-radius: 999px;
+  transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.todays-chapters-box {
+  background: var(--planner-chip-bg);
+  border-radius: var(--planner-radius-sm);
+  padding: 12px 14px;
+}
+
+.todays-chapters-label {
+  font-family: var(--planner-font-title);
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  color: var(--planner-text-muted);
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.todays-chapters-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.88rem;
+  font-weight: 500;
+}
+
+/* ==================== Reminders Section ==================== */
+
+.reminders-input-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 20px;
+  padding: 16px;
+  background: var(--planner-chip-bg);
+  border-radius: var(--planner-radius-md);
+}
+
+.reminders-inputs-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.reminder-time-input {
+  padding: 8px 12px;
+  border-radius: var(--planner-radius-sm);
+  border: 1.5px solid var(--planner-card-border);
+  background: var(--planner-card-bg);
+  color: var(--planner-text-main);
+  font-family: var(--planner-font-title);
+  font-size: 1rem;
+}
+
+.reminder-label-select {
+  flex: 1;
+  padding: 8px 12px;
+  border-radius: var(--planner-radius-sm);
+  border: 1.5px solid var(--planner-card-border);
+  background: var(--planner-card-bg);
+  color: var(--planner-text-main);
+  font-family: var(--planner-font-title);
+  font-size: 0.92rem;
+}
+
+.weekdays-pill-group {
+  display: flex;
+  gap: 6px;
+}
+
+.weekday-toggle-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  border: 1.5px solid var(--planner-card-border);
+  background: var(--planner-card-bg);
+  color: var(--planner-text-muted);
+  font-family: var(--planner-font-title);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.weekday-toggle-btn:hover {
+  border-color: var(--planner-mint);
+  color: var(--planner-mint);
+}
+
+.weekday-toggle-btn.active {
+  background: var(--planner-mint);
+  border-color: var(--planner-mint);
+  color: #ffffff;
+}
+
+.reminders-actions-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.reminder-btn-add {
+  padding: 7px 18px;
+  border-radius: var(--planner-radius-sm);
+  background: var(--planner-mint);
+  color: #ffffff;
+  border: none;
+  font-family: var(--planner-font-title);
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.reminder-btn-secondary {
+  padding: 7px 14px;
+  border-radius: var(--planner-radius-sm);
+  background: var(--planner-card-bg);
+  border: 1.5px solid var(--planner-card-border);
+  color: var(--planner-text-main);
+  font-family: var(--planner-font-title);
+  font-size: 0.84rem;
+  cursor: pointer;
+}
+
+.reminders-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.reminder-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-radius: var(--planner-radius-sm);
+  border: 1px solid var(--planner-card-border);
+  background: var(--planner-card-bg);
+}
+
+.reminder-item-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.reminder-item-time {
+  font-family: var(--planner-font-title);
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--planner-text-main);
+}
+
+.reminder-item-label {
+  font-size: 0.88rem;
+  color: var(--planner-text-muted);
+}
+
+.reminder-item-days {
+  font-size: 0.76rem;
+  color: var(--planner-mint);
+  font-weight: 600;
+}
+
+.reminder-item-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.next-reminder-banner {
+  margin-top: 14px;
+  padding: 10px 14px;
+  border-radius: var(--planner-radius-sm);
+  background: var(--planner-mint-light);
+  border: 1px solid var(--planner-mint-border);
+  font-size: 0.85rem;
+  color: var(--planner-mint);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+}
+
+/* ==================== Responsive Behavior ==================== */
+
+@media (max-width: 900px) {
+  .planner-stat-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .planner-main-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .planner-chapter-row {
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+  }
+}
+
+@media (max-width: 600px) {
+  .planner-stat-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .planner-greeting {
+    font-size: 1.8rem;
+  }
+}

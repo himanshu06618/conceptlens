@@ -1,0 +1,34 @@
+# Virtual environments
+.venv/
+env/
+venv/
+ENV/
+
+# Python caches and bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Local databases and uploads
+backend/*.db
+backend/*.db-wal
+backend/*.db-shm
+backend/test_*.db
+backend/uploads/
+*.db
+*.sqlite
+*.sqlite3
+
+# Large binary archives and scratch directory
+*.zip
+PROJECT.docx
+scratch/
+
+# Backend tests
+backend/tests/
+
+# OS and logs
+*.log
+Thumbs.db
+.DS_Store
