@@ -43,14 +43,8 @@ def test_pipeline_on_pdf_sample():
 def test_pipeline_on_image_ocr_sample():
     p = Path("samples/scanned_notes_neural_networks.png")
     assert p.exists()
-    pages_cnt, pages, full_text, skipped = read_document_file(p)
+    pages_cnt, pages, full_text, has_usable_text = read_document_file(p)
     assert pages_cnt == 1
-    assert len(full_text) > 100
-    
-    nlp = get_spacy_nlp()
-    chunks = create_chunks_from_pages(pages, nlp)
-    concepts_res = extract_concepts_pipeline(chunks, full_text)
-    concepts = concepts_res[0] if isinstance(concepts_res, tuple) else concepts_res
-    assert len(concepts) >= 3
-    concept_names = [c["name"].lower() for c in concepts]
-    assert any("neural" in name or "activation" in name or "backpropagation" in name or "gradient" in name for name in concept_names)
+    # Local OCR is removed per architecture: images are streamed directly to Gemini API
+    assert has_usable_text is False
+    assert full_text == ""

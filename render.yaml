@@ -1,9 +1,9 @@
 services:
   - type: web
     name: conceptlens-backend
-    runtime: docker
-    dockerfilePath: ./backend/Dockerfile
-    dockerContext: ./backend
+    runtime: python
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
     plan: free
     region: oregon
     healthCheckPath: /health
@@ -24,13 +24,9 @@ services:
         value: conceptlens.db
       - key: UPLOAD_DIR
         value: uploads
-      - key: OCR_ENGINE
-        value: rapidocr
-      - key: FLOWCHART_PROVIDER
-        value: offline
       - key: GEMINI_API_KEY
         sync: false
       - key: GEMINI_MODEL
-        value: gemini-2.5-flash
+        value: gemini-3.5-flash
       - key: GOOGLE_CLIENT_ID
         sync: false

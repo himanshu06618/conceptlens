@@ -232,7 +232,7 @@ async def register_user(
     return create_auth_response(user, token, is_new=True)
 
 @router.post("/login")
-@limiter.limit("10/minute")
+@limiter.limit("5/minute")
 async def login_user(
     request: Request,
     response: Response,
@@ -251,10 +251,10 @@ async def login_user(
 
     if not user or not user.get("password_hash"):
         dummy_verify(payload.password)
-        raise HTTPException(status_code=400, detail="Invalid email or password.")
+        raise HTTPException(status_code=400, detail="Incorrect username or password.")
 
     if not verify_password(payload.password, user["password_hash"]):
-        raise HTTPException(status_code=400, detail="Invalid email or password.")
+        raise HTTPException(status_code=400, detail="Incorrect username or password.")
 
     update_user_last_login(user["id"])
     token = create_access_token(user_id=user["id"], username=user["username"])

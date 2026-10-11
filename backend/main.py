@@ -6,6 +6,8 @@ import io
 import json
 import logging
 import time
+import hashlib
+import threading
 from contextlib import asynccontextmanager
 import sys
 from datetime import datetime, timezone
@@ -24,6 +26,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
 from slowapi.errors import RateLimitExceeded
 from dotenv import load_dotenv
+import pymupdf as fitz
 
 load_dotenv(backend_dir / ".env")
 load_dotenv()
@@ -46,7 +49,9 @@ try:
         save_document_tree,
         save_document_flowchart,
         get_document_flowchart_cache,
-        document_exists
+        document_exists,
+        find_completed_document_by_hash,
+        clone_cached_document
     )
     from backend.models import (
         DocumentItem,
@@ -70,28 +75,20 @@ try:
         UnsupportedFileTypeError,
         EmptyFileError,
         EncryptedPdfError,
-        CorruptedPdfError,
-        ScannedNoOcrError
+        CorruptedPdfError
     )
-    from backend.services.chunking import create_chunks_from_pages
     from backend.services.concept_extraction import (
         extract_concepts_pipeline,
-        get_spacy_nlp,
-        TOP_CONCEPTS_LIMIT_DEFAULT,
-        USE_KEYBERT_ENV
+        extract_fallback_concepts,
+        TOP_CONCEPTS_LIMIT_DEFAULT
     )
     from backend.services.tree_builder import build_document_tree
     from backend.services.flowchart_builder import build_document_flowchart, select_flowchart_view
-    from backend.services.flowchart_provider import apply_flowchart_enrichment, enrich_flowchart_with_cloud
-    from backend.services.ocr import (
-        is_tesseract_available,
-        check_rapidocr_available,
-        OCR_ENGINE_CONFIG,
-        OcrUnavailableError
-    )
     from backend.services.cloud_extraction import (
+        extract_document_with_gemini,
         check_gemini_key_valid,
-        GEMINI_MODEL
+        GEMINI_MODEL,
+        GeminiQuotaError
     )
 except ImportError:
     from database import (
@@ -111,7 +108,9 @@ except ImportError:
         save_document_tree,
         save_document_flowchart,
         get_document_flowchart_cache,
-        document_exists
+        document_exists,
+        find_completed_document_by_hash,
+        clone_cached_document
     )
     from models import (
         DocumentItem,
@@ -135,28 +134,20 @@ except ImportError:
         UnsupportedFileTypeError,
         EmptyFileError,
         EncryptedPdfError,
-        CorruptedPdfError,
-        ScannedNoOcrError
+        CorruptedPdfError
     )
-    from services.chunking import create_chunks_from_pages
     from services.concept_extraction import (
         extract_concepts_pipeline,
-        get_spacy_nlp,
-        TOP_CONCEPTS_LIMIT_DEFAULT,
-        USE_KEYBERT_ENV
+        extract_fallback_concepts,
+        TOP_CONCEPTS_LIMIT_DEFAULT
     )
     from services.tree_builder import build_document_tree
     from services.flowchart_builder import build_document_flowchart, select_flowchart_view
-    from services.flowchart_provider import apply_flowchart_enrichment, enrich_flowchart_with_cloud
-    from services.ocr import (
-        is_tesseract_available,
-        check_rapidocr_available,
-        OCR_ENGINE_CONFIG,
-        OcrUnavailableError
-    )
     from services.cloud_extraction import (
+        extract_document_with_gemini,
         check_gemini_key_valid,
-        GEMINI_MODEL
+        GEMINI_MODEL,
+        GeminiQuotaError
     )
 
 # Setup logging
@@ -170,35 +161,27 @@ if not UPLOAD_DIR.is_absolute():
     UPLOAD_DIR = Path(__file__).resolve().parent / UPLOAD_DIR
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
-MAX_FILE_SIZE_BYTES = 25 * 1024 * 1024  # 25 MB
+MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024  # 10 MB strict limit
+MAX_PDF_PAGES = 100  # 100 pages strict limit
 GUEST_UPLOAD_LIMIT = int(os.getenv("GUEST_UPLOAD_LIMIT", "5"))
+
+# Single worker lock protecting Render 512 MB memory
+_worker_lock = threading.Lock()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: initialize database tables and warm up models
+    # Startup: initialize database tables and verify Gemini connection
     logger.info("Initializing SQLite database with schema...")
     init_db()
-
-    logger.info("Pre-warming spaCy model...")
-    try:
-        get_spacy_nlp()
-        logger.info("spaCy en_core_web_sm loaded successfully.")
-    except Exception as e:
-        logger.error(f"Error loading spaCy: {e}")
-
-    rapid_ok, rapid_msg = check_rapidocr_available()
-    tess_ok = is_tesseract_available()
-    logger.info(f"RapidOCR ONNX Runtime operational: {rapid_ok} ({rapid_msg})")
-    logger.info(f"Tesseract available on system: {tess_ok}")
 
     gemini_key_set = bool(os.getenv("GEMINI_API_KEY", "").strip())
     gemini_valid, gemini_msg = check_gemini_key_valid()
     logger.info(f"Gemini API check: key_set={gemini_key_set}, valid={gemini_valid} ({gemini_msg}), model={GEMINI_MODEL}")
 
     if gemini_valid:
-        logger.info("Default upload path: CLOUD (Gemini Flash primary, on-device RapidOCR fallback).")
+        logger.info(f"Default extraction path: GEMINI AI ({GEMINI_MODEL}) multimodal OCR + structured concepts.")
     else:
-        logger.info(f"Default upload path: ON-DEVICE (RapidOCR + spaCy/YAKE, reason: {gemini_msg}).")
+        logger.info(f"Default extraction path: LIGHTWEIGHT FALLBACK (PyMuPDF + YAKE, reason: {gemini_msg}).")
 
     yield
     logger.info("Shutting down ConceptLens API server...")
@@ -243,179 +226,155 @@ def process_document_background(
     pdf_password: Optional[str] = None,
     prefer_cloud: bool = True
 ):
-    """Background task to read document, run OCR if needed, extract concepts, and prebuild tree/flowchart."""
+    """Background task to extract concepts with Gemini API, build tree & flowchart, and protect memory."""
     t_start = time.perf_counter()
-    logger.info(f"Processing document {doc_id} ({file_path.name}) [prefer_cloud={prefer_cloud}]...")
+    logger.info(f"Queued background processing for document {doc_id} ({file_path.name})...")
     update_document_stage(
         doc_id,
         stage="reading",
         status="processing",
-        progress=5,
-        stage_message="Reading document layout..."
+        progress=10,
+        stage_message="Queued for processing..."
     )
 
-    def on_ocr_page(page_idx, total_pages):
-        pct = min(65, max(10, int(10 + (page_idx / max(1, total_pages)) * 55)))
-        msg = f"OCR scanning page {page_idx} of {total_pages} ({pct}%)..."
+    # Acquire worker lock to guarantee only 1 extraction job runs at a time per worker
+    with _worker_lock:
         update_document_stage(
             doc_id,
-            stage="ocr",
+            stage="reading",
             status="processing",
-            progress=pct,
-            stage_message=msg,
-            current_page=page_idx,
-            total_pages=total_pages
+            progress=20,
+            stage_message="Reading document layout..."
         )
 
-    def on_page_progress(page_idx, total_pages, is_ocr=False):
-        if not is_ocr:
-            pct = min(45, max(5, int(5 + (page_idx / max(1, total_pages)) * 40)))
-            msg = f"Reading page {page_idx} of {total_pages} ({pct}%)..."
-            update_document_stage(
-                doc_id,
-                stage="reading",
-                status="processing",
-                progress=pct,
-                stage_message=msg,
-                current_page=page_idx,
-                total_pages=total_pages
+        try:
+            # 1. Read document structure using PyMuPDF (zero heavy models)
+            page_count, pages, full_text, has_usable_text = read_document_file(
+                file_path,
+                pdf_password=pdf_password
             )
 
-    t_read_start = time.perf_counter()
-    try:
-        # 1. Read and parse document with multi-library fallback ladder
-        page_count, pages, full_text, skipped_pages = read_document_file(
-            file_path,
-            on_ocr_page=on_ocr_page,
-            on_page_progress=on_page_progress,
-            pdf_password=pdf_password,
-            prefer_cloud=prefer_cloud
-        )
-        t_read = time.perf_counter() - t_read_start
-        logger.info(f"Document {doc_id} read in {t_read:.2f}s ({page_count} pages, {len(skipped_pages)} skipped).")
+            # 2. Extract concepts via Gemini API (with lightweight fallback)
+            update_document_stage(
+                doc_id,
+                stage="extracting",
+                status="processing",
+                progress=40,
+                stage_message="Extracting educational concepts & definitions with Gemini AI..."
+            )
 
-        # 2. Chunking
-        update_document_stage(
-            doc_id,
-            stage="extracting",
-            status="processing",
-            progress=68,
-            stage_message="Chunking & tokenizing text segments (68%)..."
-        )
-        t_chunk_start = time.perf_counter()
-        nlp_model = get_spacy_nlp()
-        chunks = create_chunks_from_pages(pages, nlp_model)
-        t_chunk = time.perf_counter() - t_chunk_start
-        logger.info(f"Document {doc_id} chunked in {t_chunk:.2f}s ({len(chunks)} chunks).")
+            def on_progress_update(pct, msg):
+                update_document_stage(
+                    doc_id,
+                    stage="extracting",
+                    status="processing",
+                    progress=pct,
+                    stage_message=msg
+                )
 
-        # 3. Concept Extraction (Cloud primary with local fallback)
-        update_document_stage(
-            doc_id,
-            stage="extracting",
-            status="processing",
-            progress=75,
-            stage_message="Extracting core concepts & definitions (75%)..."
-        )
-        t_extract_start = time.perf_counter()
-        concepts, provider_used = extract_concepts_pipeline(
-            chunks,
-            full_text,
-            top_limit=TOP_CONCEPTS_LIMIT_DEFAULT,
-            use_keybert=USE_KEYBERT_ENV,
-            prefer_cloud=prefer_cloud
-        )
-        t_extract = time.perf_counter() - t_extract_start
-        logger.info(f"Document {doc_id} extracted {len(concepts)} concepts in {t_extract:.2f}s using {provider_used}.")
+            concepts = []
+            provider_used = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
+            gemini_key_set = bool(os.getenv("GEMINI_API_KEY", "").strip())
 
-        # Check if doc was deleted during processing
-        if not document_exists(doc_id):
-            logger.info(f"Document {doc_id} was deleted during processing; aborting.")
-            return
+            if prefer_cloud and gemini_key_set:
+                try:
+                    concepts = extract_document_with_gemini(
+                        file_path=file_path,
+                        on_progress=on_progress_update
+                    )
+                    provider_used = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
+                except GeminiQuotaError:
+                    logger.warning(f"Document {doc_id}: Gemini quota exceeded.")
+                    if has_usable_text:
+                        logger.info(f"Document {doc_id}: Falling back to lightweight PyMuPDF + YAKE...")
+                        concepts = extract_fallback_concepts(full_text=full_text)
+                        provider_used = "lightweight-fallback"
+                    else:
+                        mark_document_failed(doc_id, "Daily free limit reached, try again later")
+                        return
+                except Exception as ex_gemini:
+                    logger.warning(f"Document {doc_id}: Gemini extraction error: {ex_gemini}")
+                    if has_usable_text:
+                        logger.info(f"Document {doc_id}: Falling back to lightweight PyMuPDF + YAKE...")
+                        concepts = extract_fallback_concepts(full_text=full_text)
+                        provider_used = "lightweight-fallback"
+                    else:
+                        mark_document_failed(doc_id, "Gemini AI is temporarily unavailable and this scanned document requires AI vision. Please try again later.")
+                        return
+            else:
+                # User chose local mode or no Gemini key configured
+                if has_usable_text:
+                    concepts = extract_fallback_concepts(full_text=full_text)
+                    provider_used = "lightweight-fallback"
+                else:
+                    mark_document_failed(doc_id, "Gemini API key is not configured and this document has no digital text layer.")
+                    return
 
-        # 4. Background Prebuild: Concept Tree & Flowchart (Linear algorithms)
-        update_document_stage(
-            doc_id,
-            stage="extracting",
-            status="processing",
-            progress=88,
-            stage_message="Building concept tree & flowchart graph (88%)..."
-        )
-        t_tree_start = time.perf_counter()
-        tree_data = build_document_tree(doc_id, file_path.name, concepts)
-        save_document_tree(doc_id, tree_data)
-        t_tree = time.perf_counter() - t_tree_start
+            if not concepts:
+                mark_document_failed(doc_id, "No key educational concepts could be extracted from this document.")
+                return
 
-        t_flow_start = time.perf_counter()
-        flow_data = build_document_flowchart(doc_id, concepts, full_text, include_related=True)
-        save_document_flowchart(doc_id, flow_data)
-        t_flow = time.perf_counter() - t_flow_start
+            # Check if doc was deleted during processing
+            if not document_exists(doc_id):
+                logger.info(f"Document {doc_id} was deleted during processing; aborting.")
+                return
 
-        # 5. Database Save (WAL mode + executemany batch insert)
-        update_document_stage(
-            doc_id,
-            stage="extracting",
-            status="processing",
-            progress=96,
-            stage_message="Saving knowledge structures & relations (96%)..."
-        )
-        t_db_start = time.perf_counter()
-        save_concepts_and_relations(doc_id, concepts)
-        t_total = time.perf_counter() - t_start
-        mark_document_completed(
-            doc_id,
-            page_count=page_count,
-            raw_text=full_text,
-            processing_time_sec=t_total,
-            provider_used=provider_used,
-            skipped_pages=skipped_pages
-        )
-        t_db = time.perf_counter() - t_db_start
+            # 3. Background Prebuild: Concept Tree & Flowchart
+            update_document_stage(
+                doc_id,
+                stage="extracting",
+                status="processing",
+                progress=85,
+                stage_message="Building concept tree & flowchart graph (85%)..."
+            )
+            tree_data = build_document_tree(doc_id, file_path.name, concepts)
+            save_document_tree(doc_id, tree_data)
 
-        # Process chapters & relations for Study Planner
-        try:
-            process_document_chapters_and_relations(doc_id)
-        except Exception as e_rel:
-            logger.warning(f"Could not build chapter relations for document {doc_id}: {e_rel}")
+            flow_data = build_document_flowchart(doc_id, concepts, full_text, include_related=True)
+            save_document_flowchart(doc_id, flow_data)
 
-        # Per-stage timing summary table
-        logger.info(
-            "\n" + "=" * 70 + "\n"
-            f"UPLOAD TIMING SUMMARY: {doc_id} ({file_path.name})\n"
-            + "-" * 70 + "\n"
-            f"{'Stage':<35} {'Duration (s)':<15}\n"
-            + "-" * 70 + "\n"
-            f"{'Text Acquisition & Reading':<35} {t_read:>8.2f}s\n"
-            f"{'Chunking':<35} {t_chunk:>8.2f}s\n"
-            f"{f'Concept Extraction ({provider_used})':<35} {t_extract:>8.2f}s\n"
-            f"{'Knowledge Tree Prebuild':<35} {t_tree:>8.2f}s\n"
-            f"{'Flowchart Prebuild':<35} {t_flow:>8.2f}s\n"
-            f"{'Database Batch Save':<35} {t_db:>8.2f}s\n"
-            + "-" * 70 + "\n"
-            f"{'TOTAL PIPELINE TIME':<35} {t_total:>8.2f}s\n"
-            + "=" * 70
-        )
+            # 4. Database Save
+            update_document_stage(
+                doc_id,
+                stage="extracting",
+                status="processing",
+                progress=95,
+                stage_message="Saving knowledge structures & relations (95%)..."
+            )
+            save_concepts_and_relations(doc_id, concepts)
+            t_total = time.perf_counter() - t_start
 
-    except EncryptedPdfError as enc_err:
-        logger.warning(f"Document {doc_id} requires password: {enc_err}")
-        mark_document_failed(doc_id, "Password required: This PDF is password-protected. Please enter the password to decrypt.")
-    except ScannedNoOcrError as ocr_err:
-        logger.warning(f"Document {doc_id} scanned with no OCR: {ocr_err}")
-        mark_document_failed(doc_id, str(ocr_err))
-    except EmptyFileError as empty_err:
-        logger.warning(f"Document {doc_id} empty text: {empty_err}")
-        mark_document_failed(doc_id, str(empty_err))
-    except CorruptedPdfError as corrupt_err:
-        logger.warning(f"Document {doc_id} corrupted PDF: {corrupt_err}")
-        mark_document_failed(doc_id, "The PDF file is corrupted or could not be parsed.")
-    except UnsupportedFileTypeError as type_err:
-        logger.warning(f"Document {doc_id} unsupported type: {type_err}")
-        mark_document_failed(doc_id, str(type_err))
-    except OcrUnavailableError as ocr_unavail:
-        logger.warning(f"Document {doc_id} OCR unavailable: {ocr_unavail}")
-        mark_document_failed(doc_id, str(ocr_unavail))
-    except Exception as ex:
-        logger.exception(f"Unexpected error processing document {doc_id}: {ex}")
-        mark_document_failed(doc_id, f"Processing error: {str(ex)}")
+            mark_document_completed(
+                doc_id,
+                page_count=page_count,
+                raw_text=full_text,
+                processing_time_sec=t_total,
+                provider_used=provider_used
+            )
+
+            # Process chapters & relations for Study Planner
+            try:
+                process_document_chapters_and_relations(doc_id)
+            except Exception as e_rel:
+                logger.warning(f"Could not build chapter relations for document {doc_id}: {e_rel}")
+
+            logger.info(f"Document {doc_id} processing completed successfully in {t_total:.2f}s ({len(concepts)} concepts).")
+
+        except EncryptedPdfError as enc_err:
+            logger.warning(f"Document {doc_id} requires password: {enc_err}")
+            mark_document_failed(doc_id, "Password required: This PDF is password-protected. Please enter the password to decrypt.")
+        except EmptyFileError as empty_err:
+            logger.warning(f"Document {doc_id} empty text: {empty_err}")
+            mark_document_failed(doc_id, str(empty_err))
+        except CorruptedPdfError as corrupt_err:
+            logger.warning(f"Document {doc_id} corrupted PDF: {corrupt_err}")
+            mark_document_failed(doc_id, "The PDF file is corrupted or could not be parsed.")
+        except UnsupportedFileTypeError as type_err:
+            logger.warning(f"Document {doc_id} unsupported type: {type_err}")
+            mark_document_failed(doc_id, str(type_err))
+        except Exception as ex:
+            logger.exception(f"Unexpected error processing document {doc_id}: {ex}")
+            mark_document_failed(doc_id, f"Processing error: {str(ex)}")
 
 @app.get("/health")
 def health_check_root():
@@ -424,35 +383,34 @@ def health_check_root():
 
 @app.get("/api/health")
 def health_check():
+    gemini_valid, gemini_msg = check_gemini_key_valid()
     return {
         "status": "healthy",
         "app": "ConceptLens",
-        "ocr_engine": OCR_ENGINE_CONFIG,
-        "tesseract_available": is_tesseract_available(),
-        "keybert_enabled": USE_KEYBERT_ENV,
+        "ocr_engine": "gemini-multimodal",
+        "gemini_model": GEMINI_MODEL,
+        "gemini_valid": gemini_valid,
         "auth_enabled": True,
         "guest_upload_limit": GUEST_UPLOAD_LIMIT
     }
 
 @app.get("/api/health/providers")
 def check_providers_health():
-    """Reports status of Gemini API, model, extraction mode, and RapidOCR."""
+    """Reports status of Gemini API, model, and extraction mode."""
     gemini_key_set = bool(os.getenv("GEMINI_API_KEY", "").strip())
     gemini_valid, gemini_msg = check_gemini_key_valid()
-    rapid_ok, rapid_msg = check_rapidocr_available()
-    tess_ok = is_tesseract_available()
-    active_mode = "cloud" if gemini_valid else "on-device"
+    active_mode = "cloud" if gemini_valid else "on-device-fallback"
     return {
         "gemini_api_key_set": gemini_key_set,
         "gemini_api_key_valid": gemini_valid,
         "gemini_status_message": gemini_msg,
         "gemini_model": GEMINI_MODEL,
         "active_extraction_mode": active_mode,
-        "rapidocr_available": rapid_ok,
-        "rapidocr_message": rapid_msg,
-        "tesseract_available": tess_ok,
+        "rapidocr_available": False,
+        "rapidocr_message": "Replaced by Gemini multimodal AI OCR",
+        "tesseract_available": False,
         "default_upload_path": "cloud" if gemini_valid else "on-device",
-        "default_upload_path_reason": "Gemini API key is configured and valid" if gemini_valid else f"No valid Gemini API key ({gemini_msg}), using offline on-device pipeline"
+        "default_upload_path_reason": "Gemini AI multimodal extraction active" if gemini_valid else f"No valid Gemini API key ({gemini_msg}), using lightweight on-device fallback"
     }
 
 @app.get("/api/guest/status")
@@ -476,6 +434,7 @@ def get_guest_status(actor: Dict[str, Any] = Depends(get_current_user_or_guest))
     }
 
 @app.post("/api/documents", response_model=UploadResponse)
+@limiter.limit("10/minute")
 async def upload_document(
     request: Request,
     response: Response,
@@ -506,17 +465,71 @@ async def upload_document(
             detail=f"Unsupported file format '{ext}'. Allowed: PDF, PNG, JPG, JPEG, WEBP, TXT, MD."
         )
 
-    # Read and validate file content & size
+    # Read and validate file content & size (10 MB strict limit)
     content = await file.read()
     if len(content) > MAX_FILE_SIZE_BYTES:
         raise HTTPException(
             status_code=413,
-            detail=f"File exceeds maximum allowed size of 25 MB ({len(content) / (1024*1024):.1f} MB provided)."
+            detail=f"File exceeds maximum allowed size of 10 MB ({len(content) / (1024*1024):.1f} MB provided)."
         )
     if len(content) == 0:
         raise HTTPException(
             status_code=400,
             detail="The uploaded file is empty (0 bytes)."
+        )
+
+    # Validate PDF page count (100 pages strict limit)
+    if ext == ".pdf":
+        try:
+            doc_pdf = fitz.open(stream=content, filetype="pdf")
+            page_count = len(doc_pdf)
+            doc_pdf.close()
+            if page_count > MAX_PDF_PAGES:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Document exceeds maximum allowed limit of {MAX_PDF_PAGES} pages ({page_count} pages provided)."
+                )
+        except HTTPException:
+            raise
+        except Exception as pdf_err:
+            logger.warning(f"Could not inspect PDF page count for {safe_filename}: {pdf_err}")
+
+    # Compute SHA-256 hash for deduplication and quota preservation
+    file_hash = hashlib.sha256(content).hexdigest()
+
+    # Check database cache for instant return
+    cached_doc = find_completed_document_by_hash(file_hash)
+    if cached_doc:
+        logger.info(f"Cache HIT for hash {file_hash[:12]}... (source doc {cached_doc['id']})")
+        doc_id = str(uuid.uuid4())
+        actor_upload_dir = UPLOAD_DIR / actor["id"]
+        actor_upload_dir.mkdir(parents=True, exist_ok=True)
+        save_path = actor_upload_dir / f"{doc_id}_{safe_filename}"
+        with open(save_path, "wb") as f:
+            f.write(content)
+
+        create_document(
+            user_id=actor["id"],
+            doc_id=doc_id,
+            filename=safe_filename,
+            file_type=ext.lstrip("."),
+            status="completed",
+            stage="completed",
+            file_hash=file_hash
+        )
+        clone_cached_document(cached_doc["id"], doc_id)
+        try:
+            process_document_chapters_and_relations(doc_id)
+        except Exception as e_ch:
+            logger.warning(f"Could not build chapter relations for cached document {doc_id}: {e_ch}")
+
+        return UploadResponse(
+            id=doc_id,
+            filename=safe_filename,
+            file_type=ext.lstrip("."),
+            status="completed",
+            stage="completed",
+            message="Document extracted instantly from cache."
         )
 
     doc_id = str(uuid.uuid4())
@@ -528,14 +541,15 @@ async def upload_document(
     with open(save_path, "wb") as f:
         f.write(content)
 
-    # Create document row in database tied to actor["id"]
+    # Create document row in database tied to actor["id"] and file_hash
     create_document(
         user_id=actor["id"],
         doc_id=doc_id,
         filename=safe_filename,
         file_type=ext.lstrip("."),
         status="processing",
-        stage="reading"
+        stage="reading",
+        file_hash=file_hash
     )
 
     prefer_cloud = True
@@ -549,7 +563,7 @@ async def upload_document(
     elif not gemini_key_set:
         logger.info(f"Upload {doc_id} path decision: ON-DEVICE (No GEMINI_API_KEY set, using offline on-device)")
     else:
-        logger.info(f"Upload {doc_id} path decision: CLOUD (Gemini Flash primary, on-device fallback)")
+        logger.info(f"Upload {doc_id} path decision: CLOUD (Gemini AI primary, on-device fallback)")
 
     # Enqueue background processing
     background_tasks.add_task(

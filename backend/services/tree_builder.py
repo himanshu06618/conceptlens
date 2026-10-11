@@ -215,21 +215,32 @@ def build_document_tree(
             sub_def_lower = c_sub.get("definition", "").lower()
 
             best_parent = None
-            for j in range(i):
-                c_parent = topic_concepts[j]
-                c_parent_id = c_parent.get("id") or id(c_parent)
-                # Don't make a child of a child (to stay within max 4 levels)
-                if c_parent_id in child_to_parent:
-                    continue
+            if c_sub.get("parent_name"):
+                parent_candidate = next(
+                    (p for p in topic_concepts if p["name"].lower() == str(c_sub["parent_name"]).lower() and (p.get("id") or id(p)) != c_sub_id),
+                    None
+                )
+                if parent_candidate:
+                    p_cand_id = parent_candidate.get("id") or id(parent_candidate)
+                    if p_cand_id not in child_to_parent:
+                        best_parent = parent_candidate
 
-                parent_name_lower = c_parent["name"].lower()
-                # Whole-word match so 'Physics Law 1' doesn't match 'Physics Law 10'
-                if len(parent_name_lower) >= 3 and re.search(r"\b" + re.escape(parent_name_lower) + r"\b", sub_name_lower) and parent_name_lower != sub_name_lower:
-                    best_parent = c_parent
-                    break
-                if len(parent_name_lower) >= 4 and re.search(r"\b" + re.escape(parent_name_lower) + r"\b", sub_def_lower):
-                    best_parent = c_parent
-                    break
+            if not best_parent:
+                for j in range(i):
+                    c_parent = topic_concepts[j]
+                    c_parent_id = c_parent.get("id") or id(c_parent)
+                    # Don't make a child of a child (to stay within max 4 levels)
+                    if c_parent_id in child_to_parent:
+                        continue
+
+                    parent_name_lower = c_parent["name"].lower()
+                    # Whole-word match so 'Physics Law 1' doesn't match 'Physics Law 10'
+                    if len(parent_name_lower) >= 3 and re.search(r"\b" + re.escape(parent_name_lower) + r"\b", sub_name_lower) and parent_name_lower != sub_name_lower:
+                        best_parent = c_parent
+                        break
+                    if len(parent_name_lower) >= 4 and re.search(r"\b" + re.escape(parent_name_lower) + r"\b", sub_def_lower):
+                        best_parent = c_parent
+                        break
 
             if best_parent:
                 p_id = best_parent.get("id") or id(best_parent)

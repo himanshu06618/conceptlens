@@ -212,7 +212,10 @@ def init_db() -> None:
                 conn.execute("ALTER TABLE documents ADD COLUMN ocr_current_page INTEGER DEFAULT 0;")
             if "ocr_total_pages" not in columns:
                 conn.execute("ALTER TABLE documents ADD COLUMN ocr_total_pages INTEGER DEFAULT 0;")
+            if "file_hash" not in columns:
+                conn.execute("ALTER TABLE documents ADD COLUMN file_hash TEXT;")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_user_id ON documents(user_id);")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_file_hash ON documents(file_hash);")
 
             # Migration: Ensure role, name, avatar exist on users and role is nullable
             u_info = list(conn.execute("PRAGMA table_info(users);"))
@@ -404,7 +407,7 @@ def update_user_display_name(user_id: str, display_name: str) -> None:
     conn = get_connection()
     try:
         with conn:
-            conn.execute("UPDATE users SET display_name = ? WHERE id = ?", (display_name.strip(), user_id))
+            conn.execute("UPDATE users SET display_name = ?, name = ? WHERE id = ?", (display_name.strip(), display_name.strip(), user_id))
     finally:
         conn.close()
 
@@ -476,13 +479,123 @@ def delete_user_and_all_data(user_id: str) -> List[Dict[str, str]]:
 
 # ==================== Document Operations (Per-User) ====================
 
+def find_completed_document_by_hash(file_hash: str) -> Optional[Dict[str, Any]]:
+    """Finds an existing completed document with the identical SHA-256 hash."""
+    if not file_hash:
+        return None
+    conn = get_connection()
+    try:
+        cursor = conn.execute(
+            """
+            SELECT id, filename, page_count, raw_text, tree_json, flow_json, provider_used
+            FROM documents
+            WHERE file_hash = ? AND status = 'completed'
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (file_hash,)
+        )
+        row = cursor.fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+def clone_cached_document(source_doc_id: str, target_doc_id: str) -> bool:
+    """
+    Clones concepts, relations, tree, and flowchart from an existing completed document
+    to a newly uploaded document with matching file_hash.
+    """
+    conn = get_connection()
+    try:
+        with conn:
+            cursor = conn.execute(
+                "SELECT page_count, raw_text, tree_json, flow_json FROM documents WHERE id = ?",
+                (source_doc_id,)
+            )
+            src_doc = cursor.fetchone()
+            if not src_doc:
+                return False
+
+            conn.execute(
+                """
+                UPDATE documents
+                SET status = 'completed', stage = 'completed', progress = 100,
+                    stage_message = 'Extraction completed instantly from cache!',
+                    page_count = ?, raw_text = ?, tree_json = ?, flow_json = ?,
+                    processing_time_sec = 0.05, provider_used = 'cache', error = NULL
+                WHERE id = ?
+                """,
+                (src_doc["page_count"], src_doc["raw_text"], src_doc["tree_json"], src_doc["flow_json"], target_doc_id)
+            )
+
+            c_cursor = conn.execute(
+                """
+                SELECT id, name, definition, topic, score, importance,
+                       source_excerpt, page, flow_order, flow_group
+                FROM concepts
+                WHERE document_id = ?
+                """,
+                (source_doc_id,)
+            )
+            src_concepts = c_cursor.fetchall()
+            old_to_new_id = {}
+
+            for sc in src_concepts:
+                ins_c = conn.execute(
+                    """
+                    INSERT INTO concepts (
+                        document_id, name, definition, topic, score, importance,
+                        source_excerpt, page, flow_order, flow_group
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        target_doc_id, sc["name"], sc["definition"], sc["topic"],
+                        sc["score"], sc["importance"], sc["source_excerpt"],
+                        sc["page"], sc["flow_order"], sc["flow_group"]
+                    )
+                )
+                old_to_new_id[sc["id"]] = ins_c.lastrowid
+
+            rel_cursor = conn.execute(
+                """
+                SELECT concept_id, related_name, weight, relation_type, label
+                FROM relations
+                WHERE document_id = ?
+                """,
+                (source_doc_id,)
+            )
+            new_rels = []
+            for r in rel_cursor.fetchall():
+                new_c_id = old_to_new_id.get(r["concept_id"])
+                if new_c_id:
+                    new_rels.append((
+                        target_doc_id, new_c_id, r["related_name"],
+                        r["weight"], r["relation_type"], r["label"]
+                    ))
+
+            if new_rels:
+                conn.executemany(
+                    """
+                    INSERT INTO relations (
+                        document_id, concept_id, related_name, weight, relation_type, label
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    new_rels
+                )
+            return True
+    finally:
+        conn.close()
+
 def create_document(
     user_id: str,
     doc_id: str,
     filename: str,
     file_type: str,
     status: str = "processing",
-    stage: str = "reading"
+    stage: str = "reading",
+    file_hash: Optional[str] = None
 ) -> Dict[str, Any]:
     created_at = datetime.now(timezone.utc).isoformat()
     conn = get_connection()
@@ -492,11 +605,11 @@ def create_document(
                 """
                 INSERT INTO documents (
                     id, user_id, filename, file_type, status, stage, page_count, raw_text,
-                    progress, stage_message, ocr_current_page, ocr_total_pages, created_at
+                    progress, stage_message, ocr_current_page, ocr_total_pages, file_hash, created_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, 1, '', 5, 'Initializing document analysis...', 0, 0, ?)
+                VALUES (?, ?, ?, ?, ?, ?, 1, '', 5, 'Initializing document analysis...', 0, 0, ?, ?)
                 """,
-                (doc_id, user_id, filename, file_type, status, stage, created_at)
+                (doc_id, user_id, filename, file_type, status, stage, file_hash, created_at)
             )
         return {
             "id": doc_id,
@@ -510,6 +623,7 @@ def create_document(
             "ocr_current_page": 0,
             "ocr_total_pages": 0,
             "page_count": 1,
+            "file_hash": file_hash,
             "created_at": created_at
         }
     finally:

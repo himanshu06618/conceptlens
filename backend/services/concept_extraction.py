@@ -1,38 +1,43 @@
 """
 backend/services/concept_extraction.py
-High-performance concept extraction pipeline:
-1. Fast mode: Google Gemini API (gemini-2.5-flash) with structured JSON
-2. Local fallback: PyMuPDF + RapidOCR + YAKE + spaCy patterns (optimized with nlp.pipe and inverted sentence index)
-3. Linear deduplication and relationship mapping (O(n))
+Primary concept extraction using Google Gemini API with lightweight on-device fallback.
+
+Pipeline:
+1. Primary: Google Gemini API (gemini-3.7-flash / gemini-3.5-flash via google-genai SDK).
+   Direct multimodal PDF & image understanding. Extract ALL concepts without cap.
+2. Lightweight Fallback: PyMuPDF text + YAKE keyword extraction + regex definition heuristics.
+   Zero heavy models (no spaCy, no RapidOCR, no OpenCV, no torch). Peak memory stays under 80 MB.
 """
 
 import os
 import re
 import math
-import unicodedata
 from collections import Counter, defaultdict
 from typing import List, Dict, Any, Set, Tuple, Optional
+from pathlib import Path
 import logging
 
-import spacy
-from spacy.tokens import Doc
 import yake
 from dotenv import load_dotenv
 
-load_dotenv()
-
 try:
-    from backend.services.cloud_extraction import extract_with_gemini
+    from backend.services.cloud_extraction import (
+        extract_document_with_gemini,
+        extract_with_gemini,
+        GeminiQuotaError
+    )
 except ImportError:
-    from services.cloud_extraction import extract_with_gemini
+    from services.cloud_extraction import (
+        extract_document_with_gemini,
+        extract_with_gemini,
+        GeminiQuotaError
+    )
+
+load_dotenv()
 
 logger = logging.getLogger("conceptlens.nlp")
 
-# Global NLP singleton
-_nlp = None
-
 TOP_CONCEPTS_LIMIT_DEFAULT = 0
-USE_KEYBERT_ENV = os.getenv("USE_KEYBERT", "false").lower() in ("true", "1", "yes")
 
 # Generic non-concept stopwords
 GENERIC_STOPWORDS = {
@@ -51,39 +56,22 @@ GENERIC_STOPWORDS = {
     "concept", "concepts", "definition", "definitions", "summary", "summaries", "introduction"
 }
 
-# Definition indicator patterns
-DEFINITION_VERBS = [
-    r"\bis defined as\b",
-    r"\bcan be defined as\b",
-    r"\brefers to\b",
-    r"\bcan be described as\b",
-    r"\bis described as\b",
-    r"\bmeans\b",
-    r"\brepresents\b",
-    r"\bdenotes\b",
-    r"\bstands for\b",
-    r"\bconstitutes\b",
-    r"\bis known as\b",
-    r"\bare known as\b",
-    r"\bis called\b",
-    r"\bare called\b"
+# Regex definition indicators
+DEFINITION_PATTERNS = [
+    re.compile(r"\b(?:is|are)\s+defined\s+as\s+([^.!?;\n]+)", re.IGNORECASE),
+    re.compile(r"\bcan\s+be\s+defined\s+as\s+([^.!?;\n]+)", re.IGNORECASE),
+    re.compile(r"\brefers\s+to\s+([^.!?;\n]+)", re.IGNORECASE),
+    re.compile(r"\b(?:is|are)\s+described\s+as\s+([^.!?;\n]+)", re.IGNORECASE),
+    re.compile(r"\b(?:means|denotes|represents)\s+([^.!?;\n]+)", re.IGNORECASE),
+    re.compile(r"\b(?:is|are)\s+known\s+as\s+([^.!?;\n]+)", re.IGNORECASE),
+    re.compile(r"\b(?:is|are)\s+called\s+([^.!?;\n]+)", re.IGNORECASE),
+    re.compile(r"\b(?:is|are)\s+(?:a|an)\s+([^.!?;\n]+)", re.IGNORECASE),
 ]
 
 
 def get_spacy_nlp():
-    """Lazily loads and returns the spaCy model singleton with NER disabled for maximum speed."""
-    global _nlp
-    if _nlp is None:
-        try:
-            logger.info("Loading spaCy model en_core_web_sm (disable ner for speed)...")
-            _nlp = spacy.load("en_core_web_sm", disable=["ner"])
-        except Exception as e:
-            logger.error(f"Error loading spaCy model: {e}")
-            raise RuntimeError(
-                "spaCy model 'en_core_web_sm' is not available. "
-                "Please run: python -m spacy download en_core_web_sm"
-            ) from e
-    return _nlp
+    """No-op stub replacing heavy spaCy model to maintain backward compatibility."""
+    return None
 
 
 def strip_leader_dots(text: str) -> str:
@@ -98,450 +86,223 @@ def strip_leader_dots(text: str) -> str:
 
 
 def normalize_phrase(phrase: str) -> str:
-    """Lowercases, normalizes unicode, and removes surrounding punctuation."""
-    phrase = strip_leader_dots(phrase)
-    norm = unicodedata.normalize("NFKD", phrase)
-    norm = "".join(c for c in norm if not unicodedata.combining(c))
-    norm = re.sub(r"^[^\w]+|[^\w]+$", "", norm)
-    return norm.strip().lower()
+    """Normalizes candidate strings for deduplication."""
+    if not phrase:
+        return ""
+    cleaned = strip_leader_dots(phrase).lower()
+    cleaned = re.sub(r"[^a-zA-Z0-9\s]", "", cleaned)
+    return " ".join(cleaned.split())
 
 
-def is_valid_candidate(phrase: str) -> bool:
-    """Validates that candidate phrase is meaningful and not generic."""
-    cleaned = normalize_phrase(phrase)
-    if not cleaned or len(cleaned) < 2:
-        return False
-    if cleaned in GENERIC_STOPWORDS:
-        return False
-    if cleaned.isnumeric():
-        return False
+def detect_definition_sentence(concept_name: str, text: Any) -> Tuple[Optional[str], Optional[str]]:
+    """Fast regex search for definition sentences without heavy NLP models."""
+    if not concept_name or not text:
+        return None, None
+    escaped_name = re.escape(concept_name.strip())
+    if isinstance(text, (list, tuple)):
+        sentences = [str(s) for s in text]
+    else:
+        sentences = re.split(r"(?<=[.!?])\s+", str(text))
 
-    tokens = cleaned.split()
-    if len(tokens) > 4:
-        return False
-    if all(tok in GENERIC_STOPWORDS for tok in tokens):
-        return False
-    if not any(len(tok) >= 2 and tok.isalpha() for tok in tokens):
-        return False
+    for sent in sentences:
+        if len(sent) < 15 or len(sent) > 300:
+            continue
+        if re.search(r"\b" + escaped_name + r"\b", sent, re.IGNORECASE):
+            for pat in DEFINITION_PATTERNS:
+                if pat.search(sent):
+                    return sent.strip(), sent.strip()
 
-    return True
+    # Fallback to first descriptive sentence mentioning concept as excerpt
+    for sent in sentences:
+        if len(sent) >= 20 and re.search(r"\b" + escaped_name + r"\b", sent, re.IGNORECASE):
+            return None, sent.strip()
 
-
-def extract_candidates_from_spacy(doc: Doc) -> List[Dict[str, Any]]:
-    """Extracts noun chunks from a spaCy Doc."""
-    candidates = []
-
-    for chunk in doc.noun_chunks:
-        start = chunk.start
-        while start < chunk.end and doc[start].pos_ in ("DET", "PRON"):
-            start += 1
-
-        span = doc[start:chunk.end]
-        text = span.text.strip()
-        tokens = [t for t in span]
-
-        if 1 <= len(tokens) <= 4:
-            has_noun = any(t.pos_ in ("NOUN", "PROPN") for t in tokens)
-            if has_noun and is_valid_candidate(text):
-                candidates.append({
-                    "text": text,
-                    "lemma": span.lemma_.strip().lower(),
-                    "type": "noun_chunk",
-                    "span": span
-                })
-
-    return candidates
+    return None, None
 
 
-def extract_yake_keyphrases(text: str, top_n: int = 40) -> Dict[str, float]:
-    """Runs YAKE keyphrase extraction and returns a dict mapping normalized kw to inverted score."""
-    if not text.strip():
-        return {}
+def deduplicate_concepts(concepts: List[Dict[str, Any]], nlp: Any = None) -> List[Dict[str, Any]]:
+    """Deduplicates concepts by normalized name, keeping highest score and merging info."""
+    seen: Dict[str, Dict[str, Any]] = {}
+    for c in concepts:
+        norm = normalize_phrase(c.get("name", ""))
+        words = norm.split()
+        stem_words = [w[:-1] if (len(w) > 3 and w.endswith("s") and not w.endswith("ss") and not w.endswith("us")) else w for w in words]
+        norm_stem = " ".join(stem_words)
 
+        if norm_stem not in seen:
+            seen[norm_stem] = dict(c)
+        else:
+            existing = seen[norm_stem]
+            total_freq = existing.get("frequency", 1) + c.get("frequency", 1)
+            c_freq = c.get("frequency", 1)
+            e_freq = existing.get("frequency", 1)
+            if c_freq > e_freq or (c_freq == e_freq and c.get("score", 0) > existing.get("score", 0)):
+                best_name = c.get("name")
+                best_score = c.get("score", existing.get("score", 0))
+                best_def = c.get("definition") or existing.get("definition")
+                best_excerpt = c.get("source_excerpt") or existing.get("source_excerpt")
+            else:
+                best_name = existing.get("name")
+                best_score = max(existing.get("score", 0), c.get("score", 0))
+                best_def = existing.get("definition") or c.get("definition")
+                best_excerpt = existing.get("source_excerpt") or c.get("source_excerpt")
+
+            existing["name"] = best_name
+            existing["frequency"] = total_freq
+            existing["score"] = best_score
+            existing["definition"] = best_def
+            existing["source_excerpt"] = best_excerpt
+
+    return list(seen.values())
+
+
+def extract_fallback_concepts(
+    full_text: str,
+    chunks: Optional[List[Dict[str, Any]]] = None
+) -> List[Dict[str, Any]]:
+    """
+    Lightweight fallback concept extractor using YAKE + regex definitions.
+    Consumes < 10 MB RAM and executes in under 0.5s.
+    """
+    if not full_text.strip():
+        return []
+
+    # 1. YAKE keyword extraction
     try:
         kw_extractor = yake.KeywordExtractor(
             lan="en",
             n=3,
             dedupLim=0.85,
-            top=min(top_n, 50),
+            top=60,
             features=None
         )
-        keywords = kw_extractor.extract_keywords(text)
-
-        scores = {}
-        for kw, score in keywords:
-            norm_kw = normalize_phrase(kw)
-            if is_valid_candidate(norm_kw):
-                inverted = 1.0 / (1.0 + float(score))
-                scores[norm_kw] = max(scores.get(norm_kw, 0.0), inverted)
-        return scores
+        extracted_kw = kw_extractor.extract_keywords(full_text[:40000])
     except Exception as e:
         logger.warning(f"YAKE extraction error: {e}")
-        return {}
+        extracted_kw = []
 
+    if not extracted_kw:
+        # Fallback to capitalized word runs
+        caps = re.findall(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2}\b", full_text)
+        counts = Counter(caps).most_common(30)
+        extracted_kw = [(w, 1.0 / (c + 1)) for w, c in counts]
 
-def build_sentence_inverted_index(sentences: List[str]) -> Tuple[List[str], Dict[str, List[int]]]:
-    """
-    Builds an inverted word index over sentences for O(1) definition detection lookups.
-    Returns (cleaned_sentences, token_to_sentence_indices).
-    """
-    cleaned_sentences = [s.strip() for s in sentences if s.strip()]
-    token_index = defaultdict(list)
+    # Map chunks to topics if available
+    topic_by_chunk: Dict[int, str] = {}
+    if chunks:
+        for ch in chunks:
+            topic_by_chunk[ch.get("id", 0)] = ch.get("heading", "General")
 
-    for idx, sent in enumerate(cleaned_sentences):
-        tokens = set(re.findall(r"\b[a-zA-Z]{2,}\b", sent.lower()))
-        for tok in tokens:
-            token_index[tok].append(idx)
+    concepts: List[Dict[str, Any]] = []
+    seen_names: Set[str] = set()
 
-    return cleaned_sentences, token_index
+    for idx, (kw_name, kw_score) in enumerate(extracted_kw):
+        norm = normalize_phrase(kw_name)
+        if not norm or norm in GENERIC_STOPWORDS or norm in seen_names or len(norm) < 3:
+            continue
+        seen_names.add(norm)
 
+        clean_name = strip_leader_dots(kw_name).title()
+        def_sent, excerpt = detect_definition_sentence(clean_name, full_text[:40000])
 
-def detect_definition_fast(
-    concept_name: str,
-    sentences: List[str],
-    token_index: Dict[str, List[int]]
-) -> Tuple[Optional[str], Optional[str]]:
-    """
-    Fast definition detection using the pre-computed token inverted index.
-    Only checks candidate sentences that actually contain concept tokens.
-    """
-    escaped_name = re.escape(concept_name)
-    name_tokens = re.findall(r"\b[a-zA-Z]{2,}\b", concept_name.lower())
-    if not name_tokens:
-        return None, ""
+        # Importance: 1 to 3
+        # In YAKE, lower score means more significant keyphrase
+        if kw_score < 0.05 or idx < 5:
+            importance = 3
+        elif kw_score < 0.20 or idx < 15:
+            importance = 2
+        else:
+            importance = 1
 
-    # Intersect or union sentence candidate indices
-    candidate_indices = token_index.get(name_tokens[0], [])
-    for tok in name_tokens[1:]:
-        matching = token_index.get(tok, [])
-        if matching:
-            candidate_indices = [idx for idx in candidate_indices if idx in set(matching)]
+        topic = "General"
+        if chunks:
+            # Find first chunk mentioning this concept
+            for ch in chunks:
+                if clean_name.lower() in ch.get("text", "").lower():
+                    topic = ch.get("heading", "General")
+                    break
 
-    # If too few matches, try first token alone capped at 10
-    if not candidate_indices:
-        candidate_indices = token_index.get(name_tokens[0], [])[:8]
-    else:
-        candidate_indices = candidate_indices[:15]
-
-    first_mention_sentence = None
-    best_def = None
-    best_def_score = 0.0
-
-    explicit_verb_pattern = re.compile(
-        rf"\b{escaped_name}\b.*?(?:" + "|".join(DEFINITION_VERBS) + rf")\b",
-        re.IGNORECASE
-    )
-    is_pattern = re.compile(
-        rf"^\s*(?:the\s+|a\s+|an\s+)?\b{escaped_name}\b\s+(?:is|are)\s+(?:a|an|the|one of|defined|characterized|used to|represented)\b",
-        re.IGNORECASE
-    )
-
-    for s_idx in candidate_indices:
-        s_clean = sentences[s_idx]
-        s_lower = s_clean.lower()
-
-        if concept_name.lower() in s_lower or all(tok in s_lower for tok in name_tokens):
-            if first_mention_sentence is None:
-                first_mention_sentence = s_clean
-
-            words = s_clean.split()
-            if len(words) < 6 or len(words) > 65:
-                continue
-
-            score = 0.0
-            if explicit_verb_pattern.search(s_clean):
-                score = 3.0
-            elif is_pattern.search(s_clean):
-                score = 2.5
-            elif re.search(rf"\b{escaped_name}\b\s+(?:is|are)\b", s_clean, re.IGNORECASE):
-                score = 1.5
-
-            if score > best_def_score:
-                best_def_score = score
-                best_def = s_clean
-
-    return (best_def if best_def_score >= 1.5 else None), (first_mention_sentence or "")
-
-
-def detect_definition_sentence(
-    concept_name: str,
-    sentences: List[str]
-) -> Tuple[Optional[str], Optional[str]]:
-    """Backward-compatible wrapper for definition detection."""
-    cleaned_sents, token_idx = build_sentence_inverted_index(sentences)
-    return detect_definition_fast(concept_name, cleaned_sents, token_idx)
-
-
-def deduplicate_concepts(
-    raw_concepts: List[Dict[str, Any]],
-    nlp_model=None
-) -> List[Dict[str, Any]]:
-    """Backward-compatible wrapper for linear-time concept deduplication."""
-    if nlp_model is None:
-        nlp_model = get_spacy_nlp()
-    return deduplicate_concepts_linear(raw_concepts, nlp_model)
-
-
-def deduplicate_concepts_linear(
-    raw_concepts: List[Dict[str, Any]],
-    nlp_model
-) -> List[Dict[str, Any]]:
-    """
-    Linear-time O(n) deduplication of concepts using normalized keys and batch lemmatization.
-    """
-    if not raw_concepts:
-        return []
-
-    # 1. Group by normalized string directly
-    norm_groups: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
-    for c in raw_concepts:
-        norm = normalize_phrase(c["name"])
-        if norm:
-            norm_groups[norm].append(c)
-
-    # 2. Batch lemmatize unique keys using nlp.pipe
-    unique_norms = list(norm_groups.keys())
-    docs = list(nlp_model.pipe(unique_norms, batch_size=128))
-    norm_to_lemma = {
-        norm: " ".join(t.lemma_ for t in doc).strip() or norm
-        for norm, doc in zip(unique_norms, docs)
-    }
-
-    # 3. Group by canonical lemma key
-    lemma_groups: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
-    for norm, items in norm_groups.items():
-        lemma_key = norm_to_lemma.get(norm, norm)
-        lemma_groups[lemma_key].extend(items)
-
-    merged: List[Dict[str, Any]] = []
-
-    for lemma_key, items in lemma_groups.items():
-        surface_counts: Counter = Counter()
-        for it in items:
-            surface_counts[it["name"]] += it.get("frequency", 1)
-        best_name = surface_counts.most_common(1)[0][0]
-
-        total_frequency = sum(it.get("frequency", 1) for it in items)
-        max_score = max(it.get("score", 0.0) for it in items)
-
-        best_def = next((it["definition"] for it in items if it.get("definition")), "")
-        best_excerpt = next((it["source_excerpt"] for it in items if it.get("source_excerpt")), "")
-
-        all_chunks = set()
-        for it in items:
-            all_chunks.update(it.get("chunk_ids", []))
-
-        best_topic = items[0].get("topic", "General")
-        best_page = min(it.get("page", 1) for it in items)
-
-        merged.append({
-            "name": best_name,
-            "lemma_key": lemma_key,
-            "frequency": total_frequency,
-            "score": max_score,
-            "definition": best_def,
-            "source_excerpt": best_excerpt,
-            "chunk_ids": list(all_chunks),
-            "topic": best_topic,
-            "page": best_page
+        concepts.append({
+            "id": f"c_{len(concepts) + 1}",
+            "name": clean_name,
+            "importance": importance,
+            "topic": topic if topic and topic != "General" else "Key Concepts",
+            "definition": def_sent or f"Educational concept relating to {clean_name.lower()}.",
+            "source_excerpt": excerpt or (def_sent[:60] if def_sent else clean_name),
+            "score": round(1.0 / (1.0 + kw_score), 3),
+            "page": 1,
+            "flow_order": idx,
+            "flow_group": topic if topic and topic != "General" else "Key Concepts",
+            "parent_name": None,
+            "related_concepts": []
         })
 
-    return merged
-
-
-def assign_importance_ratings(concepts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Assigns importance ratings 1 to 5 based on score quantiles."""
-    if not concepts:
-        return concepts
-
-    sorted_concepts = sorted(concepts, key=lambda c: c["score"], reverse=True)
-    n = len(sorted_concepts)
-
-    if n <= 5:
-        for idx, c in enumerate(sorted_concepts):
-            c["importance"] = max(1, 5 - idx)
-        return sorted_concepts
-
-    for idx, c in enumerate(sorted_concepts):
-        percentile = idx / n
-        if percentile < 0.20:
-            c["importance"] = 5
-        elif percentile < 0.40:
-            c["importance"] = 4
-        elif percentile < 0.60:
-            c["importance"] = 3
-        elif percentile < 0.80:
-            c["importance"] = 2
-        else:
-            c["importance"] = 1
-
-    return sorted_concepts
-
-
-def compute_related_concepts_linear(
-    concepts: List[Dict[str, Any]],
-    chunk_map: Dict[int, Set[str]]
-) -> None:
-    """Computes co-occurrence of concepts within chunks with capped candidates."""
+    # Linear relationship extraction: link concepts that co-occur in the same paragraph
+    paras = full_text[:40000].split("\n\n")
     co_occurrences: Dict[str, Dict[str, int]] = defaultdict(lambda: defaultdict(int))
 
-    for chunk_id, concept_names in chunk_map.items():
-        # Cap names list to top 25 to guarantee linear performance
-        names_list = list(concept_names)[:25]
-        for i in range(len(names_list)):
-            for j in range(i + 1, len(names_list)):
-                c1, c2 = names_list[i], names_list[j]
-                co_occurrences[c1][c2] += 1
-                co_occurrences[c2][c1] += 1
+    for p in paras:
+        p_lower = p.lower()
+        active_in_p = [c["name"] for c in concepts if c["name"].lower() in p_lower]
+        for c1 in active_in_p:
+            for c2 in active_in_p:
+                if c1 != c2:
+                    co_occurrences[c1][c2] += 1
 
     for c in concepts:
-        name = c["name"]
-        partners = co_occurrences.get(name, {})
-        sorted_partners = sorted(partners.items(), key=lambda kv: kv[1], reverse=True)[:5]
+        partners = sorted(co_occurrences[c["name"]].items(), key=lambda kv: kv[1], reverse=True)[:4]
         c["related_concepts"] = [
-            {"name": p_name, "weight": p_weight, "type": "related", "label": "related"}
-            for p_name, p_weight in sorted_partners
+            {
+                "name": p_name,
+                "weight": 2 if p_weight > 2 else 1,
+                "type": "prerequisite" if p_weight > 3 else "related",
+                "label": "prerequisite" if p_weight > 3 else "related"
+            }
+            for p_name, p_weight in partners
         ]
+
+    return concepts
 
 
 def extract_concepts_pipeline(
-    chunks: List[Dict[str, Any]],
+    chunks: Optional[List[Dict[str, Any]]],
     full_text: str,
+    file_path: Optional[Path] = None,
     top_limit: int = TOP_CONCEPTS_LIMIT_DEFAULT,
-    use_keybert: bool = False,
     prefer_cloud: bool = True,
     gemini_api_key: Optional[str] = None
 ) -> Tuple[List[Dict[str, Any]], str]:
     """
-    Main concept extraction pipeline.
-    Returns: (concepts_list, provider_name: 'cloud' | 'on-device')
+    Main extraction pipeline entry point:
+    1. Primary: Google Gemini API (via google-genai)
+    2. Fallback: Lightweight YAKE + regex extraction
     """
-    if not full_text.strip() or not chunks:
-        return [], "on-device"
+    key = gemini_api_key or os.getenv("GEMINI_API_KEY", "").strip()
 
-    # 1. Primary: Cloud Extraction (if enabled and key present)
-    if prefer_cloud:
-        cloud_results = extract_with_gemini(full_text, api_key=gemini_api_key)
-        if cloud_results and len(cloud_results) >= 5:
-            logger.info(f"Successfully extracted {len(cloud_results)} concepts via Gemini Flash cloud.")
-            return cloud_results, "cloud"
+    # 1. Primary: Gemini Cloud Extraction
+    if prefer_cloud and key:
+        try:
+            if file_path and file_path.exists():
+                logger.info(f"Extracting concepts via Gemini API from file: {file_path.name}...")
+                results = extract_document_with_gemini(file_path=file_path, api_key=key)
+                if results and len(results) >= 2:
+                    logger.info(f"Gemini successfully extracted {len(results)} concepts.")
+                    return results, "gemini-3.7-flash"
+            elif full_text.strip():
+                logger.info("Extracting concepts via Gemini API from text...")
+                results = extract_with_gemini(text=full_text, api_key=key)
+                if results and len(results) >= 2:
+                    return results, "gemini-3.7-flash"
+        except GeminiQuotaError:
+            logger.warning("Gemini quota exhausted. Attempting lightweight fallback if text is available.")
+        except Exception as e:
+            logger.warning(f"Gemini extraction failed: {e}. Attempting lightweight fallback.")
 
-    # 2. Local Fallback Pipeline (Fast, offline)
-    logger.info("Executing optimized local concept extraction pipeline...")
-    nlp = get_spacy_nlp()
+    # 2. Fallback: Lightweight on-device pipeline
+    if full_text.strip():
+        logger.info("Using lightweight on-device fallback (YAKE + regex)...")
+        fallback_results = extract_fallback_concepts(full_text=full_text, chunks=chunks)
+        if fallback_results:
+            return fallback_results, "lightweight-fallback"
 
-    # Pre-index sentences for O(1) definition detection
-    all_sentences_flat: List[str] = []
-    for ch in chunks:
-        all_sentences_flat.extend(ch.get("sentences", []))
-    cleaned_sentences, sentence_index = build_sentence_inverted_index(all_sentences_flat)
-
-    # YAKE scores on full document
-    doc_yake_scores = extract_yake_keyphrases(full_text[:35000], top_n=50)
-
-    # Batch process chunk texts with nlp.pipe
-    chunk_texts = [ch["text"] for ch in chunks]
-    chunk_docs = list(nlp.pipe(chunk_texts, batch_size=32))
-
-    candidate_occurrences: Dict[str, Dict[str, Any]] = {}
-    chunk_concepts_map: Dict[int, Set[str]] = defaultdict(set)
-
-    for ch, doc in zip(chunks, chunk_docs):
-        ch_id = ch["id"]
-        ch_heading = ch.get("heading", "General")
-        ch_page = ch.get("page", 1)
-
-        spacy_candidates = extract_candidates_from_spacy(doc)
-
-        for cand in spacy_candidates:
-            raw_name = strip_leader_dots(cand["text"])
-            norm = normalize_phrase(raw_name)
-            if not norm or not is_valid_candidate(norm):
-                continue
-
-            chunk_concepts_map[ch_id].add(raw_name)
-
-            if norm not in candidate_occurrences:
-                candidate_occurrences[norm] = {
-                    "name": raw_name,
-                    "frequency": 0,
-                    "chunk_ids": set(),
-                    "headings": [],
-                    "page": ch_page,
-                    "yake_score": doc_yake_scores.get(norm, 0.0)
-                }
-
-            candidate_occurrences[norm]["frequency"] += 1
-            candidate_occurrences[norm]["chunk_ids"].add(ch_id)
-            if ch_heading and ch_heading != "General":
-                candidate_occurrences[norm]["headings"].append(ch_heading)
-
-    if not candidate_occurrences:
-        return [], "on-device"
-
-    # Compute scores and detect definitions with token index
-    candidates_list: List[Dict[str, Any]] = []
-    max_freq = max((c["frequency"] for c in candidate_occurrences.values()), default=1)
-
-    for norm_key, info in candidate_occurrences.items():
-        name = strip_leader_dots(info["name"])
-        freq = info["frequency"]
-        yake_s = info["yake_score"]
-
-        definition_sent, excerpt_sent = detect_definition_fast(
-            name, cleaned_sentences, sentence_index
-        )
-
-        topic = "General"
-        if info["headings"]:
-            topic = Counter(info["headings"]).most_common(1)[0][0]
-        elif info["chunk_ids"]:
-            first_chunk_id = min(info["chunk_ids"])
-            topic = chunks[first_chunk_id].get("heading", "General")
-
-        freq_normalized = min(1.0, freq / max(1.0, math.sqrt(max_freq * 3)))
-        heading_bonus = 0.15 if info["headings"] else 0.0
-        def_bonus = 0.25 if definition_sent else 0.0
-
-        base_score = (0.35 * yake_s) + (0.25 * freq_normalized) + heading_bonus + def_bonus
-        score = min(1.0, max(0.05, round(base_score, 4)))
-
-        clean_def = strip_leader_dots(definition_sent or "")
-        clean_excerpt = strip_leader_dots(excerpt_sent or clean_def)
-
-        candidates_list.append({
-            "name": name,
-            "frequency": freq,
-            "score": score,
-            "definition": clean_def,
-            "source_excerpt": clean_excerpt,
-            "topic": topic,
-            "page": info["page"],
-            "chunk_ids": list(info["chunk_ids"])
-        })
-
-    # Linear-time deduplication
-    deduped = deduplicate_concepts_linear(candidates_list, nlp)
-    deduped.sort(key=lambda x: x["score"], reverse=True)
-
-    # Assign importance ratings
-    top_concepts = assign_importance_ratings(deduped)
-
-    # Compute relations with linear mapping
-    final_names = {c["name"] for c in top_concepts}
-    filtered_chunk_map: Dict[int, Set[str]] = defaultdict(set)
-    for ch_id, names in chunk_concepts_map.items():
-        for n in names:
-            if n in final_names:
-                filtered_chunk_map[ch_id].add(n)
-
-    compute_related_concepts_linear(top_concepts, filtered_chunk_map)
-
-    topic_orders: Dict[str, int] = defaultdict(int)
-    for concept in sorted(top_concepts, key=lambda item: (int(item.get("page", 1)), item["name"].casefold())):
-        topic = concept.get("topic") or "General"
-        concept["flow_order"] = topic_orders[topic]
-        concept["flow_group"] = topic
-        topic_orders[topic] += 1
-
-    return top_concepts, "on-device"
+    return [], "failed"

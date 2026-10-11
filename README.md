@@ -1,38 +1,30 @@
 # ConceptLens 🔍
 
-**ConceptLens** is a modern, privacy-first course notes concept extractor and study assistant. It ingests course notes as PDFs (both digital and scanned), images, or text documents, and extracts key academic concepts, definitions, and relational knowledge using **100% local, offline Python NLP & OCR algorithms**. 
+**ConceptLens** is a modern course notes concept extractor and study assistant. It ingests course notes as PDFs (both digital and scanned), images (scanned notes & photos), or text documents, and extracts key academic concepts, definitions, and relational knowledge using the official **Google Gemini AI API** (`google-genai`), with an ultra-lightweight offline fallback (PyMuPDF + YAKE).
 
 ---
 
-**All document processing stays local by default.** Flowchart enrichment can optionally use Gemini or Groq when explicitly configured; cloud mode sends document text and concept names to the selected provider.
-
-To enable cloud enrichment, set `FLOWCHART_PROVIDER=gemini` or `FLOWCHART_PROVIDER=groq` and provide the corresponding API key in `backend/.env`. `FLOWCHART_PROVIDER=offline` keeps all enrichment local.
-
 ## 🌟 Key Features
 
-- **Multi-Format Note Ingestion**:
-  - **PDF**: Fast native page-by-page text extraction via PyMuPDF. Scanned pages are automatically detected and rendered at 250 DPI for OCR.
-  - **Images (PNG, JPG, JPEG, WEBP)**: Preprocessed with OpenCV (grayscale, adaptive thresholding, denoising, light deskew) and dual-pass word recognition.
-  - **Text (TXT, MD)**: Fast Unicode & Latin-1 parsing.
-- **Dual-Engine OCR Pipeline**:
-  - Primary: **RapidOCR** (runs locally on CPU via lightweight ONNX Runtime).
-  - Optional: **Tesseract OCR** (via `pytesseract` if system binary is installed).
-- **Offline NLP Concept Extraction**:
-  - **spaCy (`en_core_web_sm`)**: Grammatical noun chunks, named entities (scientists, theories, theorems), lemmatization.
-  - **YAKE**: Multi-word keyphrase statistics and term frequency scoring.
-  - **Definition Pattern Detection**: Detects definitions like *"X is defined as..."*, *"X refers to..."*, *"X represents..."*, attaching verified definition sentences.
-  - **Relational Knowledge Graph**: Measures co-occurrences of concepts across chunks to compute the top 5 related concepts.
-  - **Quantile Importance Rating**: Maps scores into 1 to 5 importance ratings.
+- **Multimodal AI Note Ingestion**:
+  - **PDF (Digital & Scanned)**: Direct multimodal extraction via Gemini Vision. Handles scanned documents, handwritten annotations, and multi-column layouts without memory crashes.
+  - **Images (PNG, JPG, JPEG, WEBP)**: Direct photo & scan comprehension for handwritten notebooks and whiteboards.
+  - **Text (TXT, MD)**: Direct textual understanding.
+- **Complete Concept Extraction**:
+  - No arbitrary caps: extracts **ALL** concepts found across notes.
+  - Generates clear, high-yield definitions, hierarchical topics/chapters, and importance levels (1–3).
+  - Strict relationship graph with only `"prerequisite"` and `"related"` dependencies.
+- **High Performance & 512 MB RAM Optimization**:
+  - Replaced heavy local OCR (RapidOCR, Tesseract, OpenCV) and large spaCy models with Gemini API calls.
+  - Background task processing with animated progress so Render HTTP timeouts are never hit.
+  - Single-worker queue lock and in-memory streaming keep backend RAM consumption < 70 MB.
+  - SHA-256 upload caching returns completed extractions instantly and saves API quota.
 - **Calm, Modern Study UI**:
-  - React + Vite with custom CSS design system.
+  - React + Vite with custom CSS design system and vibrant purple gradient glassmorphism.
   - Light and Dark modes with persistent storage.
-  - Live search, topic filtering, importance filtering, sorting.
-  - Interactive slide-out side panel with clickable related concepts and copy-to-clipboard.
-  - CSV & JSON export.
-- **Interactive Flowchart**:
-  - Topic overview and paginated topic diagrams with procedural and decision steps.
-  - Offline generation by default; Gemini or Groq are opt-in. Cloud mode sends document text and concept names to the selected provider.
-  - PNG, SVG, JSON, and Mermaid exports.
+  - Interactive Concept Tree, Flowchart diagrams, and study planner.
+  - Live search, topic filtering, importance filtering, and export (CSV, JSON, SVG, PNG).
+
 ---
 
 ## 🏗️ Architecture & Project Structure
@@ -41,16 +33,17 @@ To enable cloud enrichment, set `FLOWCHART_PROVIDER=gemini` or `FLOWCHART_PROVID
 ConceptLens/
 ├── backend/
 │   ├── main.py                  # FastAPI application & REST endpoints
-│   ├── database.py              # SQLite database layer with WAL mode
-│   ├── models.py                # Pydantic data models
+│   ├── database.py              # SQLite database layer with SHA-256 caching
+│   ├── models.py                # Pydantic data models & response schemas
 │   ├── services/
-│   │   ├── file_reader.py       # Multi-format document parser
-│   │   ├── ocr.py               # OpenCV preprocessing & OCR engine selection
-│   │   ├── text_cleaning.py     # Unicode, hyphenated line break & page cleaning
-│   │   ├── chunking.py          # Sentence-boundary & heading-aware chunking
-│   │   └── concept_extraction.py# spaCy + YAKE concept extraction pipeline
-│   ├── tests/                   # Pytest unit & end-to-end test suite
-│   ├── requirements.txt         # Python dependencies
+│   │   ├── cloud_extraction.py  # Gemini API multimodal extractor (google-genai)
+│   │   ├── file_reader.py       # Lightweight PyMuPDF document parser
+│   │   ├── tree_builder.py      # Hierarchical concept tree generator
+│   │   ├── flowchart_builder.py # Prerequisite & relational flowchart graph
+│   │   ├── concept_extraction.py# Gemini primary pipeline + YAKE fallback
+│   │   └── chunking.py          # Fast regex chunking
+│   ├── tests/                   # Pytest unit & verification test suite
+│   ├── requirements.txt         # Minimal Python dependencies (zero heavy models)
 │   ├── .env.example             # Environment configuration template
 │   └── uploads/                 # Local uploads storage
 ├── frontend/
@@ -60,10 +53,7 @@ ConceptLens/
 │   │   ├── styles/index.css     # Complete design system (light & dark mode)
 │   │   └── App.jsx              # Main React application
 │   └── index.html
-├── samples/
-│   ├── physics_quantum_mechanics.txt    # Quantum physics lecture notes
-│   ├── biology_cell_structure.pdf       # Multi-page cell biology PDF
-│   └── scanned_notes_neural_networks.png # Scanned deep learning study notes
+├── samples/                     # Test datasets (PDFs, scans, text notes)
 └── README.md
 ```
 
@@ -75,22 +65,23 @@ ConceptLens/
 | Variable | Required | Description |
 |---|---|---|
 | `VITE_API_URL` | Production | Base URL of deployed backend (e.g. `https://conceptlens-api.onrender.com`). Falls back to `http://localhost:8000/api` or `/api` proxy in dev. |
-| `VITE_GOOGLE_CLIENT_ID`| Optional | Google OAuth 2.0 Web Client ID. |
+| `VITE_GOOGLE_CLIENT_ID`| Optional | Google OAuth 2.0 Web Client ID for Google login. |
 
 ### Backend (`backend/.env`)
 | Variable | Required | Description |
 |---|---|---|
+| `GEMINI_API_KEY` | **Yes (in Prod)** | Google Gemini API key from AI Studio (`https://aistudio.google.com/app/apikey`). |
+| `GEMINI_MODEL` | Optional | Free-tier multimodal model (default: `gemini-3.7-flash`; also supports `gemini-3.5-flash`). |
 | `PORT` | Auto | Server port (Render sets this dynamically; defaults to `8000`). |
 | `FRONTEND_URL` | Production | Allowed origin for CORS (e.g. `https://conceptlens.vercel.app`). |
 | `ALLOWED_ORIGINS` | Optional | Additional allowed CORS origins (comma-separated). |
 | `ENVIRONMENT` | Production | Set to `production` (enforces secure secret validation). |
-| `JWT_SECRET` | Production | Random secret string of at least 32 characters. |
+| `JWT_SECRET` | Production | Random secret string of at least 32 characters (`openssl rand -hex 32`). |
 | `COOKIE_SECURE` | Production | `true` in production with HTTPS. |
 | `COOKIE_SAMESITE` | Production | `none` in cross-domain production (Vercel + Render). |
 | `DATABASE_PATH` | Optional | SQLite file path (default: `conceptlens.db`). |
 | `UPLOAD_DIR` | Optional | Uploads storage folder (default: `uploads`). |
-| `GEMINI_API_KEY` | Optional | Gemini API key for cloud extraction. |
-| `FLOWCHART_PROVIDER` | Optional | `offline` (default) or `gemini`. |
+| `GUEST_UPLOAD_LIMIT` | Optional | Free guest uploads allowed before sign in (default: `5`). |
 
 ---
 
@@ -99,6 +90,7 @@ ConceptLens/
 ### Prerequisites
 - **Python 3.11+**
 - **Node.js 18+ & npm**
+- **Google Gemini API Key** (free from [Google AI Studio](https://aistudio.google.com/app/apikey))
 
 ---
 
@@ -116,32 +108,13 @@ python -m venv .venv
 # macOS / Linux:
 source .venv/bin/activate
 
-# Install dependencies
+# Install minimal dependencies
 pip install -r requirements.txt
 
-# Download the spaCy English model
-python -m spacy download en_core_web_sm
+# Configure environment
+cp .env.example .env
+# Open .env and set your GEMINI_API_KEY
 ```
-
-#### System OCR Setup (Tesseract)
-
-ConceptLens automatically falls back to **EasyOCR** if Tesseract is not found. To enable the fastest and most lightweight OCR via Tesseract:
-
-- **Windows**:
-  - Download the official installer from [UB-Mannheim Tesseract](https://github.com/UB-Mannheim/tesseract/wiki).
-  - Or run via winget:
-    ```powershell
-    winget install UB-Mannheim.TesseractOCR
-    ```
-  - *Optional*: If installed in a custom location, add `TESSERACT_CMD=C:\Program Files\Tesseract-OCR\tesseract.exe` to your `backend/.env`.
-- **macOS**:
-  ```bash
-  brew install tesseract
-  ```
-- **Ubuntu / Debian Linux**:
-  ```bash
-  sudo apt update && sudo apt install -y tesseract-ocr
-  ```
 
 #### Start Backend Server
 ```bash

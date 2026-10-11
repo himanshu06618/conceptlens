@@ -293,7 +293,9 @@ def process_document_chapters_and_relations(doc_id: str) -> None:
                 return
             user_id = doc_row["user_id"]
             if user_id:
-                ensure_default_subject_and_chapters_for_user(user_id)
+                user_exists = conn.execute("SELECT 1 FROM users WHERE id = ?", (user_id,)).fetchone()
+                if user_exists:
+                    ensure_default_subject_and_chapters_for_user(user_id)
 
             ch_rows = conn.execute("SELECT id, name FROM chapters WHERE book_id = ?", (doc_id,)).fetchall()
             for ch in ch_rows:

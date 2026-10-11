@@ -34,13 +34,13 @@ def is_likely_heading(line: str) -> Optional[str]:
 
 def create_chunks_from_pages(
     pages: List[Dict[str, Any]],
-    nlp_model,
+    nlp_model: Any = None,
     target_min_words: int = 250,
     target_max_words: int = 500
 ) -> List[Dict[str, Any]]:
     """
-    Splits text across pages into chunks (approx 300 to 500 words each) using spaCy
-    sentence boundaries and heading awareness.
+    Splits text across pages into chunks (approx 300 to 500 words each) using
+    sentence boundaries and heading awareness. Works fast without requiring spaCy.
     """
     chunks: List[Dict[str, Any]] = []
     chunk_index = 0
@@ -83,9 +83,15 @@ def create_chunks_from_pages(
                 current_heading = detected_heading
                 continue
 
-            # Parse paragraph sentences using spaCy
-            doc = nlp_model(para)
-            sentences = [sent.text.strip() for sent in doc.sents if sent.text.strip()]
+            # Parse paragraph sentences
+            if nlp_model is not None:
+                try:
+                    doc = nlp_model(para)
+                    sentences = [sent.text.strip() for sent in doc.sents if sent.text.strip()]
+                except Exception:
+                    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", para) if s.strip()]
+            else:
+                sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", para) if s.strip()]
 
             for sent in sentences:
                 sent_words = len(sent.split())
