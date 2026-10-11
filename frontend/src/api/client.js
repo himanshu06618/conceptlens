@@ -556,3 +556,75 @@ export async function deleteReminder(id) {
   }
   return res.json();
 }
+
+// ==================== Personal Notes API ====================
+
+export async function listNotes({
+  search = '',
+  tag = '',
+  pinned = null,
+  document_id = '',
+  page = 1,
+  limit = 20,
+} = {}) {
+  const params = new URLSearchParams();
+  if (search) params.set('search', search);
+  if (tag) params.set('tag', tag);
+  if (pinned !== null && pinned !== undefined && pinned !== '') params.set('pinned', String(pinned));
+  if (document_id) params.set('document_id', document_id);
+  if (page) params.set('page', String(page));
+  if (limit) params.set('limit', String(limit));
+
+  const query = params.toString();
+  const res = await apiFetch(`/notes${query ? `?${query}` : ''}`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Failed to fetch notes');
+  }
+  return res.json();
+}
+
+export async function getNote(noteId) {
+  const res = await apiFetch(`/notes/${encodeURIComponent(noteId)}`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Failed to fetch note');
+  }
+  return res.json();
+}
+
+export async function createNote(data) {
+  const res = await apiFetch('/notes', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Failed to create note');
+  }
+  return res.json();
+}
+
+export async function updateNote(noteId, data) {
+  const res = await apiFetch(`/notes/${encodeURIComponent(noteId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Failed to update note');
+  }
+  return res.json();
+}
+
+export async function deleteNote(noteId) {
+  const res = await apiFetch(`/notes/${encodeURIComponent(noteId)}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Failed to delete note');
+  }
+  return res.json();
+}
+

@@ -48,6 +48,7 @@ class User(Base):
     plans = relationship("StudyPlan", back_populates="user", cascade="all, delete-orphan")
     reminders = relationship("Reminder", back_populates="user", cascade="all, delete-orphan")
     progress = relationship("ChapterProgress", back_populates="user", cascade="all, delete-orphan")
+    notes = relationship("Note", back_populates="user", cascade="all, delete-orphan")
 
 class Subject(Base):
     __tablename__ = "subjects"
@@ -181,3 +182,20 @@ class Reminder(Base):
     created_at = Column(String, nullable=False)
 
     user = relationship("User", back_populates="reminders")
+
+class Note(Base):
+    __tablename__ = "notes"
+
+    id = Column(String, primary_key=True)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    title = Column(String(150), nullable=False, default="")
+    content = Column(Text, nullable=False, default="")
+    tags = Column(Text, nullable=False, default="[]")  # JSON array of short strings
+    color = Column(String, nullable=True, default="")
+    pinned = Column(Boolean, nullable=False, default=False, index=True)
+    document_id = Column(String, ForeignKey("documents.id", ondelete="SET NULL"), nullable=True)
+    chapter = Column(String, nullable=True, default="")
+    created_at = Column(String, nullable=False)
+    updated_at = Column(String, nullable=False, index=True)
+
+    user = relationship("User", back_populates="notes")

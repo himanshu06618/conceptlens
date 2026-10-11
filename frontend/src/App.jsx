@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import StudentDashboard from './pages/StudentDashboard';
 import TeacherDashboard from './pages/TeacherDashboard';
+import NotesView from './pages/NotesView';
 import Sidebar from './components/Sidebar';
 import UploadView from './components/UploadView';
 import ResultsView from './components/ResultsView';
@@ -52,6 +53,7 @@ export default function App() {
   const appRootRef = useRef(null);
   const brandUnitRef = useRef(null);
   const scrollPositionRef = useRef(0);
+  const authRedirectTargetRef = useRef(null);
 
   const syncScrollProgress = useCallback((scrollTop = 0) => {
     const root = appRootRef.current;
@@ -287,19 +289,30 @@ export default function App() {
 
   const isLandingRoute = location.pathname.startsWith('/landing');
   const isPlannerRoute = location.pathname.startsWith('/student/dashboard') || location.pathname.startsWith('/teacher/dashboard');
+  const isNotesRoute = location.pathname.startsWith('/notes');
   const isWorkspaceRoute = location.pathname === '/' || location.pathname.startsWith('/app');
   const isAppRoute = !isLandingRoute;
 
   const handleGoToDashboard = useCallback(() => {
+    if (isNotesRoute) {
+      // From Notes view, return to student or teacher dashboard
+      const role = (user?.role || '').toLowerCase();
+      if (role === 'teacher') {
+        navigate('/teacher/dashboard');
+      } else {
+        navigate('/student/dashboard');
+      }
+      return;
+    }
+
     if (isPlannerRoute) {
-      setActiveDocId(null);
-      setActiveDocData(null);
-      setActiveConcepts([]);
-      setActiveTopics([]);
-      setProcessingDoc(null);
-      setProcessingError(null);
-      setIsSidebarOpen(false);
-      navigate('/app');
+      // From dashboard, clicking Notes button opens personal Notes view!
+      if (!isAuthenticated) {
+        authRedirectTargetRef.current = '/notes';
+        openAuthModal('signin', 'Sign in to access your personal study notes.');
+        return;
+      }
+      navigate('/notes');
       return;
     }
 
@@ -313,7 +326,7 @@ export default function App() {
     } else {
       navigate('/student/dashboard');
     }
-  }, [isPlannerRoute, isAuthenticated, user, navigate, openAuthModal]);
+  }, [isNotesRoute, isPlannerRoute, isAuthenticated, user, navigate, openAuthModal]);
 
   const handleDeleteDoc = async (docId) => {
     try {
@@ -480,6 +493,18 @@ export default function App() {
       return;
     }
 
+    // Redirect to intended route (such as /notes) if triggered by notes action
+    if (authRedirectTargetRef.current) {
+      const target = authRedirectTargetRef.current;
+      authRedirectTargetRef.current = null;
+      navigate(target);
+      return;
+    }
+
+    if (location.pathname.startsWith('/notes')) {
+      return;
+    }
+
     // Requirement 7: Send students to Student Dashboard and teachers to Teacher Dashboard
     const userRole = (userData?.role || user?.role || '').toLowerCase();
     if (userRole === 'teacher') {
@@ -617,17 +642,19 @@ export default function App() {
           <button
             type="button"
             id="header-dashboard-btn"
-            className={`header-dashboard-btn ${activeDocId ? 'in-project' : ''} ${isPlannerRoute ? 'is-active' : ''}`}
+            className={`header-dashboard-btn ${activeDocId ? 'in-project' : ''} ${isPlannerRoute || isNotesRoute ? 'is-active' : ''}`}
             onClick={handleGoToDashboard}
-            aria-label={isPlannerRoute ? 'Notes Workspace' : 'Dashboard'}
+            aria-label={isPlannerRoute ? 'Notes' : 'Dashboard'}
             title={
               isPlannerRoute
-                ? 'Back to Notes Workspace'
+                ? 'Personal Study Notes'
+                : isNotesRoute
+                ? 'Back to Study Planner Dashboard'
                 : activeDocId
                 ? 'Go to Study Planner Dashboard'
                 : 'Study Planner Dashboard'
             }
-            aria-current={isPlannerRoute ? 'page' : undefined}
+            aria-current={isPlannerRoute || isNotesRoute ? 'page' : undefined}
           >
             {isPlannerRoute ? (
               <>
@@ -719,6 +746,11 @@ export default function App() {
         <Route 
           path="/teacher/dashboard" 
           element={<TeacherDashboard />} 
+        />
+
+        <Route 
+          path="/notes" 
+          element={<NotesView onToast={addToast} />} 
         />
 
         <Route 

@@ -289,6 +289,16 @@ def init_db() -> None:
                 init_planner_db()
             except Exception as plan_mig_err:
                 pass
+
+            # Initialize personal notes schema & migrations
+            try:
+                try:
+                    from backend.services.notes_db import init_notes_db
+                except ImportError:
+                    from services.notes_db import init_notes_db
+                init_notes_db()
+            except Exception as notes_mig_err:
+                pass
     finally:
         conn.close()
 

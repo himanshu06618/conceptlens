@@ -2,6 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { GraduationCap, BookOpen, Users, BarChart3, ArrowLeft } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import MyNotesCard from '../components/planner/MyNotesCard';
 import '../styles/planner.css';
 
 export default function TeacherDashboard() {
@@ -83,6 +84,10 @@ export default function TeacherDashboard() {
           <ArrowLeft size={16} />
           <span>Return to Notes Workspace</span>
         </button>
+      </div>
+
+      <div style={{ marginTop: '24px' }}>
+        <MyNotesCard />
       </div>
     </div>
   );

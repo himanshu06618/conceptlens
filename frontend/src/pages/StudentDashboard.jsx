@@ -30,6 +30,7 @@ import RelatedTopicsCard from '../components/planner/RelatedTopicsCard';
 import CourseStatusCard from '../components/planner/CourseStatusCard';
 import RemindersCard from '../components/planner/RemindersCard';
 import NotesAnalysisSection from '../components/planner/NotesAnalysisSection';
+import MyNotesCard from '../components/planner/MyNotesCard';
 import '../styles/planner.css';
 
 export default function StudentDashboard({ onToast = () => {} }) {
@@ -410,6 +411,9 @@ export default function StudentDashboard({ onToast = () => {} }) {
             onUpdateChapterStatus={handleUpdateChapterStatus}
             onUpdateChapterMeta={handleUpdateChapterMeta}
           />
+
+          {/* Personal Notes Card */}
+          <MyNotesCard onToast={onToast} />
 
           {/* 4 & 5. Study Route Planner & RouteMap */}
           <section className="planner-section-card">

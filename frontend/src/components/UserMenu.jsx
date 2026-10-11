@@ -9,7 +9,8 @@ import {
   Eye, 
   EyeOff,
   LayoutDashboard,
-  BookOpen
+  BookOpen,
+  FileText
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { Avatar, Button, Modal, Input, PaperSurface } from './ui';
@@ -205,6 +206,22 @@ export default function UserMenu({ onToast }) {
             <span className="user-dropdown-item-copy">
               <span className="user-dropdown-item-title">Notes Workspace</span>
               <span className="user-dropdown-item-description">Upload & concept trees</span>
+            </span>
+          </button>
+
+          <button
+            type="button"
+            className="user-dropdown-item"
+            onClick={() => {
+              setIsOpen(false);
+              navigate('/notes');
+            }}
+            role="menuitem"
+          >
+            <span className="user-dropdown-item-icon"><FileText size={17} strokeWidth={1.75} /></span>
+            <span className="user-dropdown-item-copy">
+              <span className="user-dropdown-item-title">Personal Notes</span>
+              <span className="user-dropdown-item-description">Private study notebook</span>
             </span>
           </button>
 

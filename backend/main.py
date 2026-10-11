@@ -68,6 +68,8 @@ try:
     )
     from backend.routers.auth import router as auth_router, limiter
     from backend.routers.planner import router as planner_router
+    from backend.routers.notes import router as notes_router
+    from backend.services.notes_db import init_notes_db
     from backend.services.topic_relations import process_document_chapters_and_relations
     from backend.services.file_reader import (
         read_document_file,
@@ -127,6 +129,8 @@ except ImportError:
     )
     from routers.auth import router as auth_router, limiter
     from routers.planner import router as planner_router
+    from routers.notes import router as notes_router
+    from services.notes_db import init_notes_db
     from services.topic_relations import process_document_chapters_and_relations
     from services.file_reader import (
         read_document_file,
@@ -173,6 +177,10 @@ async def lifespan(app: FastAPI):
     # Startup: initialize database tables and verify Gemini connection
     logger.info("Initializing SQLite database with schema...")
     init_db()
+    try:
+        init_notes_db()
+    except Exception as e:
+        logger.warning(f"Notes DB initialization warning: {e}")
 
     gemini_key_set = bool(os.getenv("GEMINI_API_KEY", "").strip())
     gemini_valid, gemini_msg = check_gemini_key_valid()
@@ -219,6 +227,10 @@ app.include_router(auth_router, prefix="/auth", tags=["auth"])
 
 # Mount planner router
 app.include_router(planner_router)
+
+# Mount personal notes router under both /api/notes and /notes
+app.include_router(notes_router, prefix="/api/notes", tags=["notes"])
+app.include_router(notes_router, prefix="/notes", tags=["notes"])
 
 def process_document_background(
     doc_id: str,
