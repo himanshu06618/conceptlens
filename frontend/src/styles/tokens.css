@@ -1,102 +1,139 @@
 /**
- * ConceptLens Design Tokens — "Mint Green + Orange"
- * Aesthetic: Clean, premium educational SaaS with warm primary actions and calm green accents.
+ * ConceptLens Design Tokens — Lime Green + White Glass Theme
+ * Aesthetic: Fresh, high-contrast, modern educational workspace.
+ * Brand Palette: Bright lime green (#9AE62E, #C4F560, #6FC21A) with near-black ink (#10140C) and pure white (#FFFFFF).
  */
 
 :root {
   /* =====================================================================
-     1. Light Theme Colors (Default)
+     1. Brand Core Palette & Contrast Tokens
      ===================================================================== */
-  --bg: #F7F8F5;
-  --surface: #FFFFFF;
-  --surface-2: #E8F3ED;
-  --surface-hover: #F1F7F3;
-  --border: #E2E8E3;
-  --border-strong: #C9D5CD;
-  --border-subtle: rgba(37, 45, 42, 0.08);
+  --brand: #9AE62E;
+  --brand-light: #C4F560;
+  --brand-deep: #6FC21A;
+  --brand-dark: #3E7806;
+  --brand-text: #2E5E04;       /* WCAG AAA/AA 7.7:1 contrast on white */
+  --ink: #10140C;              /* WCAG AAA 12.35:1 on lime, 18.87:1 on white */
+  --white: #FFFFFF;
+
+  /* =====================================================================
+     2. Light Theme Surfaces & Background
+     ===================================================================== */
+  --bg: #F7FBF2;
+  --bg-gradient: linear-gradient(175deg, #F8FCF3 0%, #EEF8E2 48%, #FFFFFF 100%);
+  --surface: rgba(255, 255, 255, 0.70);
+  --surface-solid: #FFFFFF;
+  --surface-2: rgba(234, 248, 218, 0.60);
+  --surface-hover: rgba(255, 255, 255, 0.88);
+  --border: rgba(255, 255, 255, 0.75);
+  --border-strong: rgba(111, 194, 26, 0.32);
+  --border-subtle: rgba(16, 20, 12, 0.08);
 
   /* Typography Colors */
-  --ink: #252D2A;
-  --text: #252D2A;
-  --text-2: #68736D;
-  --text-secondary: #68736D;
-  --text-muted: #68736D;
+  --text: #10140C;
+  --text-2: #384531;
+  --text-secondary: #384531;
+  --text-muted: #596B50;
 
-  /* Brand Green Accent (legacy token names kept to preserve component APIs) */
-  --gold: #397F69;
-  --gold-bright: #5D9A83;
-  --gold-deep: #316F5B;
-  --gold-soft: #E8F3ED;
-  --text-on-gold: #252D2A;
-  --logo-accent: #D47B2A;
+  /* Legacy aliases mapped to new brand */
+  --gold: var(--brand);
+  --gold-bright: var(--brand-light);
+  --gold-deep: var(--brand-deep);
+  --gold-soft: rgba(154, 230, 46, 0.16);
+  --text-on-gold: var(--ink);
+  --logo-accent: var(--brand-text);
 
   /* Midnight Stage & Contrast Accents */
-  --midnight: #252D2A;
-  --midnight-2: #34443D;
-  --midnight-border: rgba(255, 255, 255, 0.14);
+  --midnight: #10140C;
+  --midnight-2: #192213;
+  --midnight-border: rgba(255, 255, 255, 0.18);
   --midnight-text: #FFFFFF;
-  --midnight-text-muted: #C8D2CC;
+  --midnight-text-muted: #D5E0CC;
 
   /* Focus & Interactive */
-  --focus-ring-color: #397F69;
+  --focus-ring-color: #6FC21A;
   --focus-ring: 0 0 0 2px var(--bg), 0 0 0 4px var(--focus-ring-color);
 
-  /* Semantic Feedback Colors */
-  --success: #18794E;
-  --success-bg: rgba(24, 121, 78, 0.10);
+  /* Semantic Feedback Colors (kept for status only) */
+  --success: #2E5E04;
+  --success-bg: rgba(111, 194, 26, 0.12);
   --warning: #A15C00;
   --warning-bg: rgba(161, 92, 0, 0.10);
   --danger: #C9303A;
   --danger-bg: rgba(201, 48, 58, 0.08);
 
-  /* Concept-Tree Branch Colors (Soft tint for node bg, strong tone for edges) */
-  --branch-gold: #397F69;
-  --branch-gold-bg: #E8F3ED;
-  --branch-gold-border: rgba(57, 127, 105, 0.35);
+  /* Primary Button Gradient (Lime with Ink text) */
+  --btn-gold-gradient: linear-gradient(135deg, #C4F560 0%, #9AE62E 100%);
+  --btn-gold-hover: linear-gradient(135deg, #CEF873 0%, #A4EE35 100%);
+  --btn-gold-active: linear-gradient(135deg, #9AE62E 0%, #6FC21A 100%);
 
-  --branch-indigo: #6A8C78;
-  --branch-indigo-bg: #EDF3EE;
-  --branch-indigo-border: rgba(106, 140, 120, 0.35);
+  /* Secondary Button Glass */
+  --btn-glass-bg: rgba(255, 255, 255, 0.70);
+  --btn-glass-border: var(--ink);
+  --btn-glass-color: var(--ink);
 
-  --branch-teal: #7C9C83;
-  --branch-teal-bg: #F0F5EF;
-  --branch-teal-border: rgba(124, 156, 131, 0.35);
+  /* Concept-Tree Branch Colors (Harmonious shades of lime, green, and ink/grey) */
+  --branch-gold: #6FC21A;
+  --branch-gold-bg: rgba(196, 245, 96, 0.18);
+  --branch-gold-border: rgba(111, 194, 26, 0.45);
 
-  --branch-rose: #C17D55;
-  --branch-rose-bg: #FBF1E9;
-  --branch-rose-border: rgba(193, 125, 85, 0.35);
+  --branch-indigo: #4A8C13;
+  --branch-indigo-bg: rgba(154, 230, 46, 0.15);
+  --branch-indigo-border: rgba(74, 140, 19, 0.45);
 
-  --branch-violet: #8A9A7A;
-  --branch-violet-bg: #F2F4EC;
-  --branch-violet-border: rgba(138, 154, 122, 0.35);
+  --branch-teal: #337A1A;
+  --branch-teal-bg: rgba(111, 194, 26, 0.14);
+  --branch-teal-border: rgba(51, 122, 26, 0.45);
 
-  --branch-sky: #8BA99A;
-  --branch-sky-bg: #EFF5F1;
-  --branch-sky-border: rgba(139, 169, 154, 0.35);
+  --branch-rose: #2E5E04;
+  --branch-rose-bg: rgba(154, 230, 46, 0.12);
+  --branch-rose-border: rgba(46, 94, 4, 0.40);
 
-  /* Shared translucent surfaces for the glassmorphism UI */
-  --glass-header-bg: #A8D5C2;
-  --glass-header-border: rgba(57, 127, 105, 0.16);
-  --glass-control-bg: rgba(255, 255, 255, 0.85);
-  --glass-control-border: rgba(226, 232, 227, 0.90);
-  --glass-surface: rgba(248, 252, 249, 0.56);
-  --glass-surface-border: rgba(255, 255, 255, 0.88);
+  --branch-violet: #527E23;
+  --branch-violet-bg: rgba(196, 245, 96, 0.14);
+  --branch-violet-border: rgba(82, 126, 35, 0.40);
 
-  /* Layered Soft Shadows (Shadow-sm, md, lg only) */
-  --shadow-sm: 0 2px 8px rgba(37, 45, 42, 0.045);
-  --shadow-md: 0 8px 24px rgba(37, 45, 42, 0.07);
-  --shadow-lg: 0 16px 40px rgba(37, 45, 42, 0.09);
-  --shadow-gold: 0 4px 18px rgba(57, 127, 105, 0.16);
-  --shadow-midnight: 0 20px 50px rgba(37, 45, 42, 0.24);
+  --branch-sky: #639E1B;
+  --branch-sky-bg: rgba(196, 245, 96, 0.16);
+  --branch-sky-border: rgba(99, 158, 27, 0.40);
+
+  --bookshelf-stroke: var(--ink);
+  --bookshelf-accent: var(--brand);
+
+  /* =====================================================================
+     3. Glassmorphism System Tokens
+     ===================================================================== */
+  --glass-bg: rgba(255, 255, 255, 0.65);
+  --glass-bg-subtle: rgba(255, 255, 255, 0.52);
+  --glass-bg-solid: rgba(255, 255, 255, 0.96);
+  --glass-border: rgba(255, 255, 255, 0.75);
+  --glass-border-subtle: rgba(255, 255, 255, 0.45);
+  --glass-blur: blur(16px);
+  --glass-blur-mobile: blur(12px);
+  --glass-shadow: 0 10px 32px rgba(16, 20, 12, 0.06), 0 3px 10px rgba(111, 194, 26, 0.05);
+
+  --glass-header-bg: rgba(255, 255, 255, 0.68);
+  --glass-header-border: rgba(255, 255, 255, 0.80);
+  --glass-control-bg: rgba(255, 255, 255, 0.72);
+  --glass-control-border: rgba(255, 255, 255, 0.85);
+  --glass-surface: rgba(255, 255, 255, 0.65);
+  --glass-surface-border: rgba(255, 255, 255, 0.75);
+
+  /* Layered Soft Shadows */
+  --shadow-sm: 0 2px 8px rgba(16, 20, 12, 0.045);
+  --shadow-md: 0 8px 24px rgba(16, 20, 12, 0.07);
+  --shadow-lg: 0 16px 40px rgba(16, 20, 12, 0.09);
+  --shadow-gold: 0 4px 18px rgba(111, 194, 26, 0.20);
+  --shadow-midnight: 0 20px 50px rgba(16, 20, 12, 0.24);
 
   /* Border Radii */
-  --radius-card: 18px;             /* 16px to 20px radius */
+  --radius-card: 18px;
   --radius-control: 12px;
   --radius-modal: 24px;
   --radius-pill: 999px;
 
   /* =====================================================================
-     2. Typography & Font Families
+     4. Typography & Font Families
      ===================================================================== */
   --font-display: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-heading: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -106,8 +143,8 @@
   --font-mono: 'JetBrains Mono', monospace;
 
   /* Fluid Typography Scale */
-  --font-hero: clamp(3.2rem, 5.5vw, 4.75rem);     /* 56px to 80px */
-  --font-section: clamp(1.85rem, 3.2vw, 2.6rem);  /* 32px to 44px */
+  --font-hero: clamp(3.2rem, 5.5vw, 4.75rem);
+  --font-section: clamp(1.85rem, 3.2vw, 2.6rem);
   --font-h1: clamp(1.5rem, 2.4vw, 1.85rem);
   --font-h2: clamp(1.2rem, 1.8vw, 1.45rem);
   --font-h3: clamp(1.0rem, 1.4vw, 1.15rem);
@@ -115,9 +152,9 @@
   --font-size-h1: var(--font-h1);
   --font-size-h2: var(--font-h2);
   --font-size-h3: var(--font-h3);
-  --font-size-body: 16px;                         /* 16px to 18px */
-  --font-size-sm: 0.875rem;                       /* 14px */
-  --font-size-xs: 0.78rem;                        /* 12.5px */
+  --font-size-body: 16px;
+  --font-size-sm: 0.875rem;
+  --font-size-xs: 0.78rem;
 
   --line-height-hero: 1.05;
   --line-height-heading: 1.25;
@@ -125,69 +162,100 @@
   --reading-max-width: 65ch;
 
   /* =====================================================================
-     3. Motion & Springs
+     5. Motion & Springs
      ===================================================================== */
   --ease-smooth: cubic-bezier(0.22, 1, 0.36, 1);
   --transition-fast: 180ms cubic-bezier(0.22, 1, 0.36, 1);
   --transition-normal: 320ms cubic-bezier(0.22, 1, 0.36, 1);
   --transition-slow: 540ms cubic-bezier(0.22, 1, 0.36, 1);
-
-  /* Primary Orange Button */
-  --btn-gold-gradient: #E89545;
-  --btn-gold-hover: #D47B2A;
-  --btn-gold-active: #BD6920;
 }
 
-/* Dark theme retains the mint-and-orange brand accents. */
+/* =====================================================================
+   DARK THEME: Neutral dark surfaces with vibrant lime accents
+   ===================================================================== */
 [data-theme='dark'] {
-  --bg: #17211C;
-  --surface: #202D26;
-  --surface-2: #293A30;
-  --surface-hover: #304238;
-  --border: #3A4A40;
-  --border-strong: #526257;
-  --border-subtle: rgba(255, 255, 255, 0.05);
+  --bg: #0C1008;
+  --bg-gradient: linear-gradient(175deg, #0C1008 0%, #12180E 50%, #161F12 100%);
+  --surface: rgba(20, 27, 16, 0.74);
+  --surface-solid: #151C11;
+  --surface-2: rgba(28, 38, 23, 0.70);
+  --surface-hover: rgba(36, 48, 29, 0.85);
+  --border: rgba(255, 255, 255, 0.12);
+  --border-strong: rgba(154, 230, 46, 0.30);
+  --border-subtle: rgba(255, 255, 255, 0.06);
 
-  --ink: #F2F5F2;
-  --text: #F2F5F2;
-  --text-2: #C7D1CA;
-  --text-secondary: #C7D1CA;
-  --text-muted: #AAB7AE;
+  --ink: #F2F5ED;
+  --text: #F2F5ED;
+  --text-2: #C5CEB8;
+  --text-secondary: #C5CEB8;
+  --text-muted: #95A187;
 
-  --gold: #82B7A0;
-  --gold-bright: #A8D5C2;
-  --gold-deep: #72A88F;
-  --gold-soft: rgba(130, 183, 160, 0.16);
-  --text-on-gold: #252D2A;
-  --logo-accent: #E89545;
+  --gold: #9AE62E;
+  --gold-bright: #C4F560;
+  --gold-deep: #6FC21A;
+  --gold-soft: rgba(154, 230, 46, 0.18);
+  --text-on-gold: #10140C;
+  --logo-accent: #9AE62E;
 
-  --midnight: #111813;
-  --midnight-2: #1B251E;
-  --midnight-border: rgba(255, 255, 255, 0.12);
-  --midnight-text: #F2F5F2;
-  --midnight-text-muted: #AAB7AE;
+  --midnight: #080B06;
+  --midnight-2: #10150B;
+  --midnight-border: rgba(255, 255, 255, 0.14);
+  --midnight-text: #F2F5ED;
+  --midnight-text-muted: #95A187;
 
-  --focus-ring: 0 0 0 2px var(--bg), 0 0 0 4px #A8D5C2;
+  --btn-gold-gradient: linear-gradient(135deg, #C4F560 0%, #9AE62E 100%);
+  --btn-gold-hover: linear-gradient(135deg, #CEF873 0%, #A4EE35 100%);
+  --btn-gold-active: linear-gradient(135deg, #9AE62E 0%, #6FC21A 100%);
+
+  --btn-glass-bg: rgba(24, 33, 20, 0.75);
+  --btn-glass-border: rgba(255, 255, 255, 0.35);
+  --btn-glass-color: #F2F5ED;
+
+  --focus-ring: 0 0 0 2px var(--bg), 0 0 0 4px #9AE62E;
 
   /* Branch color dark adjustments */
-  --branch-gold-bg: #263B30;
-  --branch-indigo-bg: #2B3A30;
-  --branch-teal-bg: #304033;
-  --branch-rose-bg: #3A2D25;
-  --branch-violet-bg: #33392B;
-  --branch-sky-bg: #2A3A32;
+  --branch-gold-bg: rgba(154, 230, 46, 0.14);
+  --branch-indigo-bg: rgba(111, 194, 26, 0.14);
+  --branch-teal-bg: rgba(196, 245, 96, 0.12);
+  --branch-rose-bg: rgba(74, 140, 19, 0.14);
+  --branch-violet-bg: rgba(154, 230, 46, 0.12);
+  --branch-sky-bg: rgba(111, 194, 26, 0.14);
 
   /* Glass on Dark */
-  --glass-header-bg: #263D32;
-  --glass-header-border: rgba(168, 213, 194, 0.18);
-  --glass-control-bg: rgba(32, 45, 38, 0.92);
-  --glass-control-border: rgba(199, 209, 202, 0.18);
-  --glass-surface: rgba(32, 45, 38, 0.64);
-  --glass-surface-border: rgba(199, 209, 202, 0.24);
+  --glass-bg: rgba(18, 24, 14, 0.74);
+  --glass-bg-subtle: rgba(18, 24, 14, 0.55);
+  --glass-bg-solid: rgba(18, 24, 14, 0.96);
+  --glass-border: rgba(255, 255, 255, 0.12);
+  --glass-border-subtle: rgba(255, 255, 255, 0.08);
+  --glass-shadow: 0 16px 44px rgba(0, 0, 0, 0.55), 0 4px 16px rgba(154, 230, 46, 0.08);
+
+  --glass-header-bg: rgba(18, 24, 14, 0.76);
+  --glass-header-border: rgba(255, 255, 255, 0.14);
+  --glass-control-bg: rgba(25, 34, 20, 0.82);
+  --glass-control-border: rgba(255, 255, 255, 0.14);
+  --glass-surface: rgba(18, 24, 14, 0.74);
+  --glass-surface-border: rgba(255, 255, 255, 0.12);
 
   /* Shadows on Dark */
   --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.35);
   --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.45);
   --shadow-lg: 0 16px 44px rgba(0, 0, 0, 0.60);
-  --shadow-gold: 0 4px 24px rgba(130, 183, 160, 0.18);
+  --shadow-gold: 0 4px 24px rgba(154, 230, 46, 0.18);
+
+  --bookshelf-stroke: var(--brand);
+  --bookshelf-accent: var(--brand-light);
+}
+
+/* Fallback for browsers without backdrop-filter support */
+@supports not (backdrop-filter: blur(1px)) {
+  :root {
+    --glass-bg: var(--glass-bg-solid);
+    --glass-header-bg: rgba(255, 255, 255, 0.96);
+    --glass-surface: rgba(255, 255, 255, 0.96);
+  }
+  [data-theme='dark'] {
+    --glass-bg: var(--glass-bg-solid);
+    --glass-header-bg: rgba(18, 24, 14, 0.96);
+    --glass-surface: rgba(18, 24, 14, 0.96);
+  }
 }

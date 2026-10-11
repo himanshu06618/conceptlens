@@ -31,7 +31,6 @@ import LoaderShowcase from './components/dev/LoaderShowcase';
 
 import { 
   AmbientBackground,
-  BookshelfLoader,
   Logo, 
   ThemeToggle, 
   Button 
@@ -560,11 +559,7 @@ export default function App() {
         className={`main-viewport ${isSidebarCollapsed ? 'sidebar-collapsed' : ''}`}
         onScroll={(event) => syncScrollProgress(event.currentTarget.scrollTop)}
       >
-        {authLoading ? (
-          <div className="loading-state-center" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: 12 }}>
-            <BookshelfLoader size="lg" label="Loading workspace..." />
-          </div>
-        ) : activeDocId && activeDocData ? (
+        {activeDocId && activeDocData ? (
           <ResultsView
             documentData={activeDocData}
             concepts={activeConcepts}

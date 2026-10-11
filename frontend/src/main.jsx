@@ -32,29 +32,31 @@ class ErrorBoundary extends Component {
           alignItems: 'center',
           justifyContent: 'center',
           padding: '24px',
-          backgroundColor: '#F7F8F5',
+          backgroundColor: 'var(--bg-base, #F8FDF0)',
           fontFamily: "'Inter', sans-serif"
         }}>
           <div style={{
             maxWidth: '480px',
             width: '100%',
-            backgroundColor: '#FFFFFF',
+            backgroundColor: 'var(--glass-bg, rgba(255, 255, 255, 0.72))',
+            backdropFilter: 'var(--glass-blur, blur(16px))',
+            WebkitBackdropFilter: 'var(--glass-blur, blur(16px))',
             borderRadius: '20px',
             padding: '36px',
-            boxShadow: '0 12px 36px rgba(37, 45, 42, 0.08)',
-            border: '1px solid #E2E8E3',
+            boxShadow: 'var(--glass-shadow, 0 16px 40px rgba(16, 20, 12, 0.08))',
+            border: '1px solid var(--glass-border, rgba(255, 255, 255, 0.85))',
             textAlign: 'center'
           }}>
             <div style={{ fontSize: '36px', marginBottom: '14px' }}>🔍</div>
-            <h2 style={{ fontFamily: "'Inter', sans-serif", color: '#252D2A', fontSize: '1.5rem', fontWeight: 600, margin: '0 0 10px 0' }}>
+            <h2 style={{ fontFamily: "'Inter', sans-serif", color: 'var(--ink, #10140C)', fontSize: '1.5rem', fontWeight: 600, margin: '0 0 10px 0' }}>
               ConceptLens Notice
             </h2>
             <div style={{
-              backgroundColor: '#E8F3ED',
-              border: '1px solid #E2E8E3',
+              backgroundColor: 'var(--surface-2, #F4FDE5)',
+              border: '1px solid var(--border, rgba(16, 20, 12, 0.08))',
               borderRadius: '12px',
               padding: '14px',
-              color: '#68736D',
+              color: 'var(--text-secondary, #4E5945)',
               fontSize: '0.85rem',
               marginBottom: '22px',
               textAlign: 'left',
@@ -66,15 +68,15 @@ class ErrorBoundary extends Component {
             <button
               onClick={() => window.location.reload()}
               style={{
-                background: '#E89545',
-                color: '#252D2A',
-                border: '1px solid rgba(189, 105, 32, 0.4)',
+                background: 'linear-gradient(135deg, var(--brand-light, #C4F560) 0%, var(--brand, #9AE62E) 100%)',
+                color: 'var(--ink, #10140C)',
+                border: '1px solid var(--brand-deep, #6FC21A)',
                 borderRadius: '12px',
                 padding: '11px 24px',
                 fontWeight: 600,
                 fontSize: '0.9rem',
                 cursor: 'pointer',
-                boxShadow: '0 2px 8px rgba(37, 45, 42, 0.12)'
+                boxShadow: '0 4px 14px rgba(154, 230, 46, 0.28)'
               }}
             >
               Reload Workspace

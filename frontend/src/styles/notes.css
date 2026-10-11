@@ -75,8 +75,10 @@
 
 /* Left Pane: Notes List */
 .notes-list-pane {
-  background: var(--planner-card-bg);
-  border: 1px solid var(--planner-card-border);
+  background: var(--glass-surface, var(--planner-card-bg));
+  border: 1px solid var(--glass-border, var(--planner-card-border));
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
   border-radius: var(--planner-radius-lg);
   padding: 18px 16px;
   display: flex;
@@ -114,9 +116,9 @@
 }
 
 .notes-new-btn-primary {
-  background: var(--planner-mint);
-  color: #ffffff;
-  border: none;
+  background: var(--btn-gold-gradient);
+  color: var(--ink);
+  border: 1px solid rgba(111, 194, 26, 0.4);
   border-radius: var(--planner-radius-sm);
   padding: 6px 12px;
   font-family: var(--planner-font-title);
@@ -127,7 +129,7 @@
   align-items: center;
   gap: 5px;
   transition: all 0.2s ease;
-  box-shadow: 0 2px 8px rgba(47, 125, 101, 0.2);
+  box-shadow: 0 2px 8px rgba(111, 194, 26, 0.2);
 }
 
 .notes-new-btn-primary:hover {
@@ -257,12 +259,12 @@
 }
 
 /* Note item color accents */
-.notes-card-item.color-mint { border-left-color: #2f7d65; }
-.notes-card-item.color-peach { border-left-color: #c9701c; }
-.notes-card-item.color-purple { border-left-color: #6a3fc2; }
-.notes-card-item.color-blue { border-left-color: #2b7bb9; }
-.notes-card-item.color-coral { border-left-color: #d9534f; }
-.notes-card-item.color-lemon { border-left-color: #cca40c; }
+.notes-card-item.color-mint { border-left-color: var(--brand-deep, #6FC21A); }
+.notes-card-item.color-peach { border-left-color: var(--brand, #9AE62E); }
+.notes-card-item.color-purple { border-left-color: var(--brand-dark, #3E7806); }
+.notes-card-item.color-blue { border-left-color: var(--brand-light, #C4F560); }
+.notes-card-item.color-coral { border-left-color: var(--danger, #C9303A); }
+.notes-card-item.color-lemon { border-left-color: var(--brand-light, #C4F560); }
 
 .notes-card-item-top {
   display: flex;
@@ -330,8 +332,10 @@
 
 /* Right Pane: Note Editor */
 .notes-editor-pane {
-  background: var(--planner-card-bg);
-  border: 1px solid var(--planner-card-border);
+  background: var(--glass-surface, var(--planner-card-bg));
+  border: 1px solid var(--glass-border, var(--planner-card-border));
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
   border-radius: var(--planner-radius-lg);
   padding: 24px;
   display: flex;
@@ -467,12 +471,12 @@
 }
 
 .notes-color-dot.dot-default { background: var(--planner-card-border); }
-.notes-color-dot.dot-mint { background: #2f7d65; }
-.notes-color-dot.dot-peach { background: #c9701c; }
-.notes-color-dot.dot-purple { background: #6a3fc2; }
-.notes-color-dot.dot-blue { background: #2b7bb9; }
-.notes-color-dot.dot-coral { background: #d9534f; }
-.notes-color-dot.dot-lemon { background: #cca40c; }
+.notes-color-dot.dot-mint { background: var(--brand-deep, #6FC21A); }
+.notes-color-dot.dot-peach { background: var(--brand, #9AE62E); }
+.notes-color-dot.dot-purple { background: var(--brand-dark, #3E7806); }
+.notes-color-dot.dot-blue { background: var(--brand-light, #C4F560); }
+.notes-color-dot.dot-coral { background: var(--danger, #C9303A); }
+.notes-color-dot.dot-lemon { background: var(--brand-light, #C4F560); }
 
 /* Document & Chapter Selector */
 .notes-link-row {

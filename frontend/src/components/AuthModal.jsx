@@ -58,16 +58,16 @@ function MiniConceptTreeIllustration() {
       >
         <defs>
           <linearGradient id="mTreeGold" x1="0" y1="0" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#A8D5C2" />
-            <stop offset="100%" stopColor="#397F69" />
+            <stop offset="0%" stopColor="#C4F560" />
+            <stop offset="100%" stopColor="#3E7806" />
           </linearGradient>
           <linearGradient id="mTreeSage" x1="0" y1="0" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#A8D5C2" />
-            <stop offset="100%" stopColor="#397F69" />
+            <stop offset="0%" stopColor="#FFFFFF" />
+            <stop offset="100%" stopColor="#3E7806" />
           </linearGradient>
           <radialGradient id="mTreeGlow" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="#A8D5C2" stopOpacity="0.35" />
-            <stop offset="100%" stopColor="#A8D5C2" stopOpacity="0" />
+            <stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.45" />
+            <stop offset="100%" stopColor="#C4F560" stopOpacity="0" />
           </radialGradient>
         </defs>
 
@@ -187,6 +187,55 @@ export default function AuthModal({ onSuccess, guestStatus }) {
       }).catch(() => {});
     }
   }, [activeGoogleClientId]);
+
+  // Log clear developer notice if Google client ID is missing
+  useEffect(() => {
+    if (!activeGoogleClientId) {
+      console.warn(
+        '[ConceptLens] Google Sign-In is disabled: VITE_GOOGLE_CLIENT_ID environment variable is missing. ' +
+        'Add VITE_GOOGLE_CLIENT_ID to your environment variables on Vercel to enable "Continue with Google".'
+      );
+    }
+  }, [activeGoogleClientId]);
+
+  // Detect current theme (light or dark) dynamically
+  const [currentTheme, setCurrentTheme] = useState(() => {
+    return document.documentElement.getAttribute('data-theme') || 'light';
+  });
+
+  useEffect(() => {
+    const updateTheme = () => {
+      const activeTheme = document.documentElement.getAttribute('data-theme') || 'light';
+      setCurrentTheme(activeTheme);
+    };
+    updateTheme();
+    const observer = new MutationObserver(updateTheme);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['data-theme'],
+    });
+    return () => observer.disconnect();
+  }, []);
+
+  const isDark = currentTheme === 'dark';
+
+  // Responsive Google button width matching popup form up to 400px (Google maximum)
+  const [googleBtnWidth, setGoogleBtnWidth] = useState(380);
+  const googleBtnRef = useRef(null);
+
+  useEffect(() => {
+    if (!googleBtnRef.current) return;
+    const calculateWidth = () => {
+      if (googleBtnRef.current) {
+        const measured = googleBtnRef.current.offsetWidth || 380;
+        const clamped = Math.max(200, Math.min(400, Math.floor(measured)));
+        setGoogleBtnWidth(clamped);
+      }
+    };
+    calculateWidth();
+    window.addEventListener('resize', calculateWidth);
+    return () => window.removeEventListener('resize', calculateWidth);
+  }, [activeGoogleClientId, tab]);
 
   // Username live availability status
   const [usernameStatus, setUsernameStatus] = useState(null);
@@ -466,10 +515,23 @@ export default function AuthModal({ onSuccess, guestStatus }) {
     }
   };
 
+  // Google Login Error Handler
+  const handleGoogleError = (err) => {
+    setLoading(false);
+    let friendly = 'Google sign-in was canceled or closed. Please try again.';
+    if (err?.type === 'popup_closed') {
+      friendly = 'The Google sign-in window was closed before completing.';
+    } else if (err?.type === 'popup_blocked_by_browser') {
+      friendly = 'The Google sign-in window was blocked by your browser. Please allow popups for ConceptLens.';
+    }
+    setServerError(friendly);
+    triggerShake();
+  };
+
   // Google Login Success Handler
   const handleGoogleSuccess = async (credentialResponse) => {
     if (!credentialResponse?.credential) {
-      setServerError('Google sign-in did not return a valid credential.');
+      setServerError('Google sign-in did not return a valid credential. Please try again.');
       triggerShake();
       return;
     }
@@ -480,8 +542,8 @@ export default function AuthModal({ onSuccess, guestStatus }) {
       const resp = await signInWithGoogle(credentialResponse.credential);
       const userObj = resp?.user || resp;
 
-      // Requirement 6: First-time Google user needs role selection
-      if (resp?.requires_role || !userObj?.role) {
+      // New Google user with no role -> prompt role selection step
+      if (resp?.needs_role || resp?.requires_role || !userObj?.role) {
         setGooglePendingUser(resp);
         setGoogleNeedsRole(true);
         setLoading(false);
@@ -495,7 +557,22 @@ export default function AuthModal({ onSuccess, guestStatus }) {
         if (onSuccess) onSuccess(userObj, 'google');
       }, 500);
     } catch (err) {
-      setServerError(err.message || 'Google authentication failed.');
+      let friendlyMessage = 'We could not sign you in with Google right now. Please try again.';
+      const raw = (err?.message || '').toLowerCase();
+      if (raw.includes('network') || raw.includes('failed to fetch') || raw.includes('connection')) {
+        friendlyMessage = 'Network connection problem. Please check your internet connection and try again.';
+      } else if (raw.includes('popup') || raw.includes('closed') || raw.includes('blocked')) {
+        friendlyMessage = 'The Google sign-in window was closed or blocked. Please allow popups and try again.';
+      } else if (raw.includes('audience mismatch') || raw.includes('invalid') || raw.includes('expired')) {
+        friendlyMessage = 'Google authentication session expired. Please try signing in again.';
+      } else if (raw.includes('not verified')) {
+        friendlyMessage = 'Your Google account email is not verified. Please verify your email with Google first.';
+      } else if (raw.includes('rate limit') || raw.includes('too many attempts')) {
+        friendlyMessage = 'Too many sign-in attempts. Please wait a minute before trying again.';
+      } else if (raw.includes('not configured')) {
+        friendlyMessage = 'Google sign-in is currently not configured on this server.';
+      }
+      setServerError(friendlyMessage);
       triggerShake();
     } finally {
       setLoading(false);
@@ -522,7 +599,12 @@ export default function AuthModal({ onSuccess, guestStatus }) {
         if (onSuccess) onSuccess(finalUser, 'google');
       }, 500);
     } catch (err) {
-      setServerError(err.message || 'Failed to set account role.');
+      let friendly = 'Failed to set account role. Please try again.';
+      const raw = (err?.message || '').toLowerCase();
+      if (raw.includes('network') || raw.includes('failed to fetch')) {
+        friendly = 'Network connection issue. Please check your internet connection and try again.';
+      }
+      setServerError(friendly);
       triggerShake();
     } finally {
       setLoading(false);
@@ -744,32 +826,7 @@ export default function AuthModal({ onSuccess, guestStatus }) {
                 </div>
               )}
 
-              {/* "Continue with Google" at top (if GOOGLE_CLIENT_ID configured) */}
-              {activeGoogleClientId && (
-                <div className="auth-google-section">
-                  <div className="google-btn-wrapper">
-                    <GoogleOAuthProvider clientId={activeGoogleClientId}>
-                      <GoogleLogin
-                        onSuccess={handleGoogleSuccess}
-                        onError={() => {
-                          setServerError('Google sign-in was canceled or failed.');
-                          triggerShake();
-                        }}
-                        theme="outline"
-                        size="large"
-                        text="continue_with"
-                        shape="rectangular"
-                        width="100%"
-                      />
-                    </GoogleOAuthProvider>
-                  </div>
-                  <div className="auth-or-divider" aria-hidden="true">
-                    <span className="divider-line" />
-                    <span className="divider-text">or</span>
-                    <span className="divider-line" />
-                  </div>
-                </div>
-              )}
+
 
               {/* Real Form with onSubmit */}
               <form onSubmit={handleSubmit} className="auth-fields-form" noValidate>
@@ -1041,6 +1098,30 @@ export default function AuthModal({ onSuccess, guestStatus }) {
                     </span>
                   )}
                 </div>
+
+                {/* Continue with Google Section (Shown on BOTH tabs) */}
+                {activeGoogleClientId ? (
+                  <div className="auth-google-section">
+                    <div className="auth-or-divider" aria-hidden="true">
+                      <span className="divider-line" />
+                      <span className="divider-text">or</span>
+                      <span className="divider-line" />
+                    </div>
+                    <div ref={googleBtnRef} className="google-btn-wrapper">
+                      <GoogleOAuthProvider clientId={activeGoogleClientId}>
+                        <GoogleLogin
+                          onSuccess={handleGoogleSuccess}
+                          onError={handleGoogleError}
+                          theme={isDark ? 'filled_black' : 'outline'}
+                          size="large"
+                          text="continue_with"
+                          shape="rectangular"
+                          width={googleBtnWidth ? `${googleBtnWidth}` : '380'}
+                        />
+                      </GoogleOAuthProvider>
+                    </div>
+                  </div>
+                ) : null}
               </form>
             </>
           )}

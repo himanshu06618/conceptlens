@@ -55,10 +55,10 @@ export default function LensLoader({
           <line x1="6" y1="11" x2="12" y2="11" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
           <line x1="6" y1="15" x2="10" y2="15" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
 
-          {/* Sweeping green lens */}
+          {/* Sweeping lime lens */}
           <g className="lens-sm-sweep">
-            <circle cx="14" cy="11" r="5.5" stroke="var(--gold-bright, #A8D5C2)" strokeWidth="1.8" fill="var(--gold-soft, rgba(57, 127, 105, 0.2))" />
-            <line x1="18" y1="15" x2="22" y2="19" stroke="var(--gold, #397F69)" strokeWidth="2.2" strokeLinecap="round" />
+            <circle cx="14" cy="11" r="5.5" stroke="var(--brand-light, #C4F560)" strokeWidth="1.8" fill="var(--brand-bg, rgba(154, 230, 46, 0.2))" />
+            <line x1="18" y1="15" x2="22" y2="19" stroke="var(--brand-deep, #6FC21A)" strokeWidth="2.2" strokeLinecap="round" />
             <path d="M10.5 10 A 4 4 0 0 1 13.5 7" stroke="#FFFFFF" strokeWidth="1.2" strokeLinecap="round" strokeOpacity="0.9" />
           </g>
         </svg>
@@ -100,23 +100,23 @@ export default function LensLoader({
           aria-hidden="true"
         >
           <defs>
-            {/* Mint-green brand accent */}
+            {/* Lime brand accent */}
             <linearGradient id={`goldGrad-${uid}`} x1="0" y1="0" x2="30" y2="30" gradientUnits="userSpaceOnUse">
-              <stop offset="0%" stopColor="#A8D5C2" />
-              <stop offset="100%" stopColor="#397F69" />
+              <stop offset="0%" stopColor="#C4F560" />
+              <stop offset="100%" stopColor="#6FC21A" />
             </linearGradient>
 
             {/* Lens Scan Glow */}
             <radialGradient id={`lensGlow-${uid}`} cx="50%" cy="50%" r="50%">
-              <stop offset="0%" stopColor="#A8D5C2" stopOpacity="0.35" />
-              <stop offset="60%" stopColor="#397F69" stopOpacity="0.15" />
-              <stop offset="100%" stopColor="#397F69" stopOpacity="0" />
+              <stop offset="0%" stopColor="#9AE62E" stopOpacity="0.35" />
+              <stop offset="60%" stopColor="#6FC21A" stopOpacity="0.15" />
+              <stop offset="100%" stopColor="#6FC21A" stopOpacity="0" />
             </radialGradient>
 
             {/* Glass Fill */}
             <radialGradient id={`glassGrad-${uid}`} cx="35%" cy="35%" r="65%">
               <stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.6" />
-              <stop offset="100%" stopColor="#E8F3ED" stopOpacity="0.25" />
+              <stop offset="100%" stopColor="#F4FDE5" stopOpacity="0.25" />
             </radialGradient>
           </defs>
 

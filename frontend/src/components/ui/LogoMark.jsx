@@ -23,23 +23,23 @@ export default function LogoMark({ size = 34, className = '', idPrefix = 'scope'
       style={{ flexShrink: 0, display: 'inline-block', verticalAlign: 'middle' }}
     >
       <defs>
-        {/* Refined green gradient */}
+        {/* Bright Lime brand gradient */}
         <linearGradient id={gradId} x1="6" y1="6" x2="42" y2="42" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor={isLarge ? '#A8D5C2' : '#5D9A83'} />
-          <stop offset="50%" stopColor="#397F69" />
-          <stop offset="100%" stopColor="#316F5B" />
+          <stop offset="0%" stopColor="#C4F560" />
+          <stop offset="50%" stopColor="#9AE62E" />
+          <stop offset="100%" stopColor="#6FC21A" />
         </linearGradient>
 
         {/* Soft Glass Interior Gradient */}
         <radialGradient id={glassGradId} cx="18" cy="18" r="14" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#FFFFFF" stopOpacity={isLarge ? '0.82' : '0.55'} />
-          <stop offset="70%" stopColor="#A8D5C2" stopOpacity={isLarge ? '0.42' : '0.3'} />
-          <stop offset="100%" stopColor="#397F69" stopOpacity={isLarge ? '0.28' : '0.18'} />
+          <stop offset="0%" stopColor="#FFFFFF" stopOpacity={isLarge ? '0.85' : '0.65'} />
+          <stop offset="65%" stopColor="#C4F560" stopOpacity={isLarge ? '0.45' : '0.30'} />
+          <stop offset="100%" stopColor="#9AE62E" stopOpacity={isLarge ? '0.30' : '0.18'} />
         </radialGradient>
 
         {/* Subtle Lens Glow */}
         <filter id={shadowId} x="0" y="0" width="48" height="48" filterUnits="userSpaceOnUse">
-          <feDropShadow dx="0" dy="1.5" stdDeviation={isLarge ? '2.2' : '1.8'} floodColor="#397F69" floodOpacity={isLarge ? '0.24' : '0.16'} />
+          <feDropShadow dx="0" dy="1.5" stdDeviation={isLarge ? '2.2' : '1.8'} floodColor="#6FC21A" floodOpacity={isLarge ? '0.32' : '0.22'} />
         </filter>
       </defs>
 
@@ -51,7 +51,7 @@ export default function LogoMark({ size = 34, className = '', idPrefix = 'scope'
         strokeWidth="3.6"
         strokeLinecap="round"
       />
-      <circle className="scope-lens-handle-tip" cx="40.25" cy="40.25" r="1.7" fill="#316F5B" />
+      <circle className="scope-lens-handle-tip" cx="40.25" cy="40.25" r="1.7" fill="#3E7806" />
 
       {/* Scope Outer Circular Lens Ring */}
       <circle

@@ -55,7 +55,7 @@ function FlowchartCanvas({
   const visibleEdges = useMemo(() => (data?.edges || []).map((edge) => ({
     ...edge, id: String(edge.id), source: String(edge.source), target: String(edge.target),
     label: edge.label || undefined, animated: edge.type === 'sequence',
-    style: { stroke: edge.type === 'sequence' ? '#397F69' : '#7C9C83', strokeWidth: 2 },
+    style: { stroke: edge.type === 'sequence' ? '#6FC21A' : '#4E5945', strokeWidth: 2 },
   })), [data]);
   const nodes = useMemo(() => layoutFlow(visibleNodes, visibleEdges, direction), [visibleNodes, visibleEdges, direction]);
 
@@ -69,7 +69,7 @@ function FlowchartCanvas({
     setExporting(true);
     try {
       const toImage = format === 'svg' ? toSvg : toPng;
-      const image = await toImage(element, { backgroundColor: '#F7F8F5', pixelRatio: 2 });
+      const image = await toImage(element, { backgroundColor: '#F8FDF0', pixelRatio: 2 });
       const anchor = document.createElement('a');
       anchor.href = image;
       anchor.download = `${documentId}-flowchart.${format}`;

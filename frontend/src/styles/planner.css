@@ -1,31 +1,31 @@
 /* =====================================================================
    ConceptLens Study Planner Styles
-   Palette: Mint (#2f7d65), Peach (#f6dfc8), Orange (#c9701c)
-   Greeting: Purple (#6a3fc2 light, #b9a0ff dark)
+   Brand Theme: Lime Green (#9AE62E, #C4F560, #6FC21A) + Ink (#10140C) + Glass
+   Greeting: High-contrast brand green (WCAG AA compliant)
    Fonts: Titles "Berlin Sans FB", Fredoka; Body "Bell MT", Georgia
    ===================================================================== */
 
 :root {
-  --planner-mint: #2f7d65;
-  --planner-mint-light: #e8f4f0;
-  --planner-mint-hover: #266854;
-  --planner-mint-border: #a3d2c3;
-  --planner-peach: #f6dfc8;
-  --planner-peach-light: #fff8f1;
-  --planner-peach-border: #e8c7a7;
-  --planner-orange: #c9701c;
-  --planner-orange-light: #fef3e7;
-  --planner-orange-hover: #ad5d11;
-  --planner-orange-border: #f4c28f;
+  --planner-mint: var(--brand-deep, #6FC21A);
+  --planner-mint-light: rgba(154, 230, 46, 0.12);
+  --planner-mint-hover: var(--brand-dark, #3E7806);
+  --planner-mint-border: rgba(111, 194, 26, 0.35);
+  --planner-peach: rgba(255, 255, 255, 0.65);
+  --planner-peach-light: rgba(196, 245, 96, 0.10);
+  --planner-peach-border: rgba(154, 230, 46, 0.25);
+  --planner-orange: var(--brand-text, #2E5E04);
+  --planner-orange-light: rgba(154, 230, 46, 0.12);
+  --planner-orange-hover: var(--brand-dark, #3E7806);
+  --planner-orange-border: rgba(154, 230, 46, 0.35);
   
-  --planner-greeting: #6a3fc2;
-  --planner-bg: #f9fbf9;
-  --planner-card-bg: #ffffff;
-  --planner-card-border: #e2e9e4;
-  --planner-text-main: #1f2a24;
-  --planner-text-muted: #5e6d65;
-  --planner-chip-bg: #eef4f0;
-  --planner-chip-text: #2f7d65;
+  --planner-greeting: var(--brand-text, #2E5E04);
+  --planner-bg: var(--bg, #F7FBF2);
+  --planner-card-bg: var(--glass-surface, rgba(255, 255, 255, 0.65));
+  --planner-card-border: var(--glass-border, rgba(255, 255, 255, 0.75));
+  --planner-text-main: var(--ink, #10140C);
+  --planner-text-muted: var(--text-muted, #596B50);
+  --planner-chip-bg: var(--surface-2, rgba(234, 248, 218, 0.60));
+  --planner-chip-text: var(--brand-text, #2E5E04);
   
   --planner-font-title: "Berlin Sans FB", Fredoka, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --planner-font-body: "Bell MT", Georgia, "Times New Roman", serif;
@@ -33,37 +33,37 @@
   --planner-radius-sm: 8px;
   --planner-radius-md: 14px;
   --planner-radius-lg: 20px;
-  --planner-shadow-sm: 0 2px 8px rgba(47, 125, 101, 0.06);
-  --planner-shadow-md: 0 6px 20px rgba(47, 125, 101, 0.09);
-  --planner-shadow-hover: 0 10px 28px rgba(47, 125, 101, 0.14);
+  --planner-shadow-sm: var(--shadow-sm);
+  --planner-shadow-md: var(--glass-shadow);
+  --planner-shadow-hover: 0 10px 28px rgba(111, 194, 26, 0.14);
 }
 
 [data-theme="dark"],
 .dark {
-  --planner-mint: #3ea587;
-  --planner-mint-light: rgba(62, 165, 135, 0.15);
-  --planner-mint-hover: #4dbb9b;
-  --planner-mint-border: rgba(62, 165, 135, 0.35);
-  --planner-peach: #3a2e26;
-  --planner-peach-light: rgba(246, 223, 200, 0.08);
-  --planner-peach-border: #524033;
-  --planner-orange: #f28b2e;
-  --planner-orange-light: rgba(242, 139, 46, 0.15);
-  --planner-orange-hover: #ffa34d;
-  --planner-orange-border: rgba(242, 139, 46, 0.4);
+  --planner-mint: var(--brand, #9AE62E);
+  --planner-mint-light: rgba(154, 230, 46, 0.14);
+  --planner-mint-hover: var(--brand-light, #C4F560);
+  --planner-mint-border: rgba(154, 230, 46, 0.30);
+  --planner-peach: rgba(18, 24, 14, 0.72);
+  --planner-peach-light: rgba(154, 230, 46, 0.08);
+  --planner-peach-border: rgba(255, 255, 255, 0.12);
+  --planner-orange: var(--brand, #9AE62E);
+  --planner-orange-light: rgba(154, 230, 46, 0.14);
+  --planner-orange-hover: var(--brand-light, #C4F560);
+  --planner-orange-border: rgba(154, 230, 46, 0.35);
   
-  --planner-greeting: #b9a0ff;
-  --planner-bg: #141716;
-  --planner-card-bg: #1b201e;
-  --planner-card-border: #28332e;
-  --planner-text-main: #edf2ee;
-  --planner-text-muted: #9aa8a1;
-  --planner-chip-bg: #232d28;
-  --planner-chip-text: #59cbb1;
+  --planner-greeting: var(--brand, #9AE62E);
+  --planner-bg: var(--bg, #0C1008);
+  --planner-card-bg: var(--glass-surface, rgba(18, 24, 14, 0.74));
+  --planner-card-border: var(--glass-border, rgba(255, 255, 255, 0.12));
+  --planner-text-main: var(--ink, #F2F5ED);
+  --planner-text-muted: var(--text-muted, #95A187);
+  --planner-chip-bg: var(--surface-2, rgba(28, 38, 23, 0.70));
+  --planner-chip-text: var(--brand, #9AE62E);
   
-  --planner-shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.25);
-  --planner-shadow-md: 0 6px 24px rgba(0, 0, 0, 0.35);
-  --planner-shadow-hover: 0 10px 30px rgba(0, 0, 0, 0.45);
+  --planner-shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.30);
+  --planner-shadow-md: 0 6px 24px rgba(0, 0, 0, 0.40);
+  --planner-shadow-hover: 0 10px 30px rgba(0, 0, 0, 0.50);
 }
 
 /* ==================== Layout & Container ==================== */
@@ -182,6 +182,8 @@
 .planner-stat-card {
   background: var(--planner-card-bg);
   border: 1px solid var(--planner-card-border);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
   border-radius: var(--planner-radius-md);
   padding: 18px 20px;
   box-shadow: var(--planner-shadow-sm);
@@ -265,6 +267,8 @@
 .planner-section-card {
   background: var(--planner-card-bg);
   border: 1px solid var(--planner-card-border);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
   border-radius: var(--planner-radius-lg);
   padding: 24px;
   box-shadow: var(--planner-shadow-sm);

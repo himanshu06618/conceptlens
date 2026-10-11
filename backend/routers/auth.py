@@ -118,12 +118,16 @@ def format_user_response(user: Dict[str, Any]) -> UserResponse:
 def create_auth_response(user: Dict[str, Any], token: str, is_new: bool = False) -> Dict[str, Any]:
     formatted = format_user_response(user)
     has_role = user.get("role") is not None and str(user.get("role")).strip() != ""
+    needs_role = not has_role
+    user_dict = formatted.model_dump()
+    user_dict["needs_role"] = needs_role
     return {
-        "user": formatted.model_dump(),
+        "user": user_dict,
         "token": token,
         "access_token": token,
         "token_type": "bearer",
-        "requires_role": not has_role,
+        "requires_role": needs_role,
+        "needs_role": needs_role,
         "is_new": is_new,
         "id": formatted.id,
         "username": formatted.username,
@@ -268,7 +272,7 @@ async def login_user(
     return create_auth_response(user, token, is_new=False)
 
 @router.post("/google")
-@limiter.limit("10/minute")
+@limiter.limit("30/minute")
 async def google_auth(
     request: Request,
     response: Response,
@@ -456,7 +460,11 @@ async def set_user_role(
         )
 
     clean_role = (payload.role or "").strip().lower()
-    if clean_role not in ("student", "teacher"):
+    if clean_role in ("teacher", "professor", "teacher/professor", "teacher / professor"):
+        clean_role = "teacher"
+    elif clean_role == "student":
+        clean_role = "student"
+    else:
         raise HTTPException(
             status_code=400,
             detail="Invalid role. Must be 'student' or 'teacher'."

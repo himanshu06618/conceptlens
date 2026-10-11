@@ -94,7 +94,7 @@ export default function UploadView({
           particleCount: 50,
           spread: 60,
           origin: { y: 0.6 },
-          colors: ['#397F69', '#A8D5C2', '#E89545']
+          colors: ['#9AE62E', '#C4F560', '#6FC21A']
         });
       } catch {
         // Safe fallback if canvas-confetti is not loaded

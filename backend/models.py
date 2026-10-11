@@ -105,6 +105,7 @@ class UserResponse(BaseModel):
     avatar: Optional[str] = None
     avatar_url: Optional[str] = None
     role: Optional[str] = None
+    needs_role: Optional[bool] = None
     has_password: bool = False
     created_at: str
 
@@ -114,6 +115,7 @@ class AuthResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     requires_role: bool = False
+    needs_role: bool = False
 
 class UpdateUserRequest(BaseModel):
     display_name: str

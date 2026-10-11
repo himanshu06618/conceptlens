@@ -800,8 +800,8 @@ function ConceptTreeCanvas({
           title={viewMode === 'tree' ? 'Switch to Accessible Outline' : 'Switch to Canvas Tree'}
           className={`tree-control-btn ${viewMode === 'outline' ? 'is-active' : ''}`}
           style={{
-            background: viewMode === 'outline' ? 'rgba(57, 127, 105, 0.18)' : undefined,
-            color: viewMode === 'outline' ? '#A8D5C2' : undefined
+            background: viewMode === 'outline' ? 'var(--brand-bg)' : undefined,
+            color: viewMode === 'outline' ? 'var(--brand-text)' : undefined
           }}
         >
           <List size={15} />

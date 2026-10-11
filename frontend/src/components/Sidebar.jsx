@@ -6,8 +6,7 @@ import {
   FileCode, 
   Image as ImageIcon,
   Search,
-  X,
-  BookOpen,
+  X
 } from 'lucide-react';
 import { Button, IconButton, Logo } from './ui';
 
@@ -234,13 +233,9 @@ export default function Sidebar({
           </div>
         </div>
 
-        {/* Previous Notes Groups */}
         <div className="sidebar-scroll-area">
           {documents.length === 0 ? (
             <div className="sidebar-empty-state">
-              <div className="empty-illustration-wrap">
-                <BookOpen size={28} strokeWidth={1.5} className="empty-book-icon" />
-              </div>
               <p className="empty-main-text">Your notes will appear here</p>
               <p className="empty-hint-text">Upload a PDF or image to extract concepts</p>
             </div>

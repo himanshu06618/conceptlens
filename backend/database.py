@@ -435,8 +435,8 @@ def link_google_account(user_id: str, google_sub: str, avatar_url: Optional[str]
         with conn:
             if avatar_url:
                 conn.execute(
-                    "UPDATE users SET google_sub = ?, avatar_url = COALESCE(avatar_url, ?) WHERE id = ?",
-                    (google_sub, avatar_url, user_id)
+                    "UPDATE users SET google_sub = ?, avatar_url = COALESCE(avatar_url, ?), avatar = COALESCE(avatar, ?) WHERE id = ?",
+                    (google_sub, avatar_url, avatar_url, user_id)
                 )
             else:
                 conn.execute("UPDATE users SET google_sub = ? WHERE id = ?", (google_sub, user_id))

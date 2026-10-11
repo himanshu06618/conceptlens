@@ -53,5 +53,6 @@ FINAL_CTP_*
 *.log
 .DS_Store
 Thumbs.db
+~$*
 .vscode/
 .idea/
