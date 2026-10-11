@@ -44,8 +44,8 @@ async function apiFetch(endpoint, options = {}) {
   });
 
   if (res.status === 401) {
-    // Only dispatch session expired event for expired session requests (not login/register/initial check)
-    if (!endpoint.includes('/auth/login') && !endpoint.includes('/auth/register') && !endpoint.includes('/auth/me')) {
+    // Only dispatch session expired event for expired session requests (not login/register/initial check or public queries)
+    if (!endpoint.includes('/auth/login') && !endpoint.includes('/auth/register') && !endpoint.includes('/auth/me') && !endpoint.includes('/documents')) {
       window.dispatchEvent(new CustomEvent('conceptlens:unauthorized'));
     }
   }

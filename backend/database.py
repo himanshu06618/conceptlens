@@ -214,6 +214,12 @@ def init_db() -> None:
                 conn.execute("ALTER TABLE documents ADD COLUMN ocr_total_pages INTEGER DEFAULT 0;")
             if "file_hash" not in columns:
                 conn.execute("ALTER TABLE documents ADD COLUMN file_hash TEXT;")
+            if "result_json" not in columns:
+                conn.execute("ALTER TABLE documents ADD COLUMN result_json TEXT;")
+            if "concept_count" not in columns:
+                conn.execute("ALTER TABLE documents ADD COLUMN concept_count INTEGER DEFAULT 0;")
+            if "chapter_count" not in columns:
+                conn.execute("ALTER TABLE documents ADD COLUMN chapter_count INTEGER DEFAULT 0;")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_user_id ON documents(user_id);")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_file_hash ON documents(file_hash);")
 
@@ -489,22 +495,34 @@ def delete_user_and_all_data(user_id: str) -> List[Dict[str, str]]:
 
 # ==================== Document Operations (Per-User) ====================
 
-def find_completed_document_by_hash(file_hash: str) -> Optional[Dict[str, Any]]:
-    """Finds an existing completed document with the identical SHA-256 hash."""
+def find_completed_document_by_hash(file_hash: str, user_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """Finds an existing completed document with identical SHA-256 hash strictly belonging to user_id."""
     if not file_hash:
         return None
     conn = get_connection()
     try:
-        cursor = conn.execute(
-            """
-            SELECT id, filename, page_count, raw_text, tree_json, flow_json, provider_used
-            FROM documents
-            WHERE file_hash = ? AND status = 'completed'
-            ORDER BY created_at DESC
-            LIMIT 1
-            """,
-            (file_hash,)
-        )
+        if user_id:
+            cursor = conn.execute(
+                """
+                SELECT id, filename, page_count, raw_text, tree_json, flow_json, provider_used
+                FROM documents
+                WHERE file_hash = ? AND status = 'completed' AND user_id = ?
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                (file_hash, user_id)
+            )
+        else:
+            cursor = conn.execute(
+                """
+                SELECT id, filename, page_count, raw_text, tree_json, flow_json, provider_used
+                FROM documents
+                WHERE file_hash = ? AND status = 'completed' AND user_id IS NULL
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                (file_hash,)
+            )
         row = cursor.fetchone()
         return dict(row) if row else None
     finally:
@@ -923,7 +941,7 @@ def save_concepts_and_relations(
                     """,
                     relation_rows
                 )
-            conn.execute("UPDATE documents SET tree_json = NULL, flow_json = NULL WHERE id = ?", (doc_id,))
+            conn.execute("UPDATE documents SET tree_json = NULL, flow_json = NULL, concept_count = ? WHERE id = ?", (len(concepts_data), doc_id))
     finally:
         conn.close()
 

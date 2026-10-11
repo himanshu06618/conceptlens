@@ -446,6 +446,7 @@ def get_guest_status(actor: Dict[str, Any] = Depends(get_current_user_or_guest))
     }
 
 @app.post("/api/documents", response_model=UploadResponse)
+@app.post("/documents", response_model=UploadResponse)
 @limiter.limit("10/minute")
 async def upload_document(
     request: Request,
@@ -510,7 +511,7 @@ async def upload_document(
     file_hash = hashlib.sha256(content).hexdigest()
 
     # Check database cache for instant return
-    cached_doc = find_completed_document_by_hash(file_hash)
+    cached_doc = find_completed_document_by_hash(file_hash, user_id=actor["id"])
     if cached_doc:
         logger.info(f"Cache HIT for hash {file_hash[:12]}... (source doc {cached_doc['id']})")
         doc_id = str(uuid.uuid4())
@@ -596,6 +597,7 @@ async def upload_document(
     )
 
 @app.get("/api/documents/{doc_id}/status")
+@app.get("/documents/{doc_id}/status")
 def get_document_status(doc_id: str, actor: Dict[str, Any] = Depends(get_current_user_or_guest)):
     """Lightweight polling endpoint returning processing status, progress percentage, message, provider, time."""
     doc = get_document_by_id(user_id=actor["id"], doc_id=doc_id)
@@ -625,6 +627,7 @@ def get_document_status(doc_id: str, actor: Dict[str, Any] = Depends(get_current
     }
 
 @app.get("/api/documents/{doc_id}/file")
+@app.get("/documents/{doc_id}/file")
 def get_document_file(
     doc_id: str,
     actor: Dict[str, Any] = Depends(get_current_user_or_guest)
@@ -667,17 +670,24 @@ def get_document_file(
     )
 
 @app.get("/api/documents", response_model=List[DocumentItem])
+@app.get("/documents", response_model=List[DocumentItem])
 def list_documents(actor: Dict[str, Any] = Depends(get_current_user_or_guest)):
+    if not actor.get("is_authenticated"):
+        raise HTTPException(status_code=401, detail="Authentication required.")
     return get_documents_list(user_id=actor["id"])
 
 @app.get("/api/documents/{doc_id}", response_model=DocumentDetail)
+@app.get("/documents/{doc_id}", response_model=DocumentDetail)
 def get_document(doc_id: str, actor: Dict[str, Any] = Depends(get_current_user_or_guest)):
+    if not actor.get("is_authenticated"):
+        raise HTTPException(status_code=401, detail="Authentication required.")
     doc = get_document_by_id(user_id=actor["id"], doc_id=doc_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found.")
     return doc
 
 @app.get("/api/documents/{doc_id}/concepts", response_model=DocumentConceptsResponse)
+@app.get("/documents/{doc_id}/concepts", response_model=DocumentConceptsResponse)
 def get_document_concepts(
     doc_id: str,
     q: Optional[str] = Query(None, description="Search term for name, definition, or excerpt"),
@@ -705,6 +715,7 @@ def get_document_concepts(
     )
 
 @app.get("/api/documents/{doc_id}/tree")
+@app.get("/documents/{doc_id}/tree")
 def get_document_concept_tree(
     doc_id: str,
     actor: Dict[str, Any] = Depends(get_current_user_or_guest)
@@ -715,6 +726,7 @@ def get_document_concept_tree(
     return tree
 
 @app.get("/api/documents/{doc_id}/flowchart")
+@app.get("/documents/{doc_id}/flowchart")
 def get_document_flowchart(
     doc_id: str,
     topic: Optional[str] = Query(None),
@@ -737,11 +749,14 @@ def get_document_flowchart(
     return result
 
 @app.delete("/api/documents/{doc_id}")
+@app.delete("/documents/{doc_id}")
 def delete_document(
     request: Request,
     doc_id: str,
     actor: Dict[str, Any] = Depends(get_current_user_or_guest)
 ):
+    if not actor.get("is_authenticated"):
+        raise HTTPException(status_code=401, detail="Authentication required.")
     verify_csrf(request)
     doc = get_document_by_id(user_id=actor["id"], doc_id=doc_id)
     if not doc:
@@ -763,6 +778,7 @@ def delete_document(
     return {"success": True, "message": f"Document '{filename}' and all its extracted concepts were removed."}
 
 @app.get("/api/documents/{doc_id}/export")
+@app.get("/documents/{doc_id}/export")
 def export_document_concepts(
     doc_id: str,
     format: str = Query("json", pattern="^(json|csv|markdown|md)$"),

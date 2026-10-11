@@ -22,7 +22,12 @@ import {
   previewStudyPlan,
   createStudyPlan,
   togglePlanDay,
-  resetStudyPlan
+  resetStudyPlan,
+  uploadDocument,
+  getDocumentStatus,
+  getDocument,
+  getDocumentConcepts,
+  deleteDocument
 } from '../api/client';
 
 import RouteMap from '../components/planner/RouteMap';
@@ -31,6 +36,8 @@ import CourseStatusCard from '../components/planner/CourseStatusCard';
 import RemindersCard from '../components/planner/RemindersCard';
 import NotesAnalysisSection from '../components/planner/NotesAnalysisSection';
 import MyNotesCard from '../components/planner/MyNotesCard';
+import CompactUploadCard from '../components/planner/CompactUploadCard';
+import DashboardResultsPanel from '../components/planner/DashboardResultsPanel';
 import '../styles/planner.css';
 
 export default function StudentDashboard({ onToast = () => {} }) {
@@ -42,6 +49,24 @@ export default function StudentDashboard({ onToast = () => {} }) {
   const [loading, setLoading] = useState(true);
   const [selectedSubjectId, setSelectedSubjectId] = useState(null);
   const [activeBookId, setActiveBookId] = useState(null);
+
+  // In-Dashboard Document Upload & Processing State
+  const [isUploading, setIsUploading] = useState(false);
+  const [processingDoc, setProcessingDoc] = useState(null);
+  const [processingStage, setProcessingStage] = useState('reading');
+  const [processingProgress, setProcessingProgress] = useState(5);
+  const [processingMessage, setProcessingMessage] = useState('Initializing note analysis...');
+  const [processingError, setProcessingError] = useState(null);
+  const [lastUploadedFile, setLastUploadedFile] = useState(null);
+  const pollingRef = useRef(null);
+  const progressTimerRef = useRef(null);
+
+  // In-Dashboard Document Results Panel State
+  const [activeDocId, setActiveDocId] = useState(null);
+  const [activeDocData, setActiveDocData] = useState(null);
+  const [activeConcepts, setActiveConcepts] = useState([]);
+  const [activeTopics, setActiveTopics] = useState([]);
+  const [isResultsLoading, setIsResultsLoading] = useState(false);
 
   // Planner controls state
   const [days, setDays] = useState(7);
@@ -101,6 +126,153 @@ export default function StudentDashboard({ onToast = () => {} }) {
       loadOverview(selectedSubjectId);
     }
   }, [isAuthenticated, selectedSubjectId, loadOverview]);
+
+  // Load full extracted document results (concepts, tree, flowchart) for the in-dashboard results panel
+  const loadDocResults = useCallback(async (docId) => {
+    if (!docId) return;
+    setIsResultsLoading(true);
+    try {
+      const [docDetail, conceptsResp] = await Promise.all([
+        getDocument(docId),
+        getDocumentConcepts(docId)
+      ]);
+      setActiveDocId(docId);
+      setActiveDocData(docDetail);
+      setActiveConcepts(conceptsResp.concepts || []);
+      setActiveTopics(conceptsResp.topics || []);
+    } catch (err) {
+      console.error('Failed to load document results:', err);
+      onToast({
+        type: 'error',
+        message: err.message || 'Could not load document details'
+      });
+    } finally {
+      setIsResultsLoading(false);
+    }
+  }, [onToast]);
+
+  // Clean up polling timers on unmount
+  useEffect(() => {
+    return () => {
+      if (pollingRef.current) clearInterval(pollingRef.current);
+      if (progressTimerRef.current) clearInterval(progressTimerRef.current);
+    };
+  }, []);
+
+  // Poll processing status every 1.5s
+  const startPolling = useCallback((docId) => {
+    if (pollingRef.current) clearInterval(pollingRef.current);
+    if (progressTimerRef.current) clearInterval(progressTimerRef.current);
+    let pollInFlight = false;
+
+    progressTimerRef.current = setInterval(() => {
+      setProcessingProgress((prev) => (prev < 92 ? prev + 1 : prev));
+    }, 450);
+
+    pollingRef.current = setInterval(async () => {
+      if (pollInFlight) return;
+      pollInFlight = true;
+      try {
+        const doc = await getDocumentStatus(docId);
+        setProcessingStage(doc.stage || 'reading');
+        if (typeof doc.progress === 'number' && doc.progress > 0) {
+          setProcessingProgress((prev) => Math.max(prev, doc.progress));
+        }
+        if (doc.stage_message) {
+          setProcessingMessage(doc.stage_message);
+        }
+
+        if (doc.status === 'completed') {
+          clearInterval(pollingRef.current);
+          if (progressTimerRef.current) clearInterval(progressTimerRef.current);
+          setProcessingProgress(100);
+          setProcessingMessage('Extraction completed successfully!');
+
+          setTimeout(async () => {
+            setIsUploading(false);
+            setProcessingDoc(null);
+            setProcessingError(null);
+            await loadDocResults(docId);
+            await loadOverview(selectedSubjectId);
+            onToast({
+              type: 'success',
+              message: 'Concepts successfully extracted!'
+            });
+          }, 400);
+        } else if (doc.status === 'failed') {
+          clearInterval(pollingRef.current);
+          if (progressTimerRef.current) clearInterval(progressTimerRef.current);
+          setIsUploading(false);
+          setProcessingError(doc.error || 'Failed to extract concepts from document.');
+        }
+      } catch (err) {
+        console.error('Polling error:', err);
+      } finally {
+        pollInFlight = false;
+      }
+    }, 1500);
+  }, [loadDocResults, loadOverview, selectedSubjectId, onToast]);
+
+  // Start document upload from dashboard
+  const handleUpload = async (file, options = {}) => {
+    setLastUploadedFile(file);
+    setIsUploading(true);
+    setProcessingError(null);
+    setProcessingStage('reading');
+    setProcessingProgress(8);
+    setProcessingMessage(`Uploading ${file.name}...`);
+    setProcessingDoc({ filename: file.name });
+
+    try {
+      const resp = await uploadDocument(file, options);
+      setProcessingDoc({ id: resp.id, filename: resp.filename });
+      startPolling(resp.id);
+    } catch (err) {
+      setIsUploading(false);
+      setProcessingError(err.message || 'Upload failed. Please try again.');
+    }
+  };
+
+  const handleRetryUpload = (options = {}) => {
+    if (lastUploadedFile) {
+      handleUpload(lastUploadedFile, options);
+    }
+  };
+
+  const handleCancelProcessing = () => {
+    if (pollingRef.current) clearInterval(pollingRef.current);
+    if (progressTimerRef.current) clearInterval(progressTimerRef.current);
+    setIsUploading(false);
+    setProcessingDoc(null);
+    setProcessingError(null);
+    setProcessingProgress(0);
+  };
+
+  const handleDeleteDocument = async (docId) => {
+    try {
+      await deleteDocument(docId);
+      onToast({
+        type: 'info',
+        message: 'Document removed'
+      });
+      if (activeDocId === docId) {
+        setActiveDocId(null);
+        setActiveDocData(null);
+        setActiveConcepts([]);
+        setActiveTopics([]);
+      }
+      loadOverview(selectedSubjectId);
+    } catch (err) {
+      onToast({
+        type: 'error',
+        message: err.message || 'Failed to delete document'
+      });
+    }
+  };
+
+  const handleRenameDocument = (docId, newTitle) => {
+    setActiveDocData((prev) => (prev ? { ...prev, filename: newTitle } : prev));
+  };
 
   // All chapters across books in selected subject
   const allChapters = useMemo(() => {
@@ -399,6 +571,38 @@ export default function StudentDashboard({ onToast = () => {} }) {
         </div>
       </section>
 
+      {/* Compact In-Dashboard Upload Card */}
+      <CompactUploadCard
+        onUpload={handleUpload}
+        isUploading={isUploading}
+        processingDoc={processingDoc}
+        processingStage={processingStage}
+        processingProgress={processingProgress}
+        processingMessage={processingMessage}
+        processingError={processingError}
+        onRetryUpload={handleRetryUpload}
+        onCancelProcessing={handleCancelProcessing}
+        onToast={onToast}
+      />
+
+      {/* In-Dashboard Results Panel: Concept Tree, Flowchart, Concepts */}
+      {activeDocId && activeDocData && (
+        <DashboardResultsPanel
+          documentData={activeDocData}
+          concepts={activeConcepts}
+          topics={activeTopics}
+          chapterCount={activeDocData.chapter_count || activeTopics.length}
+          isLoading={isResultsLoading}
+          onClose={() => {
+            setActiveDocId(null);
+            setActiveDocData(null);
+          }}
+          onDeleteDocument={handleDeleteDocument}
+          onRenameDocument={handleRenameDocument}
+          onToast={onToast}
+        />
+      )}
+
       {/* Main Layout: Left Column (Analysis & Route) / Right Column (Relations, Status, Reminders) */}
       <div className="planner-main-layout">
         {/* Left Column */}
@@ -407,7 +611,15 @@ export default function StudentDashboard({ onToast = () => {} }) {
           <NotesAnalysisSection
             books={overview?.books || []}
             activeBookId={activeBookId}
-            onSelectBook={(bId) => setActiveBookId(bId)}
+            onSelectBook={(bId) => {
+              setActiveBookId(bId);
+              loadDocResults(bId);
+            }}
+            onOpenDocumentResults={(bId) => {
+              setActiveBookId(bId);
+              loadDocResults(bId);
+            }}
+            onDeleteDocument={handleDeleteDocument}
             onUpdateChapterStatus={handleUpdateChapterStatus}
             onUpdateChapterMeta={handleUpdateChapterMeta}
           />

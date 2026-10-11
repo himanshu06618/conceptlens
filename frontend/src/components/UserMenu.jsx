@@ -140,6 +140,7 @@ export default function UserMenu({ onToast }) {
     setDeleteError('');
     try {
       await removeAccount();
+      navigate('/');
       if (onToast) onToast('Your account and private notes have been deleted.', 'info');
       handleCloseModal();
     } catch (err) {
@@ -182,30 +183,14 @@ export default function UserMenu({ onToast }) {
             className="user-dropdown-item"
             onClick={() => {
               setIsOpen(false);
-              navigate(user?.role === 'teacher' ? '/teacher/dashboard' : '/student/dashboard');
+              navigate('/');
             }}
             role="menuitem"
           >
             <span className="user-dropdown-item-icon"><LayoutDashboard size={17} strokeWidth={1.75} /></span>
             <span className="user-dropdown-item-copy">
-              <span className="user-dropdown-item-title">Study Planner</span>
-              <span className="user-dropdown-item-description">{user?.role === 'teacher' ? 'Instructor Portal' : 'Route map & syllabus'}</span>
-            </span>
-          </button>
-
-          <button
-            type="button"
-            className="user-dropdown-item"
-            onClick={() => {
-              setIsOpen(false);
-              navigate('/app');
-            }}
-            role="menuitem"
-          >
-            <span className="user-dropdown-item-icon"><BookOpen size={17} strokeWidth={1.75} /></span>
-            <span className="user-dropdown-item-copy">
-              <span className="user-dropdown-item-title">Notes Workspace</span>
-              <span className="user-dropdown-item-description">Upload & concept trees</span>
+              <span className="user-dropdown-item-title">Dashboard</span>
+              <span className="user-dropdown-item-description">{user?.role === 'teacher' ? 'Instructor Portal' : 'Study planner & uploads'}</span>
             </span>
           </button>
 
@@ -263,6 +248,7 @@ export default function UserMenu({ onToast }) {
             onClick={() => {
               setIsOpen(false);
               signOut();
+              navigate('/');
               if (onToast) onToast('Signed out of workspace.', 'info');
             }}
             role="menuitem"

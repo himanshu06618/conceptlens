@@ -3,13 +3,12 @@ import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-
 import { 
   LogIn,
   PanelLeftOpen,
-  PanelLeftClose,
-  LayoutDashboard,
-  BookOpen
+  PanelLeftClose
 } from 'lucide-react';
 import StudentDashboard from './pages/StudentDashboard';
 import TeacherDashboard from './pages/TeacherDashboard';
 import NotesView from './pages/NotesView';
+import NeutralSkeleton from './components/planner/NeutralSkeleton';
 import Sidebar from './components/Sidebar';
 import UploadView from './components/UploadView';
 import ResultsView from './components/ResultsView';
@@ -287,45 +286,8 @@ export default function App() {
   };
 
   const isLandingRoute = location.pathname.startsWith('/landing');
-  const isPlannerRoute = location.pathname.startsWith('/student/dashboard') || location.pathname.startsWith('/teacher/dashboard');
-  const isNotesRoute = location.pathname.startsWith('/notes');
-  const isWorkspaceRoute = location.pathname === '/' || location.pathname.startsWith('/app');
+  const isGuestWorkspaceRoute = !isAuthenticated && (location.pathname === '/' || location.pathname.startsWith('/app'));
   const isAppRoute = !isLandingRoute;
-
-  const handleGoToDashboard = useCallback(() => {
-    if (isNotesRoute) {
-      // From Notes view, return to student or teacher dashboard
-      const role = (user?.role || '').toLowerCase();
-      if (role === 'teacher') {
-        navigate('/teacher/dashboard');
-      } else {
-        navigate('/student/dashboard');
-      }
-      return;
-    }
-
-    if (isPlannerRoute) {
-      // From dashboard, clicking Notes button opens personal Notes view!
-      if (!isAuthenticated) {
-        authRedirectTargetRef.current = '/notes';
-        openAuthModal('signin', 'Sign in to access your personal study notes.');
-        return;
-      }
-      navigate('/notes');
-      return;
-    }
-
-    if (!isAuthenticated) {
-      openAuthModal('signin', 'Sign in to access your student study planner dashboard.');
-      return;
-    }
-
-    if (user?.role === 'teacher') {
-      navigate('/teacher/dashboard');
-    } else {
-      navigate('/student/dashboard');
-    }
-  }, [isNotesRoute, isPlannerRoute, isAuthenticated, user, navigate, openAuthModal]);
 
   const handleDeleteDoc = async (docId) => {
     try {
@@ -504,18 +466,13 @@ export default function App() {
       return;
     }
 
-    // Requirement 7: Send students to Student Dashboard and teachers to Teacher Dashboard
-    const userRole = (userData?.role || user?.role || '').toLowerCase();
-    if (userRole === 'teacher') {
-      navigate('/teacher/dashboard');
-    } else {
-      navigate('/student/dashboard');
-    }
+    // Logged in users always land on the dashboard root
+    navigate('/');
   };
 
-  // Fixed sidebar / lock body scrolling on workspace route
+  // Fixed sidebar / lock body scrolling only on guest workspace route
   useEffect(() => {
-    if (isWorkspaceRoute) {
+    if (isGuestWorkspaceRoute) {
       document.body.classList.add('app-route-body');
     } else {
       document.body.classList.remove('app-route-body');
@@ -523,7 +480,7 @@ export default function App() {
     return () => {
       document.body.classList.remove('app-route-body');
     };
-  }, [isWorkspaceRoute]);
+  }, [isGuestWorkspaceRoute]);
 
   // Lock body scroll when mobile drawer is open
   useEffect(() => {
@@ -601,6 +558,19 @@ export default function App() {
     </div>
   );
 
+  const renderHome = () => {
+    if (authLoading) {
+      return <NeutralSkeleton />;
+    }
+    if (isAuthenticated) {
+      if (user?.role === 'teacher') {
+        return <TeacherDashboard />;
+      }
+      return <StudentDashboard onToast={addToast} />;
+    }
+    return workspaceDashboard;
+  };
+
   return (
     <div className="app-root" ref={appRootRef}>
       {/* Background Atmosphere */}
@@ -615,7 +585,9 @@ export default function App() {
             className="brand-clickable-unit"
             ref={brandUnitRef}
             onClick={() => {
-              handleNewUpload();
+              if (!isAuthenticated) {
+                handleNewUpload();
+              }
               navigate('/');
             }}
             role="button"
@@ -624,7 +596,9 @@ export default function App() {
             onKeyDown={(e) => {
               if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
-                handleNewUpload();
+                if (!isAuthenticated) {
+                  handleNewUpload();
+                }
                 navigate('/');
               }
             }}
@@ -634,36 +608,6 @@ export default function App() {
         </div>
 
         <div className="header-col-right">
-          <button
-            type="button"
-            id="header-dashboard-btn"
-            className={`header-dashboard-btn ${activeDocId ? 'in-project' : ''} ${isPlannerRoute || isNotesRoute ? 'is-active' : ''}`}
-            onClick={handleGoToDashboard}
-            aria-label={isPlannerRoute ? 'Notes' : 'Dashboard'}
-            title={
-              isPlannerRoute
-                ? 'Personal Study Notes'
-                : isNotesRoute
-                ? 'Back to Study Planner Dashboard'
-                : activeDocId
-                ? 'Go to Study Planner Dashboard'
-                : 'Study Planner Dashboard'
-            }
-            aria-current={isPlannerRoute || isNotesRoute ? 'page' : undefined}
-          >
-            {isPlannerRoute ? (
-              <>
-                <BookOpen size={18} strokeWidth={1.8} className="header-dashboard-icon" />
-                <span className="header-dashboard-label">Notes</span>
-              </>
-            ) : (
-              <>
-                <LayoutDashboard size={18} strokeWidth={1.8} className="header-dashboard-icon" />
-                <span className="header-dashboard-label">Dashboard</span>
-              </>
-            )}
-          </button>
-
           <ThemeToggle 
             theme={theme}
             onToggle={toggleTheme}
@@ -684,7 +628,7 @@ export default function App() {
             </Button>
           )}
 
-          {isWorkspaceRoute && (
+          {isGuestWorkspaceRoute && (
             <button
               type="button"
               className="header-sidebar-toggle"
@@ -721,26 +665,26 @@ export default function App() {
         </div>
       </header>
 
-      {/* Routes: Workspace Dashboard as Default */}
+      {/* Routes: Auth-based Home with Dashboard as Default for Logged-In Users */}
       <Routes>
         <Route 
           path="/" 
-          element={workspaceDashboard} 
+          element={renderHome()} 
         />
 
         <Route 
           path="/app" 
-          element={workspaceDashboard} 
+          element={<Navigate to="/" replace />} 
         />
 
         <Route 
           path="/student/dashboard" 
-          element={<StudentDashboard onToast={addToast} />} 
+          element={<Navigate to="/" replace />} 
         />
 
         <Route 
           path="/teacher/dashboard" 
-          element={<TeacherDashboard />} 
+          element={isAuthenticated && user?.role === 'teacher' ? <TeacherDashboard /> : <Navigate to="/" replace />} 
         />
 
         <Route 
@@ -750,13 +694,7 @@ export default function App() {
 
         <Route 
           path="/dashboard" 
-          element={
-            isAuthenticated ? (
-              user?.role === 'teacher' ? <Navigate to="/teacher/dashboard" replace /> : <Navigate to="/student/dashboard" replace />
-            ) : (
-              <Navigate to="/app" replace />
-            )
-          } 
+          element={<Navigate to="/" replace />} 
         />
 
         <Route 

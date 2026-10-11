@@ -222,7 +222,7 @@ export default function UploadView({
   };
 
   const processAndUpload = async (file) => {
-    const maxMb = 25;
+    const maxMb = 10;
     if (file.size > maxMb * 1024 * 1024) {
       alert(`File size exceeds ${maxMb} MB. Please upload a smaller file.`);
       return;
@@ -464,6 +464,24 @@ Quantum entanglement is the physical phenomenon where two or more particles beco
         <p className="workspace-greeting-sub">
           Drop your lecture notes, PDFs, or handwritten scans below to extract a structured concept tree.
         </p>
+        {!user && guestStatus && (
+          <div className="guest-quota-badge-wrap" style={{ marginTop: '12px' }}>
+            <span className="guest-quota-pill" style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '4px 14px',
+              borderRadius: '999px',
+              background: 'var(--surface-2, rgba(255, 255, 255, 0.08))',
+              border: '1px solid var(--border, rgba(255, 255, 255, 0.12))',
+              fontSize: '0.82rem',
+              color: 'var(--text-muted, #8E929E)',
+              fontWeight: 500
+            }}>
+              Guest: {guestStatus.uploads_count || 0} of {guestStatus.upload_limit || 5} uploads used
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Premium Dropzone: Solid white card with 1px border, soft inner gradient, rotating conic border on drag-over */}
@@ -512,7 +530,7 @@ Quantum entanglement is the physical phenomenon where two or more particles beco
         </h2>
 
         <p className="dropzone-format-hint">
-          PDF, PNG, JPG, WEBP, TXT, MD up to 25 MB
+          PDF, PNG, JPG, WEBP, TXT, MD up to 10 MB
         </p>
 
         <div className="dropzone-actions-row" onClick={(e) => e.stopPropagation()}>

@@ -1,18 +1,33 @@
 import React, { useState } from 'react';
-import { BookOpen, Edit2, Check, Clock, Sparkles } from 'lucide-react';
+import { BookOpen, Edit2, Check, Clock, Sparkles, Search, GitBranch, Trash2 } from 'lucide-react';
 
 export default function NotesAnalysisSection({
   books = [],
   activeBookId = null,
   onSelectBook = () => {},
+  onOpenDocumentResults = () => {},
+  onDeleteDocument = () => {},
   onUpdateChapterStatus = () => {},
   onUpdateChapterMeta = () => {}
 }) {
   const [editingHoursId, setEditingHoursId] = useState(null);
   const [editingHoursVal, setEditingHoursVal] = useState('');
+  const [docSearchQuery, setDocSearchQuery] = useState('');
+
+  const filteredBooks = books.filter((b) => {
+    if (!docSearchQuery.trim()) return true;
+    const q = docSearchQuery.toLowerCase();
+    const nameMatch = b.filename?.toLowerCase().includes(q);
+    const chapterMatch = (b.chapters || []).some((ch) => ch.name?.toLowerCase().includes(q));
+    return nameMatch || chapterMatch;
+  });
 
   const currentBook =
-    books.find((b) => b.id === activeBookId) || books[0] || null;
+    filteredBooks.find((b) => b.id === activeBookId) ||
+    books.find((b) => b.id === activeBookId) ||
+    filteredBooks[0] ||
+    books[0] ||
+    null;
 
   const handleCycleStatus = (chapter) => {
     const nextStatus = ((chapter.status || 0) + 1) % 3;
@@ -71,6 +86,31 @@ export default function NotesAnalysisSection({
         </span>
       </div>
 
+      {/* Document Search Bar */}
+      {books.length > 0 && (
+        <div style={{ marginBottom: '16px', position: 'relative' }}>
+          <Search size={15} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--planner-text-muted)' }} />
+          <input
+            type="search"
+            placeholder="Search notes & chapters..."
+            value={docSearchQuery}
+            onChange={(e) => setDocSearchQuery(e.target.value)}
+            style={{
+              width: '100%',
+              padding: '8px 12px 8px 34px',
+              borderRadius: 'var(--planner-radius-sm)',
+              border: '1px solid var(--planner-card-border)',
+              background: 'var(--planner-chip-bg)',
+              color: 'var(--planner-text-main)',
+              fontSize: '0.88rem',
+              boxSizing: 'border-box',
+              outline: 'none'
+            }}
+            aria-label="Search notes and chapters"
+          />
+        </div>
+      )}
+
       {books.length === 0 ? (
         <div style={{ padding: '24px', textAlign: 'center', color: 'var(--planner-text-muted)', background: 'var(--planner-chip-bg)', borderRadius: 'var(--planner-radius-sm)' }}>
           No documents uploaded yet. Upload course notes to view automatic chapter breakdowns and difficulty ratings!
@@ -79,7 +119,7 @@ export default function NotesAnalysisSection({
         <>
           {/* Book Tabs with Mastery % */}
           <div className="planner-book-tabs" role="tablist" aria-label="Course Books">
-            {books.map((b) => {
+            {filteredBooks.map((b) => {
               const isActive = (currentBook && currentBook.id === b.id);
               const displayName = b.filename.replace(/\.[^/.]+$/, '').replace(/_/g, ' ');
 
@@ -90,7 +130,10 @@ export default function NotesAnalysisSection({
                   role="tab"
                   aria-selected={isActive}
                   className={`planner-book-tab ${isActive ? 'active' : ''}`}
-                  onClick={() => onSelectBook(b.id)}
+                  onClick={() => {
+                    onSelectBook(b.id);
+                    onOpenDocumentResults(b.id);
+                  }}
                 >
                   <span>{displayName}</span>
                   <span className="mastery-badge">
@@ -100,6 +143,75 @@ export default function NotesAnalysisSection({
               );
             })}
           </div>
+
+          {/* Active Book Actions Toolbar */}
+          {currentBook && (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '10px 14px',
+              background: 'var(--planner-chip-bg)',
+              borderRadius: 'var(--planner-radius-sm)',
+              marginBottom: '16px',
+              border: '1px solid var(--planner-card-border)'
+            }}>
+              <div style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--planner-text-main)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <BookOpen size={16} color="var(--planner-mint)" />
+                <span style={{ maxWidth: '240px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={currentBook.filename}>
+                  {currentBook.filename}
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => onOpenDocumentResults(currentBook.id)}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '5px 12px',
+                    borderRadius: '6px',
+                    background: 'rgba(154, 230, 46, 0.2)',
+                    border: '1px solid var(--planner-mint-border)',
+                    color: 'var(--planner-text-main)',
+                    fontSize: '0.82rem',
+                    fontFamily: 'var(--planner-font-title)',
+                    fontWeight: 600,
+                    cursor: 'pointer'
+                  }}
+                  title="Open Concept Tree, Flowchart & Concepts in results panel"
+                >
+                  <GitBranch size={13} color="var(--planner-mint)" />
+                  <span>Open Results</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (window.confirm(`Delete "${currentBook.filename}" and its chapters?`)) {
+                      onDeleteDocument(currentBook.id);
+                    }
+                  }}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    padding: '6px',
+                    borderRadius: '6px',
+                    background: 'transparent',
+                    border: '1px solid var(--planner-card-border)',
+                    color: 'var(--planner-text-muted)',
+                    cursor: 'pointer'
+                  }}
+                  title={`Delete ${currentBook.filename}`}
+                  aria-label={`Delete ${currentBook.filename}`}
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Chapter Rows */}
           {currentBook && (
