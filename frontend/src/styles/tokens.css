@@ -10,11 +10,20 @@
      ===================================================================== */
   --brand: #9AE62E;
   --brand-light: #C4F560;
-  --brand-deep: #6FC21A;
+  --brand-mid: #6FB41A;
+  --brand-deep: #4C8F0F;
   --brand-dark: #3E7806;
-  --brand-text: #2E5E04;       /* WCAG AAA/AA 7.7:1 contrast on white */
+  --tint: #E6FABB;
   --ink: #10140C;              /* WCAG AAA 12.35:1 on lime, 18.87:1 on white */
+  --muted-text: #44502F;
   --white: #FFFFFF;
+  --font-lilita: 'Lilita One', cursive, sans-serif;
+  --font-nunito: 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --glass-card-bg: rgba(255, 255, 255, 0.62);
+  --glass-card-border: 1px solid rgba(255, 255, 255, 0.95);
+  --glass-card-radius: 20px;
+  --glass-card-shadow: 0 10px 30px rgba(111, 180, 26, 0.12);
+  --brand-text: #2E5E04;       /* WCAG AAA/AA 7.7:1 contrast on white */
 
   /* =====================================================================
      2. Light Theme Surfaces & Background
@@ -187,7 +196,11 @@
   --ink: #F2F5ED;
   --text: #F2F5ED;
   --text-2: #C5CEB8;
-  --text-secondary: #C5CEB8;
+  --muted-text: #A8B896;
+  --tint: #1C2B10;
+  --glass-card-bg: rgba(20, 27, 16, 0.74);
+  --glass-card-border: 1px solid rgba(255, 255, 255, 0.14);
+  --glass-card-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
   --text-muted: #95A187;
 
   --gold: #9AE62E;

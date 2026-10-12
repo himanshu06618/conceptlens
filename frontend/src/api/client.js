@@ -228,6 +228,56 @@ export async function checkBackendHealth() {
   }
 }
 
+export async function setConceptProgress(conceptId, status) {
+  const res = await apiFetch(`/concepts/${encodeURIComponent(conceptId)}/progress`, {
+    method: 'PUT',
+    body: JSON.stringify({ status }),
+  });
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    const err = new Error(errorData.detail || 'Failed to update concept progress');
+    err.status = res.status;
+    throw err;
+  }
+  return res.json();
+}
+
+export async function bulkSetConceptProgress(conceptIds, status) {
+  const res = await apiFetch('/concepts/progress/bulk', {
+    method: 'PUT',
+    body: JSON.stringify({ concept_ids: conceptIds, status }),
+  });
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    const err = new Error(errorData.detail || 'Failed to bulk update concept progress');
+    err.status = res.status;
+    throw err;
+  }
+  return res.json();
+}
+
+export async function getDocumentProgress(docId) {
+  const res = await apiFetch(`/documents/${encodeURIComponent(docId)}/progress`);
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.detail || 'Failed to fetch document progress');
+  }
+  return res.json();
+}
+
+export async function reanalyzeDocument(docId) {
+  const res = await apiFetch(`/documents/${encodeURIComponent(docId)}/reanalyze`, {
+    method: 'POST',
+  });
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    const err = new Error(errorData.detail || 'Failed to re-analyze document');
+    err.status = res.status;
+    throw err;
+  }
+  return res.json();
+}
+
 // ==================== Authentication API ====================
 
 export async function registerUser({ email, username, password, confirmPassword, name, displayName, role = 'student' }) {

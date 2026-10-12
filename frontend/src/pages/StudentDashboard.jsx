@@ -645,6 +645,7 @@ export default function StudentDashboard({ onToast = () => {} }) {
           }}
           onDeleteDocument={handleDeleteDocument}
           onRenameDocument={handleRenameDocument}
+          onProgressChange={() => loadOverview()}
           onToast={onToast}
         />
       )}

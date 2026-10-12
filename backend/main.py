@@ -12,7 +12,7 @@ from contextlib import asynccontextmanager
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Literal
 
 # Add backend directory and root directory to sys.path
 backend_dir = Path(__file__).resolve().parent
@@ -53,8 +53,15 @@ try:
         document_exists,
         find_completed_document_by_hash,
         clone_cached_document,
-        rename_document_by_id
+        rename_document_by_id,
+        get_concept_by_id_and_user,
+        verify_concept_owner,
+        set_concept_progress,
+        bulk_set_concept_progress,
+        get_concept_progress_for_document,
+        get_user_concept_progress_map
     )
+    from backend.services.normalizer import normalize_extracted_concepts, SCHEMA_VERSION
     from backend.models import (
         DocumentItem,
         DocumentDetail,
@@ -122,8 +129,15 @@ except ImportError:
         document_exists,
         find_completed_document_by_hash,
         clone_cached_document,
-        rename_document_by_id
+        rename_document_by_id,
+        get_concept_by_id_and_user,
+        verify_concept_owner,
+        set_concept_progress,
+        bulk_set_concept_progress,
+        get_concept_progress_for_document,
+        get_user_concept_progress_map
     )
+    from services.normalizer import normalize_extracted_concepts, SCHEMA_VERSION
     from models import (
         DocumentItem,
         DocumentDetail,
@@ -726,6 +740,13 @@ def get_document(doc_id: str, actor: Dict[str, Any] = Depends(get_current_user_o
         raise HTTPException(status_code=404, detail="Document not found.")
     return doc
 
+class ConceptProgressUpdate(BaseModel):
+    status: Literal["studied", "not_started"]
+
+class BulkConceptProgressUpdate(BaseModel):
+    concept_ids: List[str]
+    status: Literal["studied", "not_started"]
+
 @app.get("/api/documents/{doc_id}/concepts", response_model=DocumentConceptsResponse)
 @app.get("/documents/{doc_id}/concepts", response_model=DocumentConceptsResponse)
 def get_document_concepts(
@@ -739,19 +760,49 @@ def get_document_concepts(
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found.")
 
-    concepts = get_concepts_by_document(
-        doc_id=doc_id,
-        q=q,
-        topic=topic,
-        min_importance=min_importance
-    )
-    topics = get_distinct_topics(doc_id)
+    # 1. Fetch raw concepts from DB
+    raw_concepts = get_concepts_by_document(doc_id=doc_id)
+
+    # 2. Apply deterministic normalizer (guarantees removal of non-concepts, people, institutions, code fragments, DAG prerequisites)
+    normalized_concepts = normalize_extracted_concepts(raw_concepts)
+
+    # 3. Attach user progress status if authenticated
+    progress_map = {}
+    if actor.get("is_authenticated"):
+        progress_map = get_concept_progress_for_document(actor["id"], doc_id)
+
+    for c in normalized_concepts:
+        cid_str = str(c.get("id"))
+        c["status"] = progress_map.get(cid_str, "not_started")
+        c["document_id"] = doc_id
+
+    # 4. Extract distinct chapters / topics
+    topics = sorted(list({c.get("chapter") or c.get("topic") or "General" for c in normalized_concepts}))
+
+    # 5. Apply query filtering if provided
+    filtered = normalized_concepts
+    if topic and topic.strip() and topic.lower() != "all":
+        target_t = topic.strip().lower()
+        filtered = [c for c in filtered if (c.get("chapter") or c.get("topic") or "").lower() == target_t]
+
+    if min_importance is not None and min_importance > 1:
+        filtered = [c for c in filtered if int(c.get("importance", 1)) >= min_importance]
+
+    if q and q.strip():
+        term = q.strip().lower()
+        filtered = [
+            c for c in filtered
+            if term in c.get("name", "").lower()
+            or term in c.get("definition", "").lower()
+            or term in c.get("source_excerpt", "").lower()
+        ]
 
     return DocumentConceptsResponse(
         document_id=doc_id,
-        total_concepts=len(concepts),
+        total_concepts=len(filtered),
         topics=topics,
-        concepts=concepts
+        concepts=filtered,
+        schema_version=SCHEMA_VERSION
     )
 
 @app.get("/api/documents/{doc_id}/tree")
@@ -760,9 +811,23 @@ def get_document_concept_tree(
     doc_id: str,
     actor: Dict[str, Any] = Depends(get_current_user_or_guest)
 ):
-    tree = get_document_tree(user_id=actor["id"], doc_id=doc_id)
-    if not tree:
+    doc = get_document_by_id(user_id=actor["id"], doc_id=doc_id)
+    if not doc:
         raise HTTPException(status_code=404, detail="Document not found or concept tree unavailable.")
+
+    raw_concepts = get_concepts_by_document(doc_id)
+    cleaned_concepts = normalize_extracted_concepts(raw_concepts)
+    if not cleaned_concepts:
+        raise HTTPException(status_code=404, detail="Document not found or concept tree unavailable.")
+
+    # Attach progress
+    if actor.get("is_authenticated"):
+        prog = get_concept_progress_for_document(actor["id"], doc_id)
+        for c in cleaned_concepts:
+            c["status"] = prog.get(str(c["id"]), "not_started")
+
+    tree = build_document_tree(doc_id, doc.get("filename", "Document"), cleaned_concepts)
+    tree["schema_version"] = SCHEMA_VERSION
     return tree
 
 @app.get("/api/documents/{doc_id}/flowchart")
@@ -777,16 +842,132 @@ def get_document_flowchart(
     doc = get_document_by_id(user_id=actor["id"], doc_id=doc_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found.")
-    cached = get_document_flowchart_cache(actor["id"], doc_id)
-    if not cached:
-        cached = build_document_flowchart(
-            doc_id, get_concepts_by_document(doc_id), doc.get("raw_text") or "", include_related=True
-        )
-        save_document_flowchart(doc_id, cached)
-    result = select_flowchart_view(cached, topic, subflow, include_related)
+
+    raw_concepts = get_concepts_by_document(doc_id)
+    cleaned_concepts = normalize_extracted_concepts(raw_concepts)
+
+    if actor.get("is_authenticated"):
+        prog = get_concept_progress_for_document(actor["id"], doc_id)
+        for c in cleaned_concepts:
+            c["status"] = prog.get(str(c["id"]), "not_started")
+
+    flow_data = build_document_flowchart(
+        doc_id, cleaned_concepts, doc.get("raw_text") or "", include_related=include_related
+    )
+    result = select_flowchart_view(flow_data, topic, subflow, include_related)
     if result is None:
         raise HTTPException(status_code=404, detail="Flowchart topic or page not found.")
+    result["schema_version"] = SCHEMA_VERSION
     return result
+
+@app.put("/api/concepts/{concept_id}/progress")
+@app.put("/concepts/{concept_id}/progress")
+def update_single_concept_progress(
+    concept_id: str,
+    payload: ConceptProgressUpdate,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """
+    Sets concept progress ('studied' or 'not_started').
+    Scoped to verified user. 404 for other users' concepts.
+    """
+    concept = get_concept_by_id_and_user(concept_id, current_user["id"])
+    if not concept:
+        raise HTTPException(status_code=404, detail="Concept not found or access denied.")
+
+    result = set_concept_progress(current_user["id"], concept_id, payload.status)
+    return result
+
+@app.put("/api/concepts/progress/bulk")
+@app.put("/concepts/progress/bulk")
+def update_bulk_concept_progress(
+    payload: BulkConceptProgressUpdate,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Bulk updates concept progress. Only concepts owned by current_user are updated."""
+    valid_ids = []
+    for cid in payload.concept_ids:
+        if verify_concept_owner(current_user["id"], cid):
+            valid_ids.append(cid)
+
+    if not valid_ids:
+        raise HTTPException(status_code=404, detail="No authorized concepts found.")
+
+    count = bulk_set_concept_progress(current_user["id"], valid_ids, payload.status)
+    return {"updated_count": count, "status": payload.status}
+
+@app.get("/api/documents/{doc_id}/progress")
+@app.get("/documents/{doc_id}/progress")
+def get_document_progress_endpoint(
+    doc_id: str,
+    actor: Dict[str, Any] = Depends(get_current_user_or_guest)
+):
+    doc = get_document_by_id(user_id=actor["id"], doc_id=doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found.")
+
+    if not actor.get("is_authenticated"):
+        return {"progress": {}}
+
+    progress_map = get_concept_progress_for_document(actor["id"], doc_id)
+    return {"progress": progress_map}
+
+@app.post("/api/documents/{doc_id}/reanalyze")
+@app.post("/documents/{doc_id}/reanalyze")
+async def reanalyze_document_endpoint(
+    doc_id: str,
+    actor: Dict[str, Any] = Depends(get_current_user_or_guest)
+):
+    """
+    Optional Re-analyse action per document:
+    Bypasses the cache once and re-runs extraction with the improved prompt.
+    Respects rate limits and Gemini quota with a friendly message when exhausted.
+    """
+    doc = get_document_by_id(user_id=actor["id"], doc_id=doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found.")
+
+    filename = doc["filename"]
+    actor_dir = UPLOAD_DIR / actor["id"]
+    file_path = actor_dir / f"{doc_id}_{filename}"
+    if not file_path.exists():
+        fallback = UPLOAD_DIR / f"{doc_id}_{filename}"
+        if fallback.exists():
+            file_path = fallback
+        else:
+            raise HTTPException(status_code=404, detail="Source document file not found on server for re-analysis.")
+
+    gemini_key_set = bool(os.getenv("GEMINI_API_KEY", "").strip())
+    if not gemini_key_set:
+        raise HTTPException(status_code=503, detail="Gemini API is not configured on this server.")
+
+    update_document_stage(doc_id, stage="extracting", status="processing", progress=30, stage_message="Re-analysing notes with improved Gemini extraction...")
+    try:
+        raw_concepts = extract_document_with_gemini(file_path=file_path)
+    except GeminiQuotaError:
+        update_document_stage(doc_id, stage="completed", status="completed", progress=100, stage_message="Re-analysis quota exhausted; existing concepts preserved.")
+        raise HTTPException(status_code=429, detail="Daily AI extraction limit reached. Please try again later.")
+    except Exception as ex_gem:
+        update_document_stage(doc_id, stage="completed", status="completed", progress=100, stage_message="Re-analysis failed; existing concepts preserved.")
+        raise HTTPException(status_code=503, detail=f"Re-analysis failed: {str(ex_gem)}")
+
+    if not raw_concepts:
+        raise HTTPException(status_code=500, detail="No concepts extracted during re-analysis.")
+
+    cleaned_concepts = normalize_extracted_concepts(raw_concepts)
+    save_concepts_and_relations(doc_id, cleaned_concepts)
+
+    if actor.get("is_authenticated"):
+        try:
+            link_document_to_curriculum(doc_id, actor["id"])
+        except Exception:
+            pass
+
+    return {
+        "success": True,
+        "message": f"Successfully re-analysed document with {len(cleaned_concepts)} concepts.",
+        "concept_count": len(cleaned_concepts)
+    }
 
 @app.delete("/api/documents/{doc_id}")
 @app.delete("/documents/{doc_id}")

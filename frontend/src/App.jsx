@@ -522,6 +522,7 @@ export default function App() {
             concepts={activeConcepts}
             topics={activeTopics}
             isLoading={isConceptsLoading}
+            isAuthenticated={Boolean(user)}
             onRefresh={() => loadDocConcepts(activeDocId)}
             onNewUpload={handleNewUpload}
             onDeleteDoc={handleDeleteDoc}

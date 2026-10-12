@@ -487,8 +487,17 @@ def init_db() -> None:
                         label TEXT NOT NULL DEFAULT ''
                     );
                 """)
-                conn.execute("CREATE INDEX IF NOT EXISTS idx_relations_concept_id ON relations(concept_id);")
-                conn.execute("CREATE INDEX IF NOT EXISTS idx_relations_document_id ON relations(document_id);")
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS concept_progress (
+                        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        concept_id TEXT NOT NULL,
+                        status TEXT NOT NULL DEFAULT 'not_started' CHECK (status IN ('studied', 'not_started')),
+                        updated_at TEXT NOT NULL,
+                        PRIMARY KEY (user_id, concept_id)
+                    );
+                """)
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_concept_progress_user ON concept_progress(user_id);")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_concept_progress_concept ON concept_progress(concept_id);")
 
                 # Safe non-destructive column additions
                 conn.execute("ALTER TABLE documents ADD COLUMN IF NOT EXISTS user_id TEXT;")
@@ -586,6 +595,16 @@ def init_db() -> None:
                     CREATE INDEX IF NOT EXISTS idx_concepts_importance ON concepts(importance);
                     CREATE INDEX IF NOT EXISTS idx_relations_concept_id ON relations(concept_id);
                     CREATE INDEX IF NOT EXISTS idx_relations_document_id ON relations(document_id);
+
+                    CREATE TABLE IF NOT EXISTS concept_progress (
+                        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        concept_id TEXT NOT NULL,
+                        status TEXT NOT NULL DEFAULT 'not_started' CHECK (status IN ('studied', 'not_started')),
+                        updated_at TEXT NOT NULL,
+                        PRIMARY KEY (user_id, concept_id)
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_concept_progress_user ON concept_progress(user_id);
+                    CREATE INDEX IF NOT EXISTS idx_concept_progress_concept ON concept_progress(concept_id);
                 """)
 
                 cursor = conn.execute("PRAGMA table_info(documents);")
@@ -1482,5 +1501,254 @@ def get_distinct_topics(doc_id: str) -> List[str]:
             ORDER BY topic ASC
         """, (doc_id,))
         return [row["topic"] for row in cursor.fetchall()]
+    finally:
+        conn.close()
+
+
+# ==================== Concept Progress Operations ====================
+
+def get_concept_by_id_and_user(concept_id: str, user_id: str) -> Optional[Dict[str, Any]]:
+    """Fetches a concept verifying document ownership by user_id. Returns None if unauthorized."""
+    conn = get_connection()
+    try:
+        cid_int = int(concept_id) if str(concept_id).isdigit() else -1
+        cursor = conn.execute(
+            """
+            SELECT c.*, d.user_id, d.id as doc_id
+            FROM concepts c
+            JOIN documents d ON c.document_id = d.id
+            WHERE (c.id = ? OR CAST(c.id AS TEXT) = ?) AND d.user_id = ?
+            """,
+            (cid_int, str(concept_id), user_id)
+        )
+        row = cursor.fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def verify_concept_owner(user_id: str, concept_id: str) -> bool:
+    """Verifies that the concept belongs to a document owned by user_id."""
+    return get_concept_by_id_and_user(concept_id, user_id) is not None
+
+
+def set_concept_progress(user_id: str, concept_id: str, status: str) -> Dict[str, Any]:
+    """
+    Sets individual concept progress ('studied' or 'not_started').
+    Scoped to authenticated user. Updates concept_progress table and syncs chapter progress.
+    """
+    if status not in ("studied", "not_started"):
+        raise ValueError("Status must be 'studied' or 'not_started'.")
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    conn = get_connection()
+    try:
+        with conn:
+            conn.execute(
+                """
+                INSERT INTO concept_progress (user_id, concept_id, status, updated_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(user_id, concept_id) DO UPDATE SET
+                    status = excluded.status,
+                    updated_at = excluded.updated_at
+                """,
+                (user_id, str(concept_id), status, now_iso)
+            )
+    finally:
+        conn.close()
+
+    # Sync chapter progress based on updated concept statuses
+    try:
+        sync_chapter_progress_from_concept_change(user_id, str(concept_id))
+    except Exception as e_sync:
+        # Non-fatal sync logging
+        pass
+
+    return {
+        "user_id": user_id,
+        "concept_id": str(concept_id),
+        "status": status,
+        "updated_at": now_iso
+    }
+
+
+def bulk_set_concept_progress(user_id: str, concept_ids: List[str], status: str) -> int:
+    """Sets status for multiple concepts owned by user_id in one transaction."""
+    if status not in ("studied", "not_started"):
+        raise ValueError("Status must be 'studied' or 'not_started'.")
+
+    if not concept_ids:
+        return 0
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    conn = get_connection()
+    updated_count = 0
+    try:
+        with conn:
+            for cid in concept_ids:
+                conn.execute(
+                    """
+                    INSERT INTO concept_progress (user_id, concept_id, status, updated_at)
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT(user_id, concept_id) DO UPDATE SET
+                        status = excluded.status,
+                        updated_at = excluded.updated_at
+                    """,
+                    (user_id, str(cid), status, now_iso)
+                )
+                updated_count += 1
+    finally:
+        conn.close()
+
+    # Sync chapters affected
+    if concept_ids:
+        try:
+            sync_chapter_progress_from_concept_change(user_id, str(concept_ids[0]))
+        except Exception:
+            pass
+
+    return updated_count
+
+
+def get_concept_progress_for_document(user_id: str, doc_id: str) -> Dict[str, str]:
+    """Returns a map of {concept_id_str: status} for all concepts in the document."""
+    if not user_id or not doc_id:
+        return {}
+
+    conn = get_connection()
+    try:
+        cursor = conn.execute(
+            """
+            SELECT cp.concept_id, cp.status
+            FROM concept_progress cp
+            JOIN concepts c ON (c.id = cp.concept_id OR CAST(c.id AS TEXT) = cp.concept_id)
+            WHERE cp.user_id = ? AND c.document_id = ?
+            """,
+            (user_id, doc_id)
+        )
+        return {str(row["concept_id"]): row["status"] for row in cursor.fetchall()}
+    finally:
+        conn.close()
+
+
+def get_user_concept_progress_map(user_id: str) -> Dict[str, str]:
+    """Returns full map of {concept_id_str: status} for the user."""
+    if not user_id:
+        return {}
+
+    conn = get_connection()
+    try:
+        cursor = conn.execute(
+            "SELECT concept_id, status FROM concept_progress WHERE user_id = ?",
+            (user_id,)
+        )
+        return {str(row["concept_id"]): row["status"] for row in cursor.fetchall()}
+    finally:
+        conn.close()
+
+
+def sync_chapter_progress_from_concept_change(user_id: str, concept_id: str) -> None:
+    """
+    Checks if all concepts in a chapter are studied, updating chapter_progress:
+    - all studied -> status 2 (complete)
+    - some studied -> status 1 (in-progress)
+    - none studied -> status 0 (not_started)
+    """
+    conn = get_connection()
+    now_iso = datetime.now(timezone.utc).isoformat()
+    try:
+        with conn:
+            # 1. Identify concept and its document
+            cid_int = int(concept_id) if str(concept_id).isdigit() else -1
+            row = conn.execute(
+                """
+                SELECT c.id, c.document_id, c.topic, c.flow_group
+                FROM concepts c
+                JOIN documents d ON c.document_id = d.id
+                WHERE (c.id = ? OR CAST(c.id AS TEXT) = ?) AND d.user_id = ?
+                """,
+                (cid_int, str(concept_id), user_id)
+            ).fetchone()
+            if not row:
+                return
+
+            doc_id = row["document_id"]
+            topic_name = (row["topic"] or row["flow_group"] or "General").strip()
+
+            # 2. Find corresponding chapter in chapters table
+            ch_rows = conn.execute(
+                "SELECT id, name FROM chapters WHERE book_id = ?",
+                (doc_id,)
+            ).fetchall()
+            if not ch_rows:
+                return
+
+            target_chapter_id = None
+            if len(ch_rows) == 1:
+                target_chapter_id = ch_rows[0]["id"]
+            else:
+                for ch in ch_rows:
+                    if ch["name"].strip().lower() == topic_name.lower():
+                        target_chapter_id = ch["id"]
+                        break
+                if not target_chapter_id:
+                    # Partial match
+                    for ch in ch_rows:
+                        if topic_name.lower() in ch["name"].lower() or ch["name"].lower() in topic_name.lower():
+                            target_chapter_id = ch["id"]
+                            break
+            if not target_chapter_id:
+                target_chapter_id = ch_rows[0]["id"]
+
+            # 3. Find all concepts in this chapter
+            if len(ch_rows) == 1:
+                chapter_concepts = conn.execute(
+                    "SELECT id FROM concepts WHERE document_id = ?",
+                    (doc_id,)
+                ).fetchall()
+            else:
+                chapter_concepts = conn.execute(
+                    "SELECT id FROM concepts WHERE document_id = ? AND (LOWER(topic) = LOWER(?) OR LOWER(flow_group) = LOWER(?))",
+                    (doc_id, topic_name, topic_name)
+                ).fetchall()
+                if not chapter_concepts:
+                    chapter_concepts = conn.execute(
+                        "SELECT id FROM concepts WHERE document_id = ?",
+                        (doc_id,)
+                    ).fetchall()
+
+            total_concepts = len(chapter_concepts)
+            if total_concepts == 0:
+                return
+
+            concept_id_strs = [str(c["id"]) for c in chapter_concepts]
+            placeholders = ",".join("?" for _ in concept_id_strs)
+
+            studied_row = conn.execute(
+                f"""
+                SELECT COUNT(*) as cnt
+                FROM concept_progress
+                WHERE user_id = ? AND concept_id IN ({placeholders}) AND status = 'studied'
+                """,
+                [user_id] + concept_id_strs
+            ).fetchone()
+            studied_count = studied_row["cnt"] if studied_row else 0
+
+            new_status = 0
+            if studied_count == total_concepts:
+                new_status = 2  # Complete
+            elif studied_count > 0:
+                new_status = 1  # In progress
+
+            conn.execute(
+                """
+                INSERT INTO chapter_progress (user_id, chapter_id, status, updated_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(user_id, chapter_id) DO UPDATE SET
+                    status = excluded.status,
+                    updated_at = excluded.updated_at
+                """,
+                (user_id, target_chapter_id, new_status, now_iso)
+            )
     finally:
         conn.close()

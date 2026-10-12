@@ -719,6 +719,37 @@ def update_chapter_progress_status(user_id: str, chapter_id: str, status: int) -
                 """,
                 (user_id, chapter_id, status, now_iso)
             )
+
+            # TASK 2: Marking a chapter complete (status=2) marks all its concepts studied; unmarking reverses it (status=0 or 1).
+            ch_row = conn.execute("SELECT book_id, name FROM chapters WHERE id = ?", (chapter_id,)).fetchone()
+            if ch_row:
+                doc_id = ch_row["book_id"]
+                ch_name = (ch_row["name"] or "").strip()
+                ch_cnt = conn.execute("SELECT COUNT(*) as cnt FROM chapters WHERE book_id = ?", (doc_id,)).fetchone()["cnt"]
+
+                if ch_cnt <= 1:
+                    concept_rows = conn.execute("SELECT id FROM concepts WHERE document_id = ?", (doc_id,)).fetchall()
+                else:
+                    concept_rows = conn.execute(
+                        "SELECT id FROM concepts WHERE document_id = ? AND (LOWER(topic) = LOWER(?) OR LOWER(flow_group) = LOWER(?))",
+                        (doc_id, ch_name, ch_name)
+                    ).fetchall()
+                    if not concept_rows:
+                        concept_rows = conn.execute("SELECT id FROM concepts WHERE document_id = ?", (doc_id,)).fetchall()
+
+                target_concept_status = "studied" if status == 2 else "not_started"
+                for cr in concept_rows:
+                    conn.execute(
+                        """
+                        INSERT INTO concept_progress (user_id, concept_id, status, updated_at)
+                        VALUES (?, ?, ?, ?)
+                        ON CONFLICT(user_id, concept_id) DO UPDATE SET
+                            status = excluded.status,
+                            updated_at = excluded.updated_at
+                        """,
+                        (user_id, str(cr["id"]), target_concept_status, now_iso)
+                    )
+
         return {"chapter_id": chapter_id, "status": status, "updated_at": now_iso}
     finally:
         conn.close()
@@ -1302,12 +1333,52 @@ def get_dashboard_summary_data(
             ch_copy["bookFilename"] = b["filename"]
             all_chapters.append(ch_copy)
 
-    total_concepts = sum(ch.get("concept_count", 0) for ch in all_chapters)
+    conn = get_connection()
+    try:
+        user_concepts = conn.execute(
+            """
+            SELECT c.id, c.importance, c.definition, c.topic
+            FROM concepts c
+            JOIN documents d ON c.document_id = d.id
+            WHERE d.user_id = ?
+            """,
+            (user_id,)
+        ).fetchall()
+
+        prog_rows = conn.execute(
+            "SELECT concept_id, status FROM concept_progress WHERE user_id = ?",
+            (user_id,)
+        ).fetchall()
+        prog_map = {str(r["concept_id"]): r["status"] for r in prog_rows}
+    finally:
+        conn.close()
+
+    total_concepts = len(user_concepts) if user_concepts else sum(ch.get("concept_count", 0) for ch in all_chapters)
+    studied_concept_count = sum(1 for c in user_concepts if prog_map.get(str(c["id"])) == "studied")
+
+    not_studied_minutes = 0
+    for c in user_concepts:
+        if prog_map.get(str(c["id"])) != "studied":
+            imp = max(1, min(3, int(c["importance"] or 2)))
+            d_len = len(c["definition"] or "")
+            est_m = max(1, min(30, 4 + imp * 3 + min(8, d_len // 30)))
+            not_studied_minutes += est_m
+
+    if user_concepts:
+        study_time_left = round(not_studied_minutes / 60.0, 1)
+    else:
+        study_time_left = round(sum(remaining_hours(ch) for ch in all_chapters), 1)
+
     total_chapters = len(all_chapters)
     done_chapters = sum(1 for ch in all_chapters if ch.get("status") == 2)
     remaining_chapters = max(0, total_chapters - done_chapters)
-    study_time_left = round(sum(remaining_hours(ch) for ch in all_chapters), 1)
-    mastery_percent = round((done_chapters / total_chapters * 100), 1) if total_chapters > 0 else 0.0
+
+    if total_concepts > 0:
+        mastery_percent = round((studied_concept_count / total_concepts) * 100, 1)
+    elif total_chapters > 0:
+        mastery_percent = round((done_chapters / total_chapters) * 100, 1)
+    else:
+        mastery_percent = 0.0
 
     stats = {
         "total_concepts": total_concepts,
@@ -1317,7 +1388,8 @@ def get_dashboard_summary_data(
         "remaining_to_master": remaining_chapters,
         "study_time_left": study_time_left,
         "mastery_percent": mastery_percent,
-        "mastery_percentage": mastery_percent
+        "mastery_percentage": mastery_percent,
+        "studied_concepts_count": studied_concept_count
     }
 
     # Active plan
