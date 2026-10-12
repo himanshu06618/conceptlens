@@ -303,8 +303,31 @@ export default function NotesAnalysisSection({
                         <div className={`chapter-progress-fill ${statusFillClasses[status]}`} />
                       </div>
 
-                      {/* Status Button Cycling 0 -> 1 -> 2 */}
-                      <div>
+                      {/* Status Button & Explicit Mark Complete Control */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        {status !== 2 && (
+                          <button
+                            type="button"
+                            className="status-cycle-btn mark-complete-btn"
+                            style={{
+                              background: 'rgba(154, 230, 46, 0.15)',
+                              borderColor: 'var(--planner-mint)',
+                              color: 'var(--planner-text-main)',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              padding: '4px 10px',
+                              fontWeight: 600,
+                              cursor: 'pointer'
+                            }}
+                            onClick={() => onUpdateChapterStatus(chapter.id, 2)}
+                            title="Mark chapter complete"
+                            aria-label={`Mark chapter ${chapter.name} complete`}
+                          >
+                            <Check size={13} color="var(--planner-mint)" />
+                            <span>Mark complete</span>
+                          </button>
+                        )}
                         <button
                           type="button"
                           className={`status-cycle-btn ${statusBtnClasses[status]}`}

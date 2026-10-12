@@ -16,6 +16,8 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import {
+  getDashboardSummary,
+  renameDocument,
   getPlannerOverview,
   updateChapterProgress,
   updateChapterMeta,
@@ -90,18 +92,36 @@ export default function StudentDashboard({ onToast = () => {} }) {
     }
   }, [isAuthenticated, authLoading, user, navigate, openAuthModal]);
 
-  // Load planner overview
+  // Load unified dashboard summary (one source of truth)
   const loadOverview = useCallback(async (subId = null) => {
     try {
       setLoading(true);
-      const data = await getPlannerOverview(subId);
+      const data = await getDashboardSummary({
+        subjectId: subId || selectedSubjectId,
+        days,
+        orderMode,
+        scopeChapterId,
+        chapterForRelations: relationsChapterId
+      });
       setOverview(data);
 
       if (data?.subject) {
         setSelectedSubjectId(data.subject.id);
       }
-      if (data?.books?.length > 0 && !activeBookId) {
-        setActiveBookId(data.books[0].id);
+      if (data?.books?.length > 0) {
+        if (!activeBookId || !data.books.some((b) => b.id === activeBookId)) {
+          setActiveBookId(data.books[0].id);
+        }
+      } else {
+        setActiveBookId(null);
+      }
+
+      if (data?.route) {
+        setPreviewRoute(data.route);
+      }
+
+      if (data?.selected_chapter_id && !relationsChapterId) {
+        setRelationsChapterId(data.selected_chapter_id);
       }
 
       // If there's an active plan, set initial planner controls to match
@@ -111,15 +131,20 @@ export default function StudentDashboard({ onToast = () => {} }) {
         setScopeChapterId(data.active_plan.scope_chapter_id || '');
       }
     } catch (err) {
-      console.error('Failed to load planner overview:', err);
-      onToast({
-        type: 'error',
-        message: err.message || 'Could not load study planner'
-      });
+      console.error('Failed to load dashboard summary:', err);
+      try {
+        const fallbackData = await getPlannerOverview(subId);
+        setOverview(fallbackData);
+      } catch (fallbackErr) {
+        onToast({
+          type: 'error',
+          message: err.message || 'Could not load study planner'
+        });
+      }
     } finally {
       setLoading(false);
     }
-  }, [activeBookId, onToast]);
+  }, [activeBookId, selectedSubjectId, days, orderMode, scopeChapterId, relationsChapterId, onToast]);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -270,8 +295,21 @@ export default function StudentDashboard({ onToast = () => {} }) {
     }
   };
 
-  const handleRenameDocument = (docId, newTitle) => {
-    setActiveDocData((prev) => (prev ? { ...prev, filename: newTitle } : prev));
+  const handleRenameDocument = async (docId, newTitle) => {
+    try {
+      await renameDocument(docId, newTitle);
+      setActiveDocData((prev) => (prev ? { ...prev, filename: newTitle } : prev));
+      loadOverview(selectedSubjectId);
+      onToast({
+        type: 'success',
+        message: 'Document title updated'
+      });
+    } catch (err) {
+      onToast({
+        type: 'error',
+        message: err.message || 'Failed to rename document'
+      });
+    }
   };
 
   // All chapters across books in selected subject
@@ -465,15 +503,23 @@ export default function StudentDashboard({ onToast = () => {} }) {
 
   // One line status message
   const statusLineMessage = useMemo(() => {
+    if (overview?.status_line) {
+      return overview.status_line;
+    }
     if (activePlan) {
       const todayIdx = planStatus?.today_index || 1;
       const todayDayItem = activePlan.route?.find((d) => d.day_index === todayIdx);
       const chNames = todayDayItem?.items?.map((it) => it.chapter).join(', ') || 'Review session';
-      return `Day ${todayIdx} of your ${activePlan.days}-day plan. Today: ${chNames}`;
+      const daysLeft = Math.max(1, (planStatus?.days_left ?? activePlan.days));
+      const dailyPace = (stats.study_time_left / daysLeft).toFixed(1);
+      return `Day ${todayIdx} of your ${activePlan.days}-day plan (${dailyPace}h/day needed). Today: ${chNames}`;
     }
-    const subName = overview?.subject?.name || 'this subject';
-    return `You have ${stats.study_time_left}h left in ${subName}. Choose a deadline to begin.`;
-  }, [activePlan, planStatus, overview?.subject?.name, stats.study_time_left]);
+    const subName = overview?.subject?.name || 'Core Curriculum';
+    if (stats.study_time_left > 0) {
+      return `${stats.study_time_left}h of study material in ${subName}. Choose a deadline to start your plan.`;
+    }
+    return `You have 0h left in ${subName}. Choose a deadline to begin.`;
+  }, [overview?.status_line, activePlan, planStatus, overview?.subject?.name, stats.study_time_left]);
 
   const displayRoute = activePlan?.route || previewRoute || [];
 

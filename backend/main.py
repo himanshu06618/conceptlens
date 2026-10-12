@@ -22,6 +22,7 @@ if str(backend_dir.parent) not in sys.path:
     sys.path.insert(0, str(backend_dir.parent))
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks, Query, Request, Response, Depends
+from pydantic import BaseModel, Field
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
 from slowapi.errors import RateLimitExceeded
@@ -51,7 +52,8 @@ try:
         get_document_flowchart_cache,
         document_exists,
         find_completed_document_by_hash,
-        clone_cached_document
+        clone_cached_document,
+        rename_document_by_id
     )
     from backend.models import (
         DocumentItem,
@@ -70,6 +72,13 @@ try:
     from backend.routers.planner import router as planner_router
     from backend.routers.notes import router as notes_router
     from backend.services.notes_db import init_notes_db
+    from backend.services.planner_db import (
+        init_planner_db,
+        backfill_unlinked_documents,
+        link_document_to_curriculum,
+        ensure_default_subject_and_chapters_for_user,
+        get_dashboard_summary_data
+    )
     from backend.services.topic_relations import process_document_chapters_and_relations
     from backend.services.file_reader import (
         read_document_file,
@@ -112,7 +121,8 @@ except ImportError:
         get_document_flowchart_cache,
         document_exists,
         find_completed_document_by_hash,
-        clone_cached_document
+        clone_cached_document,
+        rename_document_by_id
     )
     from models import (
         DocumentItem,
@@ -131,6 +141,13 @@ except ImportError:
     from routers.planner import router as planner_router
     from routers.notes import router as notes_router
     from services.notes_db import init_notes_db
+    from services.planner_db import (
+        init_planner_db,
+        backfill_unlinked_documents,
+        link_document_to_curriculum,
+        ensure_default_subject_and_chapters_for_user,
+        get_dashboard_summary_data
+    )
     from services.topic_relations import process_document_chapters_and_relations
     from services.file_reader import (
         read_document_file,
@@ -181,6 +198,14 @@ async def lifespan(app: FastAPI):
         init_notes_db()
     except Exception as e:
         logger.warning(f"Notes DB initialization warning: {e}")
+
+    try:
+        init_planner_db()
+        backfilled = backfill_unlinked_documents()
+        if backfilled > 0:
+            logger.info(f"Startup backfill: linked {backfilled} earlier documents to Core Curriculum.")
+    except Exception as e:
+        logger.warning(f"Planner DB initialization / backfill warning: {e}")
 
     gemini_key_set = bool(os.getenv("GEMINI_API_KEY", "").strip())
     gemini_valid, gemini_msg = check_gemini_key_valid()
@@ -534,32 +559,17 @@ async def upload_document(
     # Check database cache for instant return
     cached_doc = find_completed_document_by_hash(file_hash, user_id=actor["id"])
     if cached_doc:
-        logger.info(f"Cache HIT for hash {file_hash[:12]}... (source doc {cached_doc['id']})")
-        doc_id = str(uuid.uuid4())
-        actor_upload_dir = UPLOAD_DIR / actor["id"]
-        actor_upload_dir.mkdir(parents=True, exist_ok=True)
-        save_path = actor_upload_dir / f"{doc_id}_{safe_filename}"
-        with open(save_path, "wb") as f:
-            f.write(content)
-
-        create_document(
-            user_id=actor["id"],
-            doc_id=doc_id,
-            filename=safe_filename,
-            file_type=ext.lstrip("."),
-            status="completed",
-            stage="completed",
-            file_hash=file_hash
-        )
-        clone_cached_document(cached_doc["id"], doc_id)
-        try:
-            process_document_chapters_and_relations(doc_id)
-        except Exception as e_ch:
-            logger.warning(f"Could not build chapter relations for cached document {doc_id}: {e_ch}")
+        logger.info(f"Cache HIT for hash {file_hash[:12]}... (doc {cached_doc['id']})")
+        doc_id = cached_doc["id"]
+        if actor["is_authenticated"]:
+            try:
+                link_document_to_curriculum(doc_id, actor["id"])
+            except Exception as e_link:
+                logger.warning(f"Could not link cached document {doc_id} to curriculum: {e_link}")
 
         return UploadResponse(
             id=doc_id,
-            filename=safe_filename,
+            filename=cached_doc.get("filename", safe_filename),
             file_type=ext.lstrip("."),
             status="completed",
             stage="completed",
@@ -575,6 +585,14 @@ async def upload_document(
     with open(save_path, "wb") as f:
         f.write(content)
 
+    # For authenticated users, ensure default Core Curriculum subject exists
+    subject_id = None
+    if actor["is_authenticated"]:
+        try:
+            subject_id = ensure_default_subject_and_chapters_for_user(actor["id"])
+        except Exception as e_sub:
+            logger.warning(f"Could not prepare default subject for user {actor['id']}: {e_sub}")
+
     # Create document row in database tied to actor["id"] and file_hash
     create_document(
         user_id=actor["id"],
@@ -583,7 +601,8 @@ async def upload_document(
         file_type=ext.lstrip("."),
         status="processing",
         stage="reading",
-        file_hash=file_hash
+        file_hash=file_hash,
+        subject_id=subject_id
     )
 
     prefer_cloud = True
@@ -797,6 +816,43 @@ def delete_document(
         raise HTTPException(status_code=500, detail="Failed to delete document from database.")
 
     return {"success": True, "message": f"Document '{filename}' and all its extracted concepts were removed."}
+
+class DocumentRenameRequest(BaseModel):
+    filename: str = Field(..., min_length=1, max_length=255)
+
+@app.patch("/api/documents/{doc_id}")
+@app.patch("/documents/{doc_id}")
+async def rename_document(
+    doc_id: str,
+    req: DocumentRenameRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    clean_name = req.filename.strip()
+    if not clean_name:
+        raise HTTPException(status_code=400, detail="Filename cannot be empty.")
+    success = rename_document_by_id(current_user["id"], doc_id, clean_name)
+    if not success:
+        raise HTTPException(status_code=404, detail="Document not found or cannot be renamed.")
+    doc = get_document_by_id(user_id=current_user["id"], doc_id=doc_id)
+    return {"success": True, "filename": clean_name, "document": doc}
+
+@app.get("/dashboard/summary")
+async def root_dashboard_summary_endpoint(
+    subject_id: Optional[str] = Query(default=None),
+    days: int = Query(default=7),
+    order_mode: str = Query(default="syllabus"),
+    scope_chapter_id: Optional[str] = Query(default=None),
+    chapter_for_relations: Optional[str] = Query(default=None),
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    return get_dashboard_summary_data(
+        user_id=current_user["id"],
+        subject_id=subject_id,
+        days=days,
+        order_mode=order_mode,
+        scope_chapter_id=scope_chapter_id,
+        chapter_for_relations=chapter_for_relations
+    )
 
 @app.get("/api/documents/{doc_id}/export")
 @app.get("/documents/{doc_id}/export")

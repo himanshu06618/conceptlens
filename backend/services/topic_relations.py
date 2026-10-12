@@ -267,7 +267,10 @@ def apply_topic_relations_to_db(chapter_id: str, relations_data: Dict[str, Any])
     """
     Saves the extracted clusters and relations into the database for this chapter.
     """
-    from backend.services.planner_db import save_topic_relations
+    try:
+        from backend.services.planner_db import save_topic_relations
+    except ImportError:
+        from services.planner_db import save_topic_relations
     save_topic_relations(
         chapter_id=chapter_id,
         clusters_data=relations_data.get("clusters", []),
@@ -281,11 +284,20 @@ def process_document_chapters_and_relations(doc_id: str) -> None:
     Ensures chapters and topics exist, then extracts clusters & topic relations for each chapter.
     """
     try:
-        from backend.services.planner_db import (
-            get_connection,
-            save_topic_relations,
-            ensure_default_subject_and_chapters_for_user
-        )
+        try:
+            from backend.services.planner_db import (
+                get_connection,
+                save_topic_relations,
+                link_document_to_curriculum,
+                ensure_default_subject_and_chapters_for_user
+            )
+        except ImportError:
+            from services.planner_db import (
+                get_connection,
+                save_topic_relations,
+                link_document_to_curriculum,
+                ensure_default_subject_and_chapters_for_user
+            )
         conn = get_connection()
         try:
             doc_row = conn.execute("SELECT id, user_id FROM documents WHERE id = ?", (doc_id,)).fetchone()
@@ -293,9 +305,7 @@ def process_document_chapters_and_relations(doc_id: str) -> None:
                 return
             user_id = doc_row["user_id"]
             if user_id:
-                user_exists = conn.execute("SELECT 1 FROM users WHERE id = ?", (user_id,)).fetchone()
-                if user_exists:
-                    ensure_default_subject_and_chapters_for_user(user_id)
+                link_document_to_curriculum(doc_id, user_id)
 
             ch_rows = conn.execute("SELECT id, name FROM chapters WHERE book_id = ?", (doc_id,)).fetchall()
             for ch in ch_rows:

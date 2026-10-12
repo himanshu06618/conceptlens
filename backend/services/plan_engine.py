@@ -137,12 +137,53 @@ def build_route(
             ch_copy["remaining_hours"] = rem_h
             active_chapters.append(ch_copy)
 
-    if order_mode == "easy":
-        active_chapters.sort(key=lambda c: (c.get("difficulty", 1), c.get("order_index", 0)))
-    elif order_mode == "hard":
-        active_chapters.sort(key=lambda c: (-c.get("difficulty", 1), c.get("order_index", 0)))
-    else:  # 'syllabus'
-        active_chapters.sort(key=lambda c: c.get("order_index", 0))
+    # Topological chapter sort respecting prerequisite relations (prerequisite before dependent, easier first)
+    if active_chapters:
+        ch_id_set = {c["id"] for c in active_chapters}
+        ch_adj = {c["id"]: [] for c in active_chapters}
+        ch_in_deg = {c["id"]: 0 for c in active_chapters}
+
+        # Check for cross-chapter prerequisite relations from relations map
+        for rel_info in chapter_relations_map.values():
+            if not isinstance(rel_info, dict):
+                continue
+            for edge in rel_info.get("edges", []):
+                if edge.get("type") == "prerequisite":
+                    u_ch = edge.get("from_chapter_id")
+                    v_ch = edge.get("to_chapter_id")
+                    if u_ch in ch_id_set and v_ch in ch_id_set and u_ch != v_ch:
+                        if v_ch not in ch_adj[u_ch]:
+                            ch_adj[u_ch].append(v_ch)
+                            ch_in_deg[v_ch] += 1
+
+        def get_ch_sort_tuple(c):
+            diff = c.get("difficulty", 1)
+            ord_idx = c.get("order_index", 0)
+            if order_mode == "hard":
+                return (-diff, ord_idx)
+            # Easy & syllabus default: prerequisite before dependent, easier first
+            return (diff, ord_idx)
+
+        heap = []
+        ch_map = {c["id"]: c for c in active_chapters}
+        for cid, deg in ch_in_deg.items():
+            if deg == 0:
+                heapq.heappush(heap, (get_ch_sort_tuple(ch_map[cid]), cid))
+
+        sorted_chapters = []
+        while heap:
+            _, cid = heapq.heappop(heap)
+            sorted_chapters.append(ch_map[cid])
+            for nxt_cid in ch_adj[cid]:
+                ch_in_deg[nxt_cid] -= 1
+                if ch_in_deg[nxt_cid] == 0:
+                    heapq.heappush(heap, (get_ch_sort_tuple(ch_map[nxt_cid]), nxt_cid))
+
+        visited_cids = {c["id"] for c in sorted_chapters}
+        unvisited = [c for c in active_chapters if c["id"] not in visited_cids]
+        unvisited.sort(key=get_ch_sort_tuple)
+        sorted_chapters.extend(unvisited)
+        active_chapters = sorted_chapters
 
     total_remaining = sum(c["remaining_hours"] for c in active_chapters)
 

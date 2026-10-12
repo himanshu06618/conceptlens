@@ -354,7 +354,16 @@ class DBConnectionAdapter:
             else:
                 sql = f"INSERT INTO {table} ({m.group(2)}) VALUES ({vals}) ON CONFLICT (id) DO NOTHING"
 
-        # 2. Replace '?' with '%s' outside string literals
+        # 2. Translate SQLite 'INSERT OR IGNORE INTO table (cols) VALUES (vals)' to Postgres ON CONFLICT DO NOTHING
+        ignore_pattern = r"^\s*INSERT\s+OR\s+IGNORE\s+INTO\s+(\w+)\s*\((.*?)\)\s*VALUES\s*\((.*?)\)"
+        m_ignore = re.match(ignore_pattern, sql, re.IGNORECASE | re.DOTALL)
+        if m_ignore:
+            table = m_ignore.group(1)
+            cols = m_ignore.group(2)
+            vals = m_ignore.group(3)
+            sql = f"INSERT INTO {table} ({cols}) VALUES ({vals}) ON CONFLICT DO NOTHING"
+
+        # 3. Replace '?' with '%s' outside string literals
         in_quote = False
         quote_char = ''
         out = []
@@ -997,7 +1006,8 @@ def create_document(
     file_type: str,
     status: str = "processing",
     stage: str = "reading",
-    file_hash: Optional[str] = None
+    file_hash: Optional[str] = None,
+    subject_id: Optional[str] = None
 ) -> Dict[str, Any]:
     created_at = datetime.now(timezone.utc).isoformat()
     conn = get_connection()
@@ -1006,16 +1016,17 @@ def create_document(
             conn.execute(
                 """
                 INSERT INTO documents (
-                    id, user_id, filename, file_type, status, stage, page_count, raw_text,
+                    id, user_id, subject_id, filename, file_type, status, stage, page_count, raw_text,
                     progress, stage_message, ocr_current_page, ocr_total_pages, file_hash, created_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, 1, '', 5, 'Initializing document analysis...', 0, 0, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 1, '', 5, 'Initializing document analysis...', 0, 0, ?, ?)
                 """,
-                (doc_id, user_id, filename, file_type, status, stage, file_hash, created_at)
+                (doc_id, user_id, subject_id, filename, file_type, status, stage, file_hash, created_at)
             )
         return {
             "id": doc_id,
             "user_id": user_id,
+            "subject_id": subject_id,
             "filename": filename,
             "file_type": file_type,
             "status": status,
@@ -1173,11 +1184,82 @@ def get_document_by_id(user_id: str, doc_id: str) -> Optional[Dict[str, Any]]:
         conn.close()
 
 def delete_document_by_id(user_id: str, doc_id: str) -> bool:
-    """Deletes document strictly matching user_id."""
+    """Deletes document strictly matching user_id, along with its chapters, topics, progress, and relations."""
     conn = get_connection()
     try:
         with conn:
+            # 1. Verify ownership
+            doc = conn.execute("SELECT id, subject_id FROM documents WHERE id = ? AND user_id = ?", (doc_id, user_id)).fetchone()
+            if not doc:
+                return False
+
+            # 2. Get chapter IDs for this document
+            ch_rows = conn.execute("SELECT id FROM chapters WHERE book_id = ?", (doc_id,)).fetchall()
+            ch_ids = [r["id"] for r in ch_rows]
+
+            if ch_ids:
+                # Get topic IDs for these chapters
+                t_rows = conn.execute(
+                    "SELECT id FROM topics WHERE chapter_id IN ({seq})".format(seq=",".join("?" * len(ch_ids))),
+                    ch_ids
+                ).fetchall()
+                t_ids = [r["id"] for r in t_rows]
+
+                if t_ids:
+                    # Delete topic relations
+                    conn.execute(
+                        "DELETE FROM topic_relations WHERE from_topic_id IN ({seq}) OR to_topic_id IN ({seq})".format(seq=",".join("?" * len(t_ids))),
+                        t_ids + t_ids
+                    )
+                    # Delete topics
+                    conn.execute(
+                        "DELETE FROM topics WHERE id IN ({seq})".format(seq=",".join("?" * len(t_ids))),
+                        t_ids
+                    )
+
+                # Delete chapter progress
+                conn.execute(
+                    "DELETE FROM chapter_progress WHERE chapter_id IN ({seq})".format(seq=",".join("?" * len(ch_ids))),
+                    ch_ids
+                )
+                # Delete chapters
+                conn.execute("DELETE FROM chapters WHERE book_id = ?", (doc_id,))
+
+            # 3. Delete relations and concepts
+            conn.execute("DELETE FROM relations WHERE document_id = ?", (doc_id,))
+            conn.execute("DELETE FROM concepts WHERE document_id = ?", (doc_id,))
+
+            # 4. Nullify scope_chapter_id in study plans if pointing to a deleted chapter
+            if ch_ids:
+                conn.execute(
+                    "UPDATE study_plans SET scope_chapter_id = NULL WHERE user_id = ? AND scope_chapter_id IN ({seq})".format(seq=",".join("?" * len(ch_ids))),
+                    [user_id] + ch_ids
+                )
+
+            # 5. Delete document
             cursor = conn.execute("DELETE FROM documents WHERE id = ? AND user_id = ?", (doc_id, user_id))
+            return cursor.rowcount > 0
+    finally:
+        conn.close()
+
+def rename_document_by_id(user_id: str, doc_id: str, new_filename: str) -> bool:
+    """Renames document strictly matching user_id."""
+    clean_title = (new_filename or "").strip()
+    if not clean_title:
+        return False
+    conn = get_connection()
+    try:
+        with conn:
+            cursor = conn.execute(
+                "UPDATE documents SET filename = ? WHERE id = ? AND user_id = ?",
+                (clean_title, doc_id, user_id)
+            )
+            # If chapter name was derived from old filename or default, update it as well
+            stem_title = Path(clean_title).stem.replace("_", " ").title()
+            conn.execute(
+                "UPDATE chapters SET name = ? WHERE book_id = ? AND (order_index = 1 OR order_index = 0)",
+                (stem_title, doc_id)
+            )
             return cursor.rowcount > 0
     finally:
         conn.close()

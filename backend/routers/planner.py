@@ -46,6 +46,7 @@ try:
         update_reminder,
         delete_reminder,
         get_connection,
+        get_dashboard_summary_data,
     )
     from backend.services.plan_engine import (
         build_route,
@@ -82,6 +83,7 @@ except ImportError:
         update_reminder,
         delete_reminder,
         get_connection,
+        get_dashboard_summary_data,
     )
     from services.plan_engine import (
         build_route,
@@ -215,6 +217,32 @@ async def get_planner_overview(
         "active_plan": active_plan,
         "plan_status": plan_status_info
     }
+
+
+# ==================== Unified Dashboard Summary ====================
+
+@router.get("/dashboard/summary")
+async def get_dashboard_summary_endpoint(
+    subject_id: Optional[str] = Query(default=None),
+    days: int = Query(default=7),
+    order_mode: str = Query(default="syllabus"),
+    scope_chapter_id: Optional[str] = Query(default=None),
+    chapter_for_relations: Optional[str] = Query(default=None),
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """
+    Unified source of truth endpoint for the student dashboard.
+    Returns the 4 stat values, status line, notes analysis & chapters,
+    active plan status (daily pace), study route planner, and related topics clusters.
+    """
+    return get_dashboard_summary_data(
+        user_id=current_user["id"],
+        subject_id=subject_id,
+        days=days,
+        order_mode=order_mode,
+        scope_chapter_id=scope_chapter_id,
+        chapter_for_relations=chapter_for_relations
+    )
 
 
 # ==================== Chapter Progress & Meta ====================

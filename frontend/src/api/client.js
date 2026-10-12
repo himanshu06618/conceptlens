@@ -396,6 +396,41 @@ export async function checkUsernameAvailability(username) {
 
 // ==================== Study Planner API ====================
 
+export async function getDashboardSummary({
+  subjectId = null,
+  days = 7,
+  orderMode = 'syllabus',
+  scopeChapterId = null,
+  chapterForRelations = null
+} = {}) {
+  const params = new URLSearchParams();
+  if (subjectId) params.append('subject_id', subjectId);
+  if (days) params.append('days', String(days));
+  if (orderMode) params.append('order_mode', orderMode);
+  if (scopeChapterId) params.append('scope_chapter_id', scopeChapterId);
+  if (chapterForRelations) params.append('chapter_for_relations', chapterForRelations);
+
+  const query = params.toString() ? `?${params.toString()}` : '';
+  const res = await apiFetch(`/dashboard/summary${query}`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Failed to load dashboard summary');
+  }
+  return res.json();
+}
+
+export async function renameDocument(docId, newFilename) {
+  const res = await apiFetch(`/documents/${encodeURIComponent(docId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ filename: newFilename }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Failed to rename document');
+  }
+  return res.json();
+}
+
 export async function getPlannerOverview(subjectId = null) {
   const query = subjectId ? `?subject_id=${encodeURIComponent(subjectId)}` : '';
   const res = await apiFetch(`/planner/overview${query}`);

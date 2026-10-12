@@ -1,14 +1,22 @@
 import os
 import json
 import uuid
-from datetime import datetime, timezone
-from typing import Optional, List, Dict, Any
+import logging
+from datetime import datetime, timezone, date
+from typing import Optional, List, Dict, Any, Tuple, Set
 from pathlib import Path
+
+logger = logging.getLogger("conceptlens.planner.db")
 
 try:
     from backend.database import get_connection, is_postgres
 except ImportError:
     from database import get_connection, is_postgres
+
+try:
+    from backend.services.plan_engine import build_route, remaining_hours, calculate_plan_status
+except ImportError:
+    from services.plan_engine import build_route, remaining_hours, calculate_plan_status
 
 def calc_default_est_hours(concept_count: int, difficulty: int = 1) -> float:
     """
@@ -21,6 +29,26 @@ def calc_default_est_hours(concept_count: int, difficulty: int = 1) -> float:
         return 1.0
     raw = (concept_count * minutes) / 60.0
     return max(0.5, round(raw, 1))
+
+def derive_chapter_difficulty(concept_count: int, avg_importance: float = 2.0, prereq_links_count: int = 0) -> int:
+    """
+    Derives chapter difficulty (0=Easy, 1=Medium, 2=Hard) from:
+    - concept_count (normalized against baseline 15)
+    - avg_importance (scale 1-3 or 1-5, normalized against baseline 2.5)
+    - prereq_links_count (normalized against baseline 8)
+    """
+    if concept_count <= 0:
+        return 0
+    c_weight = (concept_count / 15.0) * 0.4
+    i_weight = (avg_importance / 2.5) * 0.35
+    p_weight = (prereq_links_count / 8.0) * 0.25
+    score = c_weight + i_weight + p_weight
+
+    if score < 0.85:
+        return 0  # Easy
+    elif score > 1.35:
+        return 2  # Hard
+    return 1  # Medium
 
 def init_planner_db() -> None:
     """Initializes Study Planner tables and applies safe schema migrations."""
@@ -221,19 +249,303 @@ def init_planner_db() -> None:
     finally:
         conn.close()
 
+def link_document_to_curriculum(doc_id: str, user_id: str) -> bool:
+    """
+    Links an extracted document to the user's Core Curriculum and persists its
+    chapters, topics, relations, and progress rows idempotently.
+    Safe to run multiple times without duplicate chapters, topics, or counts.
+    Outputs Task 10 log line: counts only (doc id, chapters, concepts).
+    """
+    if not doc_id or not user_id:
+        return False
+
+    conn = get_connection()
+    now_iso = datetime.now(timezone.utc).isoformat()
+    try:
+        with conn:
+            # 1. Fetch document and verify / assign user ownership
+            doc_row = conn.execute(
+                "SELECT id, user_id, subject_id, filename, created_at FROM documents WHERE id = ?",
+                (doc_id,)
+            ).fetchone()
+            if not doc_row:
+                return False
+
+            doc = dict(doc_row)
+            if doc.get("user_id") != user_id:
+                if not doc.get("user_id"):
+                    conn.execute("UPDATE documents SET user_id = ? WHERE id = ?", (user_id, doc_id))
+                    doc["user_id"] = user_id
+                else:
+                    return False
+
+            # Verify that the user exists in users table (subjects has FK constraint on users.id)
+            user_exists = conn.execute("SELECT id FROM users WHERE id = ?", (user_id,)).fetchone()
+            if not user_exists:
+                return False
+
+            # 2. Ensure default "Core Curriculum" subject exists for this user
+            sub_row = conn.execute(
+                "SELECT id FROM subjects WHERE user_id = ? ORDER BY (CASE WHEN name = 'Core Curriculum' THEN 0 ELSE 1 END), created_at ASC LIMIT 1",
+                (user_id,)
+            ).fetchone()
+            if sub_row:
+                subject_id = sub_row["id"]
+            else:
+                subject_id = str(uuid.uuid4())
+                conn.execute(
+                    "INSERT INTO subjects (id, user_id, name, code, created_at) VALUES (?, ?, ?, ?, ?)",
+                    (subject_id, user_id, "Core Curriculum", "CC-101", now_iso)
+                )
+
+            # Link document to subject
+            if doc.get("subject_id") != subject_id:
+                conn.execute("UPDATE documents SET subject_id = ? WHERE id = ?", (subject_id, doc_id))
+
+            # 3. Check existing chapters for this document
+            existing_ch_cnt = conn.execute(
+                "SELECT COUNT(*) as cnt FROM chapters WHERE book_id = ?",
+                (doc_id,)
+            ).fetchone()["cnt"]
+
+            concept_cnt = conn.execute(
+                "SELECT COUNT(*) as cnt FROM concepts WHERE document_id = ?",
+                (doc_id,)
+            ).fetchone()["cnt"]
+
+            if existing_ch_cnt > 0:
+                # Ensure chapter_progress records exist for all chapters
+                chs = conn.execute("SELECT id FROM chapters WHERE book_id = ?", (doc_id,)).fetchall()
+                for ch in chs:
+                    conn.execute(
+                        """
+                        INSERT INTO chapter_progress (user_id, chapter_id, status, updated_at)
+                        VALUES (?, ?, 0, ?)
+                        ON CONFLICT (user_id, chapter_id) DO NOTHING
+                        """,
+                        (user_id, ch["id"], now_iso)
+                    )
+                # Task 10 log line: counts only (doc id, chapters, concepts)
+                logger.info(f"[CurriculumLink] doc_id={doc_id} chapters={existing_ch_cnt} concepts={concept_cnt}")
+                print(f"[CurriculumLink] doc_id={doc_id} chapters={existing_ch_cnt} concepts={concept_cnt}")
+                return True
+
+            if concept_cnt == 0:
+                logger.info(f"[CurriculumLink] doc_id={doc_id} chapters=0 concepts=0 (no concepts)")
+                print(f"[CurriculumLink] doc_id={doc_id} chapters=0 concepts=0 (no concepts)")
+                return False
+
+            # 4. Synthesize chapters from concepts
+            topic_rows = conn.execute(
+                """
+                SELECT topic, COUNT(*) as c_count, AVG(importance) as avg_imp, MIN(page) as min_page
+                FROM concepts
+                WHERE document_id = ?
+                GROUP BY topic
+                ORDER BY min_page ASC, c_count DESC
+                """,
+                (doc_id,)
+            ).fetchall()
+
+            concept_name_to_topic_id = {}
+            created_chapters_count = 0
+
+            # Count total prerequisite relations for document
+            total_prereqs = conn.execute(
+                """
+                SELECT COUNT(*) as cnt FROM relations r
+                JOIN concepts c ON r.concept_id = c.id
+                WHERE c.document_id = ? AND r.relation_type = 'prerequisite'
+                """,
+                (doc_id,)
+            ).fetchone()["cnt"]
+
+            if topic_rows and len(topic_rows) > 1:
+                # Multiple topics -> each topic is a chapter
+                for idx, tr in enumerate(topic_rows):
+                    t_name = (tr["topic"] or f"Unit {idx + 1}").strip()
+                    c_count = tr["c_count"]
+                    avg_imp = float(tr["avg_imp"] or 2.0)
+                    ch_id = str(uuid.uuid4())
+
+                    topic_prereqs = conn.execute(
+                        """
+                        SELECT COUNT(*) as cnt FROM relations r
+                        JOIN concepts c ON r.concept_id = c.id
+                        WHERE c.document_id = ? AND c.topic = ? AND r.relation_type = 'prerequisite'
+                        """,
+                        (doc_id, tr["topic"])
+                    ).fetchone()["cnt"]
+
+                    difficulty = derive_chapter_difficulty(c_count, avg_imp, topic_prereqs)
+                    est_hours = calc_default_est_hours(c_count, difficulty)
+
+                    conn.execute(
+                        """
+                        INSERT INTO chapters (id, book_id, name, order_index, concept_count, difficulty, est_hours, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (ch_id, doc_id, t_name, idx + 1, c_count, difficulty, est_hours, doc["created_at"] or now_iso)
+                    )
+                    created_chapters_count += 1
+
+                    concepts = conn.execute(
+                        "SELECT id, name FROM concepts WHERE document_id = ? AND topic = ? ORDER BY page ASC, flow_order ASC, id ASC",
+                        (doc_id, tr["topic"])
+                    ).fetchall()
+                    for t_idx, c in enumerate(concepts):
+                        cluster_idx = (t_idx // 4) + 1
+                        c_cursor = conn.execute(
+                            """
+                            INSERT INTO topics (chapter_id, order_index, name, cluster_id, cluster_name)
+                            VALUES (?, ?, ?, ?, ?)
+                            """,
+                            (ch_id, t_idx + 1, c["name"], f"c{cluster_idx}", f"Cluster {cluster_idx}")
+                        )
+                        tid = getattr(c_cursor, "lastrowid", None)
+                        if tid:
+                            concept_name_to_topic_id[c["name"].strip().lower()] = tid
+
+                    conn.execute(
+                        """
+                        INSERT INTO chapter_progress (user_id, chapter_id, status, updated_at)
+                        VALUES (?, ?, 0, ?)
+                        ON CONFLICT (user_id, chapter_id) DO NOTHING
+                        """,
+                        (user_id, ch_id, now_iso)
+                    )
+            else:
+                # Single topic / General
+                ch_name = Path(doc["filename"]).stem.replace("_", " ").title()
+                ch_id = str(uuid.uuid4())
+                avg_imp_row = conn.execute(
+                    "SELECT AVG(importance) as avg_imp FROM concepts WHERE document_id = ?",
+                    (doc_id,)
+                ).fetchone()
+                avg_imp = float(avg_imp_row["avg_imp"] or 2.0) if avg_imp_row else 2.0
+                difficulty = derive_chapter_difficulty(concept_cnt, avg_imp, total_prereqs)
+                est_hours = calc_default_est_hours(concept_cnt, difficulty)
+
+                conn.execute(
+                    """
+                    INSERT INTO chapters (id, book_id, name, order_index, concept_count, difficulty, est_hours, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (ch_id, doc_id, ch_name or "Chapter 1: Foundations", 1, concept_cnt, difficulty, est_hours, doc["created_at"] or now_iso)
+                )
+                created_chapters_count += 1
+
+                concepts = conn.execute(
+                    "SELECT id, name FROM concepts WHERE document_id = ? ORDER BY page ASC, flow_order ASC, id ASC",
+                    (doc_id,)
+                ).fetchall()
+                for t_idx, c in enumerate(concepts):
+                    cluster_idx = (t_idx // 4) + 1
+                    c_cursor = conn.execute(
+                        """
+                        INSERT INTO topics (chapter_id, order_index, name, cluster_id, cluster_name)
+                        VALUES (?, ?, ?, ?, ?)
+                        """,
+                        (ch_id, t_idx + 1, c["name"], f"c{cluster_idx}", f"Cluster {cluster_idx}")
+                    )
+                    tid = getattr(c_cursor, "lastrowid", None)
+                    if tid:
+                        concept_name_to_topic_id[c["name"].strip().lower()] = tid
+
+                conn.execute(
+                    """
+                    INSERT INTO chapter_progress (user_id, chapter_id, status, updated_at)
+                    VALUES (?, ?, 0, ?)
+                    ON CONFLICT (user_id, chapter_id) DO NOTHING
+                    """,
+                    (user_id, ch_id, now_iso)
+                )
+
+            # 5. Populate topic_relations from relations table
+            rel_rows = conn.execute(
+                """
+                SELECT c.name as from_name, r.related_name as to_name, r.relation_type
+                FROM relations r
+                JOIN concepts c ON r.concept_id = c.id
+                WHERE r.document_id = ?
+                """,
+                (doc_id,)
+            ).fetchall()
+
+            for r in rel_rows:
+                from_key = (r["from_name"] or "").strip().lower()
+                to_key = (r["to_name"] or "").strip().lower()
+                r_type = r["relation_type"] if r["relation_type"] in ("prerequisite", "related") else "related"
+                f_id = concept_name_to_topic_id.get(from_key)
+                t_id = concept_name_to_topic_id.get(to_key)
+                if f_id and t_id and f_id != t_id:
+                    if r_type == "related" and f_id > t_id:
+                        f_id, t_id = t_id, f_id
+                    conn.execute(
+                        """
+                        INSERT INTO topic_relations (from_topic_id, to_topic_id, type)
+                        VALUES (?, ?, ?)
+                        ON CONFLICT (from_topic_id, to_topic_id, type) DO NOTHING
+                        """,
+                        (f_id, t_id, r_type)
+                    )
+
+            # Update document concept_count and chapter_count
+            conn.execute(
+                "UPDATE documents SET concept_count = ?, chapter_count = ? WHERE id = ?",
+                (concept_cnt, created_chapters_count, doc_id)
+            )
+
+            # Task 10 log line: counts only (doc id, chapters, concepts)
+            logger.info(f"[CurriculumLink] doc_id={doc_id} chapters={created_chapters_count} concepts={concept_cnt}")
+            print(f"[CurriculumLink] doc_id={doc_id} chapters={created_chapters_count} concepts={concept_cnt}")
+            return True
+    finally:
+        conn.close()
+
+def backfill_unlinked_documents() -> int:
+    """
+    Idempotent routine linking documents extracted before this fix (e.g. Lecture_3_Sorting.pdf)
+    to each owner's Core Curriculum and creating missing chapter, topic, and progress rows.
+    Safe to run twice and never touches other users' data.
+    """
+    conn = get_connection()
+    linked_count = 0
+    try:
+        docs = conn.execute(
+            """
+            SELECT d.id, d.user_id, d.filename, d.subject_id, d.status
+            FROM documents d
+            JOIN users u ON d.user_id = u.id
+            WHERE d.status = 'completed' AND d.user_id IS NOT NULL AND d.user_id != ''
+            """
+        ).fetchall()
+        for doc in docs:
+            doc_id = doc["id"]
+            user_id = doc["user_id"]
+            ch_count = conn.execute("SELECT COUNT(*) as cnt FROM chapters WHERE book_id = ?", (doc_id,)).fetchone()["cnt"]
+            if not doc["subject_id"] or ch_count == 0:
+                success = link_document_to_curriculum(doc_id, user_id)
+                if success:
+                    linked_count += 1
+        return linked_count
+    finally:
+        conn.close()
+
 def ensure_default_subject_and_chapters_for_user(user_id: str) -> str:
     """
-    Ensures the user has at least one subject.
-    If the user has uploaded documents (books) without chapters,
-    synthesizes chapters from the concepts/topics for a seamless experience.
+    Ensures the user has at least one subject (Core Curriculum) and that all
+    documents owned by the user are properly linked to it with chapters and progress.
     Returns the active subject_id.
     """
     conn = get_connection()
     now_iso = datetime.now(timezone.utc).isoformat()
     try:
         with conn:
-            # Check existing subjects for user
-            cursor = conn.execute("SELECT id FROM subjects WHERE user_id = ? ORDER BY created_at ASC LIMIT 1", (user_id,))
+            cursor = conn.execute(
+                "SELECT id FROM subjects WHERE user_id = ? ORDER BY (CASE WHEN name = 'Core Curriculum' THEN 0 ELSE 1 END), created_at ASC LIMIT 1",
+                (user_id,)
+            )
             row = cursor.fetchone()
             if row:
                 subject_id = row["id"]
@@ -244,117 +556,20 @@ def ensure_default_subject_and_chapters_for_user(user_id: str) -> str:
                     (subject_id, user_id, "Core Curriculum", "CC-101", now_iso)
                 )
 
-            # Link any documents owned by user without a subject_id
+            # Link any documents owned by user without subject_id
             conn.execute(
                 "UPDATE documents SET subject_id = ? WHERE user_id = ? AND (subject_id IS NULL OR subject_id = '')",
                 (subject_id, user_id)
             )
 
-            # For every document in this subject, ensure chapters exist
+            # Link all completed documents owned by user to this subject
             docs = conn.execute(
-                "SELECT id, filename, created_at FROM documents WHERE subject_id = ?",
-                (subject_id,)
+                "SELECT id FROM documents WHERE user_id = ? AND status = 'completed'",
+                (user_id,)
             ).fetchall()
 
-            for doc in docs:
-                doc_id = doc["id"]
-                # Check if chapters already exist for this book
-                ch_count = conn.execute(
-                    "SELECT COUNT(*) as cnt FROM chapters WHERE book_id = ?",
-                    (doc_id,)
-                ).fetchone()["cnt"]
-
-                if ch_count == 0:
-                    # Synthesize chapters from concepts
-                    # Look at distinct topics in concepts for this document
-                    topic_rows = conn.execute(
-                        """
-                        SELECT topic, COUNT(*) as c_count, MIN(page) as min_page
-                        FROM concepts
-                        WHERE document_id = ?
-                        GROUP BY topic
-                        ORDER BY min_page ASC, c_count DESC
-                        """,
-                        (doc_id,)
-                    ).fetchall()
-
-                    if topic_rows and len(topic_rows) > 1:
-                        # Multiple topics -> each topic is a chapter
-                        for idx, tr in enumerate(topic_rows):
-                            t_name = tr["topic"] or f"Unit {idx + 1}"
-                            c_count = tr["c_count"]
-                            ch_id = str(uuid.uuid4())
-                            difficulty = 1
-                            est_hours = calc_default_est_hours(c_count, difficulty)
-                            conn.execute(
-                                """
-                                INSERT INTO chapters (id, book_id, name, order_index, concept_count, difficulty, est_hours, created_at)
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                                """,
-                                (ch_id, doc_id, t_name, idx + 1, c_count, difficulty, est_hours, doc["created_at"] or now_iso)
-                            )
-                            # Populate topics in this chapter from the concepts
-                            concepts = conn.execute(
-                                "SELECT id, name FROM concepts WHERE document_id = ? AND topic = ? ORDER BY page ASC, flow_order ASC, id ASC",
-                                (doc_id, tr["topic"])
-                            ).fetchall()
-                            for t_idx, c in enumerate(concepts):
-                                conn.execute(
-                                    """
-                                    INSERT INTO topics (chapter_id, order_index, name, cluster_id, cluster_name)
-                                    VALUES (?, ?, ?, ?, ?)
-                                    """,
-                                    (ch_id, t_idx + 1, c["name"], "c1", "Core Concepts")
-                                )
-                    else:
-                        # Single topic or general -> create 1 or 2 structured chapters
-                        total_concepts = conn.execute(
-                            "SELECT COUNT(*) as cnt FROM concepts WHERE document_id = ?",
-                            (doc_id,)
-                        ).fetchone()["cnt"]
-                        ch_name = Path(doc["filename"]).stem.replace("_", " ").title()
-                        ch_id = str(uuid.uuid4())
-                        difficulty = 1
-                        est_hours = calc_default_est_hours(total_concepts, difficulty)
-                        conn.execute(
-                            """
-                            INSERT INTO chapters (id, book_id, name, order_index, concept_count, difficulty, est_hours, created_at)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                            """,
-                            (ch_id, doc_id, ch_name or "Chapter 1: Foundations", 1, total_concepts, difficulty, est_hours, doc["created_at"] or now_iso)
-                        )
-                        concepts = conn.execute(
-                            "SELECT id, name FROM concepts WHERE document_id = ? ORDER BY page ASC, flow_order ASC, id ASC",
-                            (doc_id,)
-                        ).fetchall()
-                        for t_idx, c in enumerate(concepts):
-                            cluster_idx = (t_idx // 4) + 1
-                            conn.execute(
-                                """
-                                INSERT INTO topics (chapter_id, order_index, name, cluster_id, cluster_name)
-                                VALUES (?, ?, ?, ?, ?)
-                                """,
-                                (ch_id, t_idx + 1, c["name"], f"c{cluster_idx}", f"Cluster {cluster_idx}")
-                            )
-
-            # Ensure chapter_progress records exist for all chapters for this user
-            all_chapters = conn.execute(
-                """
-                SELECT c.id FROM chapters c
-                JOIN documents d ON c.book_id = d.id
-                WHERE d.subject_id = ?
-                """,
-                (subject_id,)
-            ).fetchall()
-            for ch in all_chapters:
-                ch_id = ch["id"]
-                conn.execute(
-                    """
-                    INSERT OR IGNORE INTO chapter_progress (user_id, chapter_id, status, updated_at)
-                    VALUES (?, ?, 0, ?)
-                    """,
-                    (user_id, ch_id, now_iso)
-                )
+        for d in docs:
+            link_document_to_curriculum(d["id"], user_id)
 
         return subject_id
     finally:
@@ -447,12 +662,15 @@ def get_subject_overview_data(user_id: str, subject_id: str) -> Dict[str, Any]:
                     rem = ch_dict["est_hours"]
                 remaining_hours += rem
                 ch_dict["remaining_hours"] = rem
+                ch_dict["difficulty_label"] = {0: "Easy", 1: "Medium", 2: "Hard"}.get(ch_dict.get("difficulty", 1), "Medium")
+                ch_dict["completed"] = (st == 2)
 
                 ch_list.append(ch_dict)
                 all_chapters.append(ch_dict)
 
             book_mastery = round((book_done / len(ch_list) * 100)) if ch_list else 0
             b_dict = dict(b)
+            b_dict["name"] = b_dict.get("filename", "")
             b_dict["chapters"] = ch_list
             b_dict["mastery_pct"] = book_mastery
             books.append(b_dict)
@@ -570,18 +788,20 @@ def save_topic_relations(chapter_id: str, clusters_data: List[Dict[str, Any]], e
                         f_id, t_id = t_id, f_id
                     conn.execute(
                         """
-                        INSERT OR IGNORE INTO topic_relations (from_topic_id, to_topic_id, type)
+                        INSERT INTO topic_relations (from_topic_id, to_topic_id, type)
                         VALUES (?, ?, ?)
+                        ON CONFLICT (from_topic_id, to_topic_id, type) DO NOTHING
                         """,
                         (f_id, t_id, edge_type)
                     )
     finally:
         conn.close()
 
-def get_chapter_relations_data(chapter_id: str) -> Dict[str, Any]:
+def get_chapter_relations_data(chapter_id: str, user_id: Optional[str] = None) -> Dict[str, Any]:
     """
     Returns clusters with topics; per topic: prerequisites[], related[], leads_to[]
     and each cluster's 'runs until' topic and next topic.
+    Includes cross-document connections for the same user.
     """
     conn = get_connection()
     try:
@@ -605,7 +825,7 @@ def get_chapter_relations_data(chapter_id: str) -> Dict[str, Any]:
                 "topics": []
             }
 
-        # Fetch relations
+        # Fetch internal relations
         rel_rows = conn.execute(
             """
             SELECT * FROM topic_relations
@@ -634,6 +854,61 @@ def get_chapter_relations_data(chapter_id: str) -> Dict[str, Any]:
                 if t_id in related_map and f_id in topic_map:
                     related_map[t_id].append(topic_map[f_id]["name"])
 
+        # Fetch cross-document relations for the same user if available
+        if not user_id:
+            u_row = conn.execute(
+                "SELECT d.user_id FROM chapters c JOIN documents d ON c.book_id = d.id WHERE c.id = ?",
+                (chapter_id,)
+            ).fetchone()
+            if u_row:
+                user_id = u_row["user_id"]
+
+        if user_id:
+            other_topics = conn.execute(
+                """
+                SELECT t.id, t.name, ch.name as chapter_name
+                FROM topics t
+                JOIN chapters ch ON t.chapter_id = ch.id
+                JOIN documents d ON ch.book_id = d.id
+                WHERE d.user_id = ? AND t.chapter_id != ?
+                """,
+                (user_id, chapter_id)
+            ).fetchall()
+            other_map = {ot["id"]: ot for ot in other_topics}
+            other_ids = list(other_map.keys())
+
+            if other_ids:
+                cross_rels = conn.execute(
+                    """
+                    SELECT tr.* FROM topic_relations tr
+                    WHERE (tr.from_topic_id IN ({s_this}) AND tr.to_topic_id IN ({s_other}))
+                       OR (tr.from_topic_id IN ({s_other}) AND tr.to_topic_id IN ({s_this}))
+                    """.format(
+                        s_this=",".join("?" * len(topic_ids)),
+                        s_other=",".join("?" * len(other_ids))
+                    ),
+                    topic_ids + other_ids + other_ids + topic_ids
+                ).fetchall()
+
+                for cr in cross_rels:
+                    f_id = cr["from_topic_id"]
+                    t_id = cr["to_topic_id"]
+                    r_type = cr["type"]
+                    if f_id in topic_map and t_id in other_map:
+                        ot = other_map[t_id]
+                        label = f"{ot['name']} ({ot['chapter_name']})"
+                        if r_type == "prerequisite":
+                            leads_to_map[f_id].append(label)
+                        else:
+                            related_map[f_id].append(label)
+                    elif t_id in topic_map and f_id in other_map:
+                        ot = other_map[f_id]
+                        label = f"{ot['name']} ({ot['chapter_name']})"
+                        if r_type == "prerequisite":
+                            prereqs_map[t_id].append(label)
+                        else:
+                            related_map[t_id].append(label)
+
         # Group into clusters
         cluster_dict = {}
         for t in topics:
@@ -649,9 +924,9 @@ def get_chapter_relations_data(chapter_id: str) -> Dict[str, Any]:
                 "id": t["id"],
                 "name": t["name"],
                 "order_index": t["order_index"],
-                "prerequisites": prereqs_map.get(t["id"], []),
-                "related": related_map.get(t["id"], []),
-                "leads_to": leads_to_map.get(t["id"], [])
+                "prerequisites": sorted(list(set(prereqs_map.get(t["id"], [])))),
+                "related": sorted(list(set(related_map.get(t["id"], [])))),
+                "leads_to": sorted(list(set(leads_to_map.get(t["id"], []))))
             }
             cluster_dict[c_id]["topics"].append(topic_enhanced)
 
@@ -678,9 +953,9 @@ def get_chapter_relations_data(chapter_id: str) -> Dict[str, Any]:
                     "order_index": t["order_index"],
                     "cluster_id": t.get("cluster_id"),
                     "cluster_name": t.get("cluster_name"),
-                    "prerequisites": prereqs_map.get(t["id"], []),
-                    "related": related_map.get(t["id"], []),
-                    "leads_to": leads_to_map.get(t["id"], [])
+                    "prerequisites": sorted(list(set(prereqs_map.get(t["id"], [])))),
+                    "related": sorted(list(set(related_map.get(t["id"], [])))),
+                    "leads_to": sorted(list(set(leads_to_map.get(t["id"], []))))
                 }
                 for t in topics
             ]
@@ -904,3 +1179,223 @@ get_user_reminders = get_user_reminders_list
 create_reminder = create_reminder_record
 update_reminder = update_reminder_record
 delete_reminder = delete_reminder_record
+
+def _gather_chapter_topics_and_relations_internal(chapter_ids: List[str]) -> Tuple[Dict[str, List[Dict[str, Any]]], Dict[str, Dict[str, Any]]]:
+    """Helper to fetch topic lists and relations mapping for chapters."""
+    if not chapter_ids:
+        return {}, {}
+
+    conn = get_connection()
+    try:
+        t_rows = conn.execute(
+            """
+            SELECT * FROM topics
+            WHERE chapter_id IN ({seq})
+            ORDER BY order_index ASC
+            """.format(seq=",".join("?" * len(chapter_ids))),
+            chapter_ids
+        ).fetchall()
+
+        topics_map: Dict[str, List[Dict[str, Any]]] = {cid: [] for cid in chapter_ids}
+        all_tids = []
+        for tr in t_rows:
+            d = dict(tr)
+            topics_map[d["chapter_id"]].append(d)
+            all_tids.append(d["id"])
+
+        relations_map: Dict[str, Dict[str, Any]] = {cid: {"edges": []} for cid in chapter_ids}
+        if all_tids:
+            rel_rows = conn.execute(
+                """
+                SELECT tr.*, t1.chapter_id as from_chapter_id, t2.chapter_id as to_chapter_id
+                FROM topic_relations tr
+                JOIN topics t1 ON tr.from_topic_id = t1.id
+                JOIN topics t2 ON tr.to_topic_id = t2.id
+                WHERE tr.from_topic_id IN ({seq})
+                """.format(seq=",".join("?" * len(all_tids))),
+                all_tids
+            ).fetchall()
+
+            for rr in rel_rows:
+                cid = rr["from_chapter_id"]
+                if cid in relations_map:
+                    relations_map[cid]["edges"].append({
+                        "from": rr["from_topic_id"],
+                        "to": rr["to_topic_id"],
+                        "from_chapter_id": rr["from_chapter_id"],
+                        "to_chapter_id": rr["to_chapter_id"],
+                        "type": rr["type"]
+                    })
+
+        return topics_map, relations_map
+    finally:
+        conn.close()
+
+def get_dashboard_summary_data(
+    user_id: str,
+    subject_id: Optional[str] = None,
+    days: int = 7,
+    order_mode: str = "syllabus",
+    scope_chapter_id: Optional[str] = None,
+    chapter_for_relations: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Unified source of truth endpoint data for the student dashboard.
+    Returns:
+    - Subject details & subjects list
+    - 4 Core Stat card values (total_concepts, chapters_done, study_time_left, mastery_percent)
+    - Status line (synchronized with plan progress or material hours)
+    - Notes Analysis & Chapters (books with chapter breakdown, difficulty, and study hours)
+    - Active Study Plan & Plan Status (daily pace)
+    - Study Route Planner data (topologically sorted with prerequisite awareness)
+    - Related Topics & Learning Clusters (including cross-document links)
+    """
+    days = 7 if days not in (7, 15, 30) else days
+    order_mode = "syllabus" if order_mode not in ("syllabus", "easy", "hard") else order_mode
+
+    # Ensure Core Curriculum exists and user's documents are linked
+    ensure_default_subject_and_chapters_for_user(user_id)
+
+    subjects = get_user_subjects(user_id)
+    if not subjects:
+        return {
+            "subject": None,
+            "subjects": [],
+            "stats": {
+                "total_concepts": 0,
+                "chapters_done": 0,
+                "completed_chapters": 0,
+                "total_chapters": 0,
+                "remaining_to_master": 0,
+                "study_time_left": 0.0,
+                "mastery_percent": 0.0,
+                "mastery_percentage": 0.0
+            },
+            "status_line": "No subjects found. Upload notes to begin.",
+            "books": [],
+            "active_plan": None,
+            "plan_status": None,
+            "route": [],
+            "preview_route": {"route": [], "days": days},
+            "course_status": {"chapters": [], "active_plan": None, "plan_status": None},
+            "related_topics": {"clusters": [], "topics": []},
+            "relations": {"clusters": [], "topics": []},
+            "selected_chapter_id": None
+        }
+
+    # Pick selected or default subject
+    selected_subject = None
+    if subject_id:
+        for s in subjects:
+            if s["id"] == subject_id:
+                selected_subject = s
+                break
+    if not selected_subject:
+        selected_subject = subjects[0]
+
+    books_data = get_subject_books_with_chapters(selected_subject["id"], user_id)
+
+    all_chapters = []
+    for b in books_data:
+        for ch in b.get("chapters", []):
+            ch_copy = dict(ch)
+            ch_copy["bookFilename"] = b["filename"]
+            all_chapters.append(ch_copy)
+
+    total_concepts = sum(ch.get("concept_count", 0) for ch in all_chapters)
+    total_chapters = len(all_chapters)
+    done_chapters = sum(1 for ch in all_chapters if ch.get("status") == 2)
+    remaining_chapters = max(0, total_chapters - done_chapters)
+    study_time_left = round(sum(remaining_hours(ch) for ch in all_chapters), 1)
+    mastery_percent = round((done_chapters / total_chapters * 100), 1) if total_chapters > 0 else 0.0
+
+    stats = {
+        "total_concepts": total_concepts,
+        "chapters_done": done_chapters,
+        "completed_chapters": done_chapters,
+        "total_chapters": total_chapters,
+        "remaining_to_master": remaining_chapters,
+        "study_time_left": study_time_left,
+        "mastery_percent": mastery_percent,
+        "mastery_percentage": mastery_percent
+    }
+
+    # Active plan
+    active_plan = get_active_study_plan(user_id, selected_subject["id"])
+    plan_status = None
+    if active_plan:
+        plan_status = calculate_plan_status(active_plan, date.today().strftime("%Y-%m-%d"))
+
+    # Status line formatting per Task 6
+    sub_name = selected_subject.get("name") or "Core Curriculum"
+    if active_plan:
+        plan_days = active_plan.get("days", 7)
+        days_left = max(1, plan_status.get("days_left", plan_days)) if plan_status else plan_days
+        daily_pace = round(study_time_left / days_left, 1)
+        today_idx = plan_status.get("today_index", 1) if plan_status else 1
+        today_day_item = next((d for d in active_plan.get("route", []) if d.get("day_index") == today_idx), None)
+        ch_names = ", ".join(it.get("chapter", "") for it in today_day_item.get("items", [])) if today_day_item else ""
+        if ch_names:
+            status_line = f"Day {today_idx} of your {plan_days}-day plan ({daily_pace}h/day needed). Today: {ch_names}."
+        else:
+            status_line = f"Day {today_idx} of your {plan_days}-day plan ({daily_pace}h/day needed in {sub_name})."
+    elif study_time_left > 0:
+        status_line = f"{study_time_left}h of study material in {sub_name}. Choose a deadline to start your plan."
+    elif total_chapters > 0 and study_time_left == 0:
+        status_line = f"All chapters mastered in {sub_name}! Great job!"
+    else:
+        status_line = f"You have 0h left in {sub_name}. Choose a deadline to begin."
+
+    # Study route
+    if active_plan:
+        route = active_plan.get("route", [])
+    else:
+        ch_ids = [c["id"] for c in all_chapters]
+        topics_map, relations_map = _gather_chapter_topics_and_relations_internal(ch_ids)
+        route = build_route(
+            chapters=all_chapters,
+            days=days,
+            order_mode=order_mode,
+            scope_chapter_id=scope_chapter_id,
+            chapter_topics_map=topics_map,
+            chapter_relations_map=relations_map,
+            start_date=date.today().strftime("%Y-%m-%d")
+        )
+
+    # Related Topics target chapter
+    target_ch_id = chapter_for_relations
+    if not target_ch_id and all_chapters:
+        target_ch_id = all_chapters[0]["id"]
+
+    related_topics_data = {"clusters": [], "topics": []}
+    if target_ch_id:
+        related_topics_data = get_chapter_relations_data(target_ch_id, user_id=user_id)
+        if related_topics_data.get("topics") and not related_topics_data.get("clusters"):
+            try:
+                try:
+                    from backend.services.topic_relations import extract_topic_relations
+                except ImportError:
+                    from services.topic_relations import extract_topic_relations
+                ch_title = related_topics_data.get("chapter", {}).get("name", "")
+                extracted = extract_topic_relations(related_topics_data["topics"], chapter_title=ch_title)
+                save_topic_relations(target_ch_id, extracted.get("clusters", []), extracted.get("edges", []))
+                related_topics_data = get_chapter_relations_data(target_ch_id, user_id=user_id)
+            except Exception as e_rel:
+                logger.warning(f"Could not extract clusters for chapter {target_ch_id}: {e_rel}")
+
+    return {
+        "subject": selected_subject,
+        "subjects": subjects,
+        "stats": stats,
+        "status_line": status_line,
+        "books": books_data,
+        "active_plan": active_plan,
+        "plan_status": plan_status,
+        "route": route,
+        "preview_route": {"route": route, "days": days},
+        "course_status": {"chapters": all_chapters, "active_plan": active_plan, "plan_status": plan_status},
+        "related_topics": related_topics_data,
+        "relations": related_topics_data,
+        "selected_chapter_id": target_ch_id
+    }
+
