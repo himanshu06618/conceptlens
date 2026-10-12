@@ -393,6 +393,27 @@ def health_check_root():
     """Lightweight health check for Render / deployment platforms."""
     return {"status": "ok"}
 
+@app.get("/health/db")
+@app.get("/api/health/db")
+def health_db():
+    """
+    Database health check: executes 'SELECT 1'.
+    Returns {"status": "ok"} on success or generic {"status": "error"} on failure.
+    Never exposes connection strings, credentials, or internal error tracebacks.
+    """
+    try:
+        from sqlalchemy import text
+        try:
+            from backend.database import engine
+        except ImportError:
+            from database import engine
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        return {"status": "ok"}
+    except Exception:
+        return JSONResponse(status_code=503, content={"status": "error"})
+
+
 @app.get("/api/health")
 def health_check():
     gemini_valid, gemini_msg = check_gemini_key_valid()

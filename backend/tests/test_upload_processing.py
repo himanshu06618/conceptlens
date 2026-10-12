@@ -34,9 +34,17 @@ def test_document_upload_and_background_processing():
         "Backpropagation is an algorithm used for training feedforward neural networks."
     ).encode("utf-8")
 
-    # Upload document as guest
+    # Register and authenticate test user
+    reg = client.post("/api/auth/register", json={
+        "username": "upload_user",
+        "password": "ValidPassword123!"
+    })
+    assert reg.status_code == 200
+
+    # Upload document
     res = client.post(
         "/api/documents",
+        data={"extraction_mode": "offline"},
         files={"file": ("ml_notes.txt", io.BytesIO(sample_text), "text/plain")}
     )
     assert res.status_code == 200

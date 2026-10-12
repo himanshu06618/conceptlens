@@ -138,7 +138,8 @@ def clear_auth_cookie(response: Response) -> None:
 
 def verify_google_id_token(credential: str) -> Dict[str, Any]:
     """Verifies a Google OAuth ID token using google.oauth2.id_token."""
-    if not GOOGLE_CLIENT_ID:
+    client_id = os.getenv("GOOGLE_CLIENT_ID", GOOGLE_CLIENT_ID).strip()
+    if not client_id:
         raise HTTPException(
             status_code=400,
             detail="Google sign-in is not configured on this server."
@@ -148,9 +149,9 @@ def verify_google_id_token(credential: str) -> Dict[str, Any]:
         from google.auth.transport import requests as google_requests
 
         req = google_requests.Request()
-        id_info = id_token.verify_oauth2_token(credential, req, GOOGLE_CLIENT_ID)
+        id_info = id_token.verify_oauth2_token(credential, req, client_id)
 
-        if id_info.get("aud") != GOOGLE_CLIENT_ID:
+        if id_info.get("aud") != client_id:
             raise HTTPException(status_code=401, detail="Google token audience mismatch.")
 
         if not id_info.get("email_verified", False):
@@ -275,7 +276,7 @@ def get_current_user_or_guest(request: Request, response: Response) -> Dict[str,
             pass
 
     # Unauthenticated -> persistent guest session
-    guest_id = request.cookies.get("guest_session_id")
+    guest_id = request.cookies.get("guest_session_id") or request.cookies.get("guest_id")
     if not guest_id:
         guest_id = request.headers.get("x-guest-session")
     if not guest_id or not re.match(r"^guest_[a-zA-Z0-9_-]{10,64}$", guest_id):

@@ -6,9 +6,9 @@ from typing import Optional, List, Dict, Any
 from pathlib import Path
 
 try:
-    from backend.database import get_connection
+    from backend.database import get_connection, is_postgres
 except ImportError:
-    from database import get_connection
+    from database import get_connection, is_postgres
 
 def calc_default_est_hours(concept_count: int, difficulty: int = 1) -> float:
     """
@@ -27,100 +27,197 @@ def init_planner_db() -> None:
     conn = get_connection()
     try:
         with conn:
-            # 1. Migrate users table to include role if missing
-            cursor = conn.execute("PRAGMA table_info(users);")
-            user_cols = {row["name"] for row in cursor.fetchall()}
-            if "role" not in user_cols:
-                conn.execute("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'student';")
+            if is_postgres():
+                conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'student';")
+                conn.execute("ALTER TABLE documents ADD COLUMN IF NOT EXISTS subject_id TEXT;")
 
-            # 2. Migrate documents table to include subject_id if missing
-            cursor = conn.execute("PRAGMA table_info(documents);")
-            doc_cols = {row["name"] for row in cursor.fetchall()}
-            if "subject_id" not in doc_cols:
-                conn.execute("ALTER TABLE documents ADD COLUMN subject_id TEXT;")
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS subjects (
+                        id TEXT PRIMARY KEY,
+                        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        name TEXT NOT NULL,
+                        code TEXT DEFAULT '',
+                        created_at TEXT NOT NULL
+                    );
+                """)
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_subjects_user_id ON subjects(user_id);")
 
-            # 3. Create subjects table
-            conn.executescript("""
-                CREATE TABLE IF NOT EXISTS subjects (
-                    id TEXT PRIMARY KEY,
-                    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                    name TEXT NOT NULL,
-                    code TEXT DEFAULT '',
-                    created_at TEXT NOT NULL
-                );
-                CREATE INDEX IF NOT EXISTS idx_subjects_user_id ON subjects(user_id);
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS chapters (
+                        id TEXT PRIMARY KEY,
+                        book_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+                        name TEXT NOT NULL,
+                        order_index INTEGER NOT NULL DEFAULT 0,
+                        concept_count INTEGER NOT NULL DEFAULT 0,
+                        difficulty INTEGER NOT NULL DEFAULT 1 CHECK (difficulty IN (0, 1, 2)),
+                        est_hours REAL NOT NULL DEFAULT 1.0,
+                        created_at TEXT NOT NULL
+                    );
+                """)
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_chapters_book_id ON chapters(book_id);")
 
-                CREATE TABLE IF NOT EXISTS chapters (
-                    id TEXT PRIMARY KEY,
-                    book_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
-                    name TEXT NOT NULL,
-                    order_index INTEGER NOT NULL DEFAULT 0,
-                    concept_count INTEGER NOT NULL DEFAULT 0,
-                    difficulty INTEGER NOT NULL DEFAULT 1,
-                    est_hours REAL NOT NULL DEFAULT 1.0,
-                    created_at TEXT NOT NULL,
-                    CHECK (difficulty IN (0, 1, 2))
-                );
-                CREATE INDEX IF NOT EXISTS idx_chapters_book_id ON chapters(book_id);
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS topics (
+                        id SERIAL PRIMARY KEY,
+                        chapter_id TEXT NOT NULL REFERENCES chapters(id) ON DELETE CASCADE,
+                        order_index INTEGER NOT NULL DEFAULT 0,
+                        name TEXT NOT NULL,
+                        cluster_id TEXT DEFAULT NULL,
+                        cluster_name TEXT DEFAULT NULL
+                    );
+                """)
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_topics_chapter_id ON topics(chapter_id);")
 
-                CREATE TABLE IF NOT EXISTS topics (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    chapter_id TEXT NOT NULL REFERENCES chapters(id) ON DELETE CASCADE,
-                    order_index INTEGER NOT NULL DEFAULT 0,
-                    name TEXT NOT NULL,
-                    cluster_id TEXT DEFAULT NULL,
-                    cluster_name TEXT DEFAULT NULL
-                );
-                CREATE INDEX IF NOT EXISTS idx_topics_chapter_id ON topics(chapter_id);
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS topic_relations (
+                        id SERIAL PRIMARY KEY,
+                        from_topic_id INTEGER NOT NULL REFERENCES topics(id) ON DELETE CASCADE,
+                        to_topic_id INTEGER NOT NULL REFERENCES topics(id) ON DELETE CASCADE,
+                        type TEXT NOT NULL CHECK(type IN ('prerequisite', 'related')),
+                        CHECK (from_topic_id != to_topic_id),
+                        UNIQUE (from_topic_id, to_topic_id, type)
+                    );
+                """)
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_topic_relations_from ON topic_relations(from_topic_id);")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_topic_relations_to ON topic_relations(to_topic_id);")
 
-                CREATE TABLE IF NOT EXISTS topic_relations (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    from_topic_id INTEGER NOT NULL REFERENCES topics(id) ON DELETE CASCADE,
-                    to_topic_id INTEGER NOT NULL REFERENCES topics(id) ON DELETE CASCADE,
-                    type TEXT NOT NULL CHECK(type IN ('prerequisite', 'related')),
-                    CHECK (from_topic_id != to_topic_id),
-                    UNIQUE (from_topic_id, to_topic_id, type)
-                );
-                CREATE INDEX IF NOT EXISTS idx_topic_relations_from ON topic_relations(from_topic_id);
-                CREATE INDEX IF NOT EXISTS idx_topic_relations_to ON topic_relations(to_topic_id);
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS chapter_progress (
+                        id SERIAL PRIMARY KEY,
+                        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        chapter_id TEXT NOT NULL REFERENCES chapters(id) ON DELETE CASCADE,
+                        status INTEGER NOT NULL DEFAULT 0 CHECK(status IN (0, 1, 2)),
+                        updated_at TEXT NOT NULL,
+                        UNIQUE (user_id, chapter_id)
+                    );
+                """)
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_chapter_progress_user ON chapter_progress(user_id);")
 
-                CREATE TABLE IF NOT EXISTS chapter_progress (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                    chapter_id TEXT NOT NULL REFERENCES chapters(id) ON DELETE CASCADE,
-                    status INTEGER NOT NULL DEFAULT 0 CHECK(status IN (0, 1, 2)),
-                    updated_at TEXT NOT NULL,
-                    UNIQUE (user_id, chapter_id)
-                );
-                CREATE INDEX IF NOT EXISTS idx_chapter_progress_user ON chapter_progress(user_id);
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS study_plans (
+                        id TEXT PRIMARY KEY,
+                        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        subject_id TEXT NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+                        scope_chapter_id TEXT REFERENCES chapters(id) ON DELETE SET NULL,
+                        days INTEGER NOT NULL CHECK(days IN (7, 15, 30)),
+                        order_mode TEXT NOT NULL CHECK(order_mode IN ('syllabus', 'easy', 'hard')),
+                        start_date TEXT NOT NULL,
+                        route_json TEXT NOT NULL,
+                        done_days TEXT NOT NULL DEFAULT '[]',
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL
+                    );
+                """)
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_study_plans_user ON study_plans(user_id);")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_study_plans_subject ON study_plans(subject_id);")
 
-                CREATE TABLE IF NOT EXISTS study_plans (
-                    id TEXT PRIMARY KEY,
-                    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                    subject_id TEXT NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
-                    scope_chapter_id TEXT REFERENCES chapters(id) ON DELETE SET NULL,
-                    days INTEGER NOT NULL CHECK(days IN (7, 15, 30)),
-                    order_mode TEXT NOT NULL CHECK(order_mode IN ('syllabus', 'easy', 'hard')),
-                    start_date TEXT NOT NULL,
-                    route_json TEXT NOT NULL,
-                    done_days TEXT NOT NULL DEFAULT '[]',
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL
-                );
-                CREATE INDEX IF NOT EXISTS idx_study_plans_user ON study_plans(user_id);
-                CREATE INDEX IF NOT EXISTS idx_study_plans_subject ON study_plans(subject_id);
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS reminders (
+                        id TEXT PRIMARY KEY,
+                        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        time TEXT NOT NULL,
+                        weekdays TEXT NOT NULL DEFAULT '[0,1,2,3,4,5,6]',
+                        label TEXT NOT NULL DEFAULT 'Study Session',
+                        enabled INTEGER NOT NULL DEFAULT 1,
+                        created_at TEXT NOT NULL
+                    );
+                """)
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_reminders_user ON reminders(user_id);")
+            else:
+                # 1. Migrate users table to include role if missing
+                cursor = conn.execute("PRAGMA table_info(users);")
+                user_cols = {row["name"] for row in cursor.fetchall()}
+                if "role" not in user_cols:
+                    conn.execute("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'student';")
 
-                CREATE TABLE IF NOT EXISTS reminders (
-                    id TEXT PRIMARY KEY,
-                    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                    time TEXT NOT NULL,
-                    weekdays TEXT NOT NULL DEFAULT '[0,1,2,3,4,5,6]',
-                    label TEXT NOT NULL DEFAULT 'Study Session',
-                    enabled INTEGER NOT NULL DEFAULT 1,
-                    created_at TEXT NOT NULL
-                );
-                CREATE INDEX IF NOT EXISTS idx_reminders_user ON reminders(user_id);
-            """)
+                # 2. Migrate documents table to include subject_id if missing
+                cursor = conn.execute("PRAGMA table_info(documents);")
+                doc_cols = {row["name"] for row in cursor.fetchall()}
+                if "subject_id" not in doc_cols:
+                    conn.execute("ALTER TABLE documents ADD COLUMN subject_id TEXT;")
+
+                # 3. Create subjects table
+                conn.executescript("""
+                    CREATE TABLE IF NOT EXISTS subjects (
+                        id TEXT PRIMARY KEY,
+                        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        name TEXT NOT NULL,
+                        code TEXT DEFAULT '',
+                        created_at TEXT NOT NULL
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_subjects_user_id ON subjects(user_id);
+
+                    CREATE TABLE IF NOT EXISTS chapters (
+                        id TEXT PRIMARY KEY,
+                        book_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+                        name TEXT NOT NULL,
+                        order_index INTEGER NOT NULL DEFAULT 0,
+                        concept_count INTEGER NOT NULL DEFAULT 0,
+                        difficulty INTEGER NOT NULL DEFAULT 1,
+                        est_hours REAL NOT NULL DEFAULT 1.0,
+                        created_at TEXT NOT NULL,
+                        CHECK (difficulty IN (0, 1, 2))
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_chapters_book_id ON chapters(book_id);
+
+                    CREATE TABLE IF NOT EXISTS topics (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        chapter_id TEXT NOT NULL REFERENCES chapters(id) ON DELETE CASCADE,
+                        order_index INTEGER NOT NULL DEFAULT 0,
+                        name TEXT NOT NULL,
+                        cluster_id TEXT DEFAULT NULL,
+                        cluster_name TEXT DEFAULT NULL
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_topics_chapter_id ON topics(chapter_id);
+
+                    CREATE TABLE IF NOT EXISTS topic_relations (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        from_topic_id INTEGER NOT NULL REFERENCES topics(id) ON DELETE CASCADE,
+                        to_topic_id INTEGER NOT NULL REFERENCES topics(id) ON DELETE CASCADE,
+                        type TEXT NOT NULL CHECK(type IN ('prerequisite', 'related')),
+                        CHECK (from_topic_id != to_topic_id),
+                        UNIQUE (from_topic_id, to_topic_id, type)
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_topic_relations_from ON topic_relations(from_topic_id);
+                    CREATE INDEX IF NOT EXISTS idx_topic_relations_to ON topic_relations(to_topic_id);
+
+                    CREATE TABLE IF NOT EXISTS chapter_progress (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        chapter_id TEXT NOT NULL REFERENCES chapters(id) ON DELETE CASCADE,
+                        status INTEGER NOT NULL DEFAULT 0 CHECK(status IN (0, 1, 2)),
+                        updated_at TEXT NOT NULL,
+                        UNIQUE (user_id, chapter_id)
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_chapter_progress_user ON chapter_progress(user_id);
+
+                    CREATE TABLE IF NOT EXISTS study_plans (
+                        id TEXT PRIMARY KEY,
+                        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        subject_id TEXT NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+                        scope_chapter_id TEXT REFERENCES chapters(id) ON DELETE SET NULL,
+                        days INTEGER NOT NULL CHECK(days IN (7, 15, 30)),
+                        order_mode TEXT NOT NULL CHECK(order_mode IN ('syllabus', 'easy', 'hard')),
+                        start_date TEXT NOT NULL,
+                        route_json TEXT NOT NULL,
+                        done_days TEXT NOT NULL DEFAULT '[]',
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_study_plans_user ON study_plans(user_id);
+                    CREATE INDEX IF NOT EXISTS idx_study_plans_subject ON study_plans(subject_id);
+
+                    CREATE TABLE IF NOT EXISTS reminders (
+                        id TEXT PRIMARY KEY,
+                        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        time TEXT NOT NULL,
+                        weekdays TEXT NOT NULL DEFAULT '[0,1,2,3,4,5,6]',
+                        label TEXT NOT NULL DEFAULT 'Study Session',
+                        enabled INTEGER NOT NULL DEFAULT 1,
+                        created_at TEXT NOT NULL
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_reminders_user ON reminders(user_id);
+                """)
     finally:
         conn.close()
 

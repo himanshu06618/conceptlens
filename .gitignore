@@ -51,6 +51,7 @@ FINAL_CTP_*
 
 # OS and editor files
 *.log
+*.tmp
 .DS_Store
 Thumbs.db
 ~$*

@@ -11,46 +11,11 @@ from sqlalchemy.orm import sessionmaker, Session
 
 try:
     from backend.planner_models import Note
-    from backend.database import get_db_path
+    from backend.database import engine, SessionLocal, is_postgres
 except ImportError:
     from planner_models import Note
-    from database import get_db_path
+    from database import engine, SessionLocal, is_postgres
 
-# Resolve database URL
-RAW_DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
-
-def get_engine():
-    if RAW_DATABASE_URL and (RAW_DATABASE_URL.startswith("postgresql://") or RAW_DATABASE_URL.startswith("postgres://")):
-        db_url = RAW_DATABASE_URL
-        if db_url.startswith("postgres://"):
-            db_url = db_url.replace("postgres://", "postgresql://", 1)
-        eng = create_engine(
-            db_url,
-            pool_pre_ping=True,
-            pool_size=5,
-            max_overflow=10
-        )
-    else:
-        db_file = get_db_path()
-        db_file.parent.mkdir(parents=True, exist_ok=True)
-        db_url = f"sqlite:///{db_file}"
-        eng = create_engine(
-            db_url,
-            connect_args={"check_same_thread": False, "timeout": 30.0}
-        )
-
-        @event.listens_for(eng, "connect")
-        def set_sqlite_pragma(dbapi_connection, connection_record):
-            cursor = dbapi_connection.cursor()
-            cursor.execute("PRAGMA foreign_keys = ON;")
-            cursor.execute("PRAGMA journal_mode = WAL;")
-            cursor.execute("PRAGMA synchronous = NORMAL;")
-            cursor.close()
-
-    return eng
-
-engine = get_engine()
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def init_notes_db() -> None:
     """Safely creates the notes table and indexes if they do not already exist."""

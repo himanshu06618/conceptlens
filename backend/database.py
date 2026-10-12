@@ -8,6 +8,8 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 # Load environment configuration
+_backend_dir = Path(__file__).resolve().parent
+load_dotenv(_backend_dir / ".env")
 load_dotenv()
 
 DB_PATH = os.getenv("DATABASE_PATH", "conceptlens.db")
@@ -92,156 +94,428 @@ def normalize_concept_display_name(name: str) -> str:
     return ''.join(norm).strip()
 
 
+from sqlalchemy import create_engine, text, event
+from sqlalchemy.orm import sessionmaker, Session
+
+def get_database_url() -> str:
+    """
+    Retrieves and normalizes the database URL strictly from the DATABASE_URL environment variable.
+    If unset or empty, falls back to local SQLite.
+    Never logs or hardcodes credentials.
+    """
+    raw_url = os.getenv("DATABASE_URL", "").strip()
+    if not raw_url:
+        db_file = get_db_path()
+        db_file.parent.mkdir(parents=True, exist_ok=True)
+        return f"sqlite:///{db_file}"
+
+    # Normalise postgres:// to postgresql://
+    if raw_url.startswith("postgres://"):
+        raw_url = "postgresql://" + raw_url[len("postgres://"):]
+
+    # Ensure sslmode=require for Neon Postgres
+    if "sslmode=" not in raw_url:
+        sep = "&" if "?" in raw_url else "?"
+        raw_url = f"{raw_url}{sep}sslmode=require"
+
+    return raw_url
+
+def is_postgres() -> bool:
+    """Checks if the configured database is PostgreSQL."""
+    url = get_database_url()
+    return url.startswith("postgresql://") or url.startswith("postgres://")
+
 def get_db_path() -> Path:
     p = Path(DB_PATH)
     if not p.is_absolute():
         p = Path(__file__).resolve().parent / p
     return p
 
-def get_connection() -> sqlite3.Connection:
-    """Returns a SQLite connection with foreign keys and row factory enabled."""
-    db_file = get_db_path()
-    db_file.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(db_file), timeout=30.0)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON;")
-    conn.execute("PRAGMA journal_mode = WAL;")
-    conn.execute("PRAGMA synchronous = NORMAL;")
-    conn.execute("PRAGMA temp_store = MEMORY;")
-    return conn
+def create_app_engine():
+    """
+    Creates and returns the shared SQLAlchemy engine with Neon-optimised connection pooling.
+    For Postgres:
+      - pool_pre_ping=True (drops broken connections before checkout)
+      - pool_recycle=280 (refreshes before Neon's 5-minute compute suspension)
+      - pool_size=5, max_overflow=2
+      - connect_timeout=10
+    For SQLite:
+      - check_same_thread=False, timeout=30.0
+      - WAL mode & foreign keys enabled
+    """
+    db_url = get_database_url()
+    if is_postgres():
+        eng = create_engine(
+            db_url,
+            pool_pre_ping=True,
+            pool_recycle=280,
+            pool_size=5,
+            max_overflow=2,
+            connect_args={"connect_timeout": 10, "prepare_threshold": None}
+        )
+    else:
+        eng = create_engine(
+            db_url,
+            connect_args={"check_same_thread": False, "timeout": 30.0}
+        )
+
+        @event.listens_for(eng, "connect")
+        def set_sqlite_pragma(dbapi_connection, connection_record):
+            cursor = dbapi_connection.cursor()
+            cursor.execute("PRAGMA foreign_keys = ON;")
+            cursor.execute("PRAGMA journal_mode = WAL;")
+            cursor.execute("PRAGMA synchronous = NORMAL;")
+            cursor.execute("PRAGMA temp_store = MEMORY;")
+            cursor.close()
+
+    return eng
+
+# Shared singleton SQLAlchemy engine and SessionLocal
+engine = create_app_engine()
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+class RowAdapter(dict):
+    """A dictionary-like row adapter supporting dict, attribute, and index-based access."""
+    def __init__(self, mapping: dict, tuple_vals: tuple):
+        super().__init__(mapping)
+        self._tuple_vals = tuple_vals
+
+    def __getitem__(self, key):
+        if isinstance(key, int):
+            return self._tuple_vals[key]
+        return super().__getitem__(key)
+
+    def get(self, key, default=None):
+        if isinstance(key, int):
+            try:
+                return self._tuple_vals[key]
+            except IndexError:
+                return default
+        return super().get(key, default)
+
+class DBCursorAdapter:
+    def __init__(self, cursor, lastrowid=None):
+        self._cursor = cursor
+        self.lastrowid = lastrowid
+
+    @property
+    def rowcount(self):
+        return getattr(self._cursor, "rowcount", -1)
+
+    def fetchone(self):
+        row = self._cursor.fetchone()
+        if row is None:
+            return None
+        if hasattr(row, "_mapping"):
+            return RowAdapter(dict(row._mapping), tuple(row))
+        desc = getattr(self._cursor, "description", None)
+        if desc:
+            col_names = [d[0] for d in desc]
+            return RowAdapter(dict(zip(col_names, row)), tuple(row))
+        return row
+
+    def fetchall(self):
+        rows = self._cursor.fetchall()
+        if not rows:
+            return []
+        desc = getattr(self._cursor, "description", None)
+        if desc:
+            col_names = [d[0] for d in desc]
+            return [RowAdapter(dict(zip(col_names, r)), tuple(r)) for r in rows]
+        return rows
+
+    def fetchmany(self, size=None):
+        rows = self._cursor.fetchmany(size) if size is not None else self._cursor.fetchmany()
+        if not rows:
+            return []
+        desc = getattr(self._cursor, "description", None)
+        if desc:
+            col_names = [d[0] for d in desc]
+            return [RowAdapter(dict(zip(col_names, r)), tuple(r)) for r in rows]
+        return rows
+
+    def close(self):
+        try:
+            self._cursor.close()
+        except Exception:
+            pass
+
+class DBConnectionAdapter:
+    """
+    Transparent connection adapter providing a uniform interface for SQLite and Postgres.
+    Translates '?' parameter placeholders to '%s', supports lastrowid, handles transactions,
+    and returns pooled connections back to the SQLAlchemy pool on close().
+    """
+    def __init__(self, raw_conn, is_pg: bool = False):
+        self._conn = raw_conn
+        self._is_pg = is_pg
+        self._active_cursor = None
+
+    def execute(self, sql: str, params: Optional[Any] = None):
+        cursor = self._conn.cursor()
+        self._active_cursor = cursor
+        lastrowid = None
+        if self._is_pg:
+            translated_sql = self._translate_sql(sql)
+            # Detect autoincrement primary-key tables where lastrowid is required
+            is_auto_insert = bool(re.search(r"^\s*INSERT\s+INTO\s+(concepts|relations|topics|topic_relations|chapter_progress)\b", sql, re.IGNORECASE))
+            if is_auto_insert and "RETURNING" not in translated_sql.upper():
+                translated_sql = translated_sql.rstrip(";\s") + " RETURNING id"
+                if params:
+                    cursor.execute(translated_sql, tuple(params))
+                else:
+                    cursor.execute(translated_sql)
+                try:
+                    ret_row = cursor.fetchone()
+                    if ret_row:
+                        lastrowid = ret_row[0]
+                except Exception:
+                    pass
+                return DBCursorAdapter(cursor, lastrowid=lastrowid)
+            else:
+                if params:
+                    cursor.execute(translated_sql, tuple(params))
+                else:
+                    cursor.execute(translated_sql)
+                return DBCursorAdapter(cursor, lastrowid=getattr(cursor, "lastrowid", None))
+        else:
+            if params:
+                cursor.execute(sql, tuple(params))
+            else:
+                cursor.execute(sql)
+            return cursor
+
+    def executemany(self, sql: str, seq_of_params: Any):
+        cursor = self._conn.cursor()
+        self._active_cursor = cursor
+        if self._is_pg:
+            translated_sql = self._translate_sql(sql)
+            cursor.executemany(translated_sql, seq_of_params)
+            return DBCursorAdapter(cursor)
+        else:
+            cursor.executemany(sql, seq_of_params)
+            return cursor
+
+    def executescript(self, script: str):
+        if self._is_pg:
+            cursor = self._conn.cursor()
+            for stmt in script.strip().split(";"):
+                stmt = stmt.strip()
+                if stmt:
+                    cursor.execute(stmt)
+            return DBCursorAdapter(cursor)
+        else:
+            return self._conn.executescript(script)
+
+    def commit(self):
+        self._conn.commit()
+
+    def rollback(self):
+        self._conn.rollback()
+
+    def close(self):
+        try:
+            if self._active_cursor:
+                self._active_cursor.close()
+        except Exception:
+            pass
+        if self._is_pg:
+            try:
+                self._conn.rollback()
+            except Exception:
+                pass
+        try:
+            self._conn.close()
+        except Exception:
+            pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type is not None:
+            self.rollback()
+        else:
+            self.commit()
+
+    @staticmethod
+    def _translate_sql(sql: str) -> str:
+        # 1. Translate SQLite 'INSERT OR REPLACE INTO table (cols) VALUES (vals)' to Postgres ON CONFLICT (id) DO UPDATE
+        pattern = r"^\s*INSERT\s+OR\s+REPLACE\s+INTO\s+(\w+)\s*\((.*?)\)\s*VALUES\s*\((.*?)\)"
+        m = re.match(pattern, sql, re.IGNORECASE | re.DOTALL)
+        if m:
+            table = m.group(1)
+            cols = [c.strip() for c in m.group(2).split(",")]
+            vals = m.group(3)
+            update_cols = [c for c in cols if c.lower() != "id"]
+            if update_cols:
+                set_clause = ", ".join(f"{c} = EXCLUDED.{c}" for c in update_cols)
+                sql = f"INSERT INTO {table} ({m.group(2)}) VALUES ({vals}) ON CONFLICT (id) DO UPDATE SET {set_clause}"
+            else:
+                sql = f"INSERT INTO {table} ({m.group(2)}) VALUES ({vals}) ON CONFLICT (id) DO NOTHING"
+
+        # 2. Replace '?' with '%s' outside string literals
+        in_quote = False
+        quote_char = ''
+        out = []
+        for ch in sql:
+            if ch in ("'", '"'):
+                if not in_quote:
+                    in_quote = True
+                    quote_char = ch
+                elif ch == quote_char:
+                    in_quote = False
+                out.append(ch)
+            elif ch == '?' and not in_quote:
+                out.append('%s')
+            else:
+                out.append(ch)
+        return "".join(out)
+
+def get_connection():
+    """
+    Returns a pooled database connection (DBConnectionAdapter for Postgres, sqlite3.Connection for SQLite).
+    Always release the connection via conn.close() in a finally block.
+    """
+    if is_postgres():
+        raw_conn = engine.raw_connection()
+        return DBConnectionAdapter(raw_conn, is_pg=True)
+    else:
+        db_file = get_db_path()
+        db_file.parent.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(str(db_file), timeout=30.0)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON;")
+        conn.execute("PRAGMA journal_mode = WAL;")
+        conn.execute("PRAGMA synchronous = NORMAL;")
+        conn.execute("PRAGMA temp_store = MEMORY;")
+        return conn
 
 def init_db() -> None:
-    """Initializes the database schema and performs safe migrations."""
-    conn = get_connection()
-    try:
-        with conn:
-            # Users table
-            conn.executescript("""
-                CREATE TABLE IF NOT EXISTS users (
-                    id TEXT PRIMARY KEY,
-                    username TEXT UNIQUE NOT NULL COLLATE NOCASE,
-                    display_name TEXT NOT NULL,
-                    name TEXT,
-                    email TEXT UNIQUE,
-                    password_hash TEXT,
-                    google_sub TEXT UNIQUE,
-                    avatar TEXT,
-                    avatar_url TEXT,
-                    role TEXT,
-                    created_at TEXT NOT NULL,
-                    last_login_at TEXT NOT NULL
-                );
-
-                CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
-                CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
-                CREATE INDEX IF NOT EXISTS idx_users_google_sub ON users(google_sub);
-
-                CREATE TABLE IF NOT EXISTS documents (
-                    id TEXT PRIMARY KEY,
-                    user_id TEXT,
-                    filename TEXT NOT NULL,
-                    file_type TEXT NOT NULL,
-                    status TEXT NOT NULL,
-                    stage TEXT DEFAULT 'pending',
-                    error TEXT,
-                    page_count INTEGER DEFAULT 1,
-                    raw_text TEXT,
-                    tree_json TEXT,
-                    flow_json TEXT,
-                    created_at TEXT NOT NULL
-                );
-
-                CREATE TABLE IF NOT EXISTS concepts (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
-                    name TEXT NOT NULL,
-                    definition TEXT DEFAULT '',
-                    topic TEXT DEFAULT 'General',
-                    score REAL NOT NULL,
-                    importance INTEGER NOT NULL,
-                    source_excerpt TEXT NOT NULL,
-                    page INTEGER DEFAULT 1,
-                    flow_order INTEGER NOT NULL DEFAULT 0,
-                    flow_group TEXT NOT NULL DEFAULT 'General'
-                );
-
-                CREATE TABLE IF NOT EXISTS relations (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
-                    concept_id INTEGER NOT NULL REFERENCES concepts(id) ON DELETE CASCADE,
-                    related_name TEXT NOT NULL,
-                    weight INTEGER NOT NULL,
-                    relation_type TEXT NOT NULL DEFAULT 'related',
-                    label TEXT NOT NULL DEFAULT ''
-                );
-
-                CREATE INDEX IF NOT EXISTS idx_concepts_document_id ON concepts(document_id);
-                CREATE INDEX IF NOT EXISTS idx_concepts_importance ON concepts(importance);
-                CREATE INDEX IF NOT EXISTS idx_relations_concept_id ON relations(concept_id);
-                CREATE INDEX IF NOT EXISTS idx_relations_document_id ON relations(document_id);
-            """)
-
-            # Migration: Ensure user_id and tree_json columns exist on documents
-            cursor = conn.execute("PRAGMA table_info(documents);")
-            columns = [row["name"] for row in cursor.fetchall()]
-            if "user_id" not in columns:
-                conn.execute("ALTER TABLE documents ADD COLUMN user_id TEXT;")
-            if "tree_json" not in columns:
-                conn.execute("ALTER TABLE documents ADD COLUMN tree_json TEXT;")
-            if "flow_json" not in columns:
-                conn.execute("ALTER TABLE documents ADD COLUMN flow_json TEXT;")
-            concept_columns = {row["name"] for row in conn.execute("PRAGMA table_info(concepts)")}
-            if "flow_order" not in concept_columns:
-                conn.execute("ALTER TABLE concepts ADD COLUMN flow_order INTEGER NOT NULL DEFAULT 0;")
-            if "flow_group" not in concept_columns:
-                conn.execute("ALTER TABLE concepts ADD COLUMN flow_group TEXT NOT NULL DEFAULT 'General';")
-            relation_columns = {row["name"] for row in conn.execute("PRAGMA table_info(relations)")}
-            if "relation_type" not in relation_columns:
-                conn.execute("ALTER TABLE relations ADD COLUMN relation_type TEXT NOT NULL DEFAULT 'related';")
-            if "processing_time_sec" not in columns:
-                conn.execute("ALTER TABLE documents ADD COLUMN processing_time_sec REAL DEFAULT 0.0;")
-            if "provider_used" not in columns:
-                conn.execute("ALTER TABLE documents ADD COLUMN provider_used TEXT DEFAULT 'on-device';")
-            if "skipped_pages" not in columns:
-                conn.execute("ALTER TABLE documents ADD COLUMN skipped_pages TEXT DEFAULT '[]';")
-            if "progress" not in columns:
-                conn.execute("ALTER TABLE documents ADD COLUMN progress INTEGER DEFAULT 0;")
-            if "stage_message" not in columns:
-                conn.execute("ALTER TABLE documents ADD COLUMN stage_message TEXT DEFAULT '';")
-            if "ocr_current_page" not in columns:
-                conn.execute("ALTER TABLE documents ADD COLUMN ocr_current_page INTEGER DEFAULT 0;")
-            if "ocr_total_pages" not in columns:
-                conn.execute("ALTER TABLE documents ADD COLUMN ocr_total_pages INTEGER DEFAULT 0;")
-            if "file_hash" not in columns:
-                conn.execute("ALTER TABLE documents ADD COLUMN file_hash TEXT;")
-            if "result_json" not in columns:
-                conn.execute("ALTER TABLE documents ADD COLUMN result_json TEXT;")
-            if "concept_count" not in columns:
-                conn.execute("ALTER TABLE documents ADD COLUMN concept_count INTEGER DEFAULT 0;")
-            if "chapter_count" not in columns:
-                conn.execute("ALTER TABLE documents ADD COLUMN chapter_count INTEGER DEFAULT 0;")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_user_id ON documents(user_id);")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_file_hash ON documents(file_hash);")
-
-            # Migration: Ensure role, name, avatar exist on users and role is nullable
-            u_info = list(conn.execute("PRAGMA table_info(users);"))
-            u_cols = {row["name"] for row in u_info}
-            role_col = next((row for row in u_info if row["name"] == "role"), None)
-
-            if "name" not in u_cols:
-                conn.execute("ALTER TABLE users ADD COLUMN name TEXT;")
-                conn.execute("UPDATE users SET name = COALESCE(display_name, username) WHERE name IS NULL;")
-            if "avatar" not in u_cols:
-                conn.execute("ALTER TABLE users ADD COLUMN avatar TEXT;")
-                conn.execute("UPDATE users SET avatar = avatar_url WHERE avatar IS NULL;")
-
-            if "role" not in u_cols:
-                conn.execute("ALTER TABLE users ADD COLUMN role TEXT;")
-            elif role_col and role_col["notnull"] == 1:
-                # Make role nullable by rebuilding users table
-                conn.execute("PRAGMA foreign_keys = OFF;")
+    """Initializes the database schema and performs safe, non-destructive startup migrations."""
+    if is_postgres():
+        # Postgres DDL
+        conn = get_connection()
+        try:
+            with conn:
                 conn.execute("""
-                    CREATE TABLE users_migrated (
+                    CREATE TABLE IF NOT EXISTS users (
+                        id TEXT PRIMARY KEY,
+                        username TEXT NOT NULL,
+                        display_name TEXT NOT NULL,
+                        name TEXT,
+                        email TEXT,
+                        password_hash TEXT,
+                        google_sub TEXT,
+                        avatar TEXT,
+                        avatar_url TEXT,
+                        role TEXT DEFAULT 'student',
+                        created_at TEXT NOT NULL,
+                        last_login_at TEXT NOT NULL
+                    );
+                """)
+                conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username_lower ON users (LOWER(username));")
+                conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_lower ON users (LOWER(email)) WHERE email IS NOT NULL;")
+                conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_sub ON users (google_sub) WHERE google_sub IS NOT NULL;")
+
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS documents (
+                        id TEXT PRIMARY KEY,
+                        user_id TEXT,
+                        subject_id TEXT,
+                        filename TEXT NOT NULL,
+                        file_type TEXT NOT NULL,
+                        status TEXT NOT NULL,
+                        stage TEXT DEFAULT 'pending',
+                        error TEXT,
+                        page_count INTEGER DEFAULT 1,
+                        raw_text TEXT,
+                        tree_json TEXT,
+                        flow_json TEXT,
+                        result_json TEXT,
+                        processing_time_sec REAL DEFAULT 0.0,
+                        provider_used TEXT DEFAULT 'on-device',
+                        skipped_pages TEXT DEFAULT '[]',
+                        progress INTEGER DEFAULT 0,
+                        stage_message TEXT DEFAULT '',
+                        ocr_current_page INTEGER DEFAULT 0,
+                        ocr_total_pages INTEGER DEFAULT 0,
+                        file_hash TEXT,
+                        concept_count INTEGER DEFAULT 0,
+                        chapter_count INTEGER DEFAULT 0,
+                        created_at TEXT NOT NULL
+                    );
+                """)
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_user_id ON documents(user_id);")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_file_hash ON documents(file_hash);")
+
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS concepts (
+                        id SERIAL PRIMARY KEY,
+                        document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+                        name TEXT NOT NULL,
+                        definition TEXT DEFAULT '',
+                        topic TEXT DEFAULT 'General',
+                        score REAL NOT NULL,
+                        importance INTEGER NOT NULL,
+                        source_excerpt TEXT NOT NULL,
+                        page INTEGER DEFAULT 1,
+                        flow_order INTEGER NOT NULL DEFAULT 0,
+                        flow_group TEXT NOT NULL DEFAULT 'General'
+                    );
+                """)
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_concepts_document_id ON concepts(document_id);")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_concepts_importance ON concepts(importance);")
+
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS relations (
+                        id SERIAL PRIMARY KEY,
+                        document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+                        concept_id INTEGER NOT NULL REFERENCES concepts(id) ON DELETE CASCADE,
+                        related_name TEXT NOT NULL,
+                        weight INTEGER NOT NULL,
+                        relation_type TEXT NOT NULL DEFAULT 'related',
+                        label TEXT NOT NULL DEFAULT ''
+                    );
+                """)
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_relations_concept_id ON relations(concept_id);")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_relations_document_id ON relations(document_id);")
+
+                # Safe non-destructive column additions
+                conn.execute("ALTER TABLE documents ADD COLUMN IF NOT EXISTS user_id TEXT;")
+                conn.execute("ALTER TABLE documents ADD COLUMN IF NOT EXISTS subject_id TEXT;")
+                conn.execute("ALTER TABLE documents ADD COLUMN IF NOT EXISTS tree_json TEXT;")
+                conn.execute("ALTER TABLE documents ADD COLUMN IF NOT EXISTS flow_json TEXT;")
+                conn.execute("ALTER TABLE documents ADD COLUMN IF NOT EXISTS processing_time_sec REAL DEFAULT 0.0;")
+                conn.execute("ALTER TABLE documents ADD COLUMN IF NOT EXISTS provider_used TEXT DEFAULT 'on-device';")
+                conn.execute("ALTER TABLE documents ADD COLUMN IF NOT EXISTS skipped_pages TEXT DEFAULT '[]';")
+                conn.execute("ALTER TABLE documents ADD COLUMN IF NOT EXISTS progress INTEGER DEFAULT 0;")
+                conn.execute("ALTER TABLE documents ADD COLUMN IF NOT EXISTS stage_message TEXT DEFAULT '';")
+                conn.execute("ALTER TABLE documents ADD COLUMN IF NOT EXISTS ocr_current_page INTEGER DEFAULT 0;")
+                conn.execute("ALTER TABLE documents ADD COLUMN IF NOT EXISTS ocr_total_pages INTEGER DEFAULT 0;")
+                conn.execute("ALTER TABLE documents ADD COLUMN IF NOT EXISTS file_hash TEXT;")
+                conn.execute("ALTER TABLE documents ADD COLUMN IF NOT EXISTS result_json TEXT;")
+                conn.execute("ALTER TABLE documents ADD COLUMN IF NOT EXISTS concept_count INTEGER DEFAULT 0;")
+                conn.execute("ALTER TABLE documents ADD COLUMN IF NOT EXISTS chapter_count INTEGER DEFAULT 0;")
+
+                conn.execute("ALTER TABLE concepts ADD COLUMN IF NOT EXISTS flow_order INTEGER NOT NULL DEFAULT 0;")
+                conn.execute("ALTER TABLE concepts ADD COLUMN IF NOT EXISTS flow_group TEXT NOT NULL DEFAULT 'General';")
+
+                conn.execute("ALTER TABLE relations ADD COLUMN IF NOT EXISTS relation_type TEXT NOT NULL DEFAULT 'related';")
+                conn.execute("ALTER TABLE relations ADD COLUMN IF NOT EXISTS label TEXT NOT NULL DEFAULT '';")
+
+                conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS name TEXT;")
+                conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar TEXT;")
+                conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'student';")
+        finally:
+            conn.close()
+    else:
+        # SQLite DDL
+        conn = get_connection()
+        try:
+            with conn:
+                conn.executescript("""
+                    CREATE TABLE IF NOT EXISTS users (
                         id TEXT PRIMARY KEY,
                         username TEXT UNIQUE NOT NULL COLLATE NOCASE,
                         display_name TEXT NOT NULL,
@@ -255,21 +529,119 @@ def init_db() -> None:
                         created_at TEXT NOT NULL,
                         last_login_at TEXT NOT NULL
                     );
-                """)
-                conn.execute("""
-                    INSERT INTO users_migrated (id, username, display_name, name, email, password_hash, google_sub, avatar, avatar_url, role, created_at, last_login_at)
-                    SELECT id, username, display_name, COALESCE(name, display_name), email, password_hash, google_sub, avatar, avatar_url, role, created_at, last_login_at
-                    FROM users;
-                """)
-                conn.execute("DROP TABLE users;")
-                conn.execute("ALTER TABLE users_migrated RENAME TO users;")
-                conn.execute("CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);")
-                conn.execute("CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);")
-                conn.execute("CREATE INDEX IF NOT EXISTS idx_users_google_sub ON users(google_sub);")
-                conn.execute("PRAGMA foreign_keys = ON;")
 
-            # Migration: Re-clean topics and normalize concept names for existing notes
-            try:
+                    CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+                    CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+                    CREATE INDEX IF NOT EXISTS idx_users_google_sub ON users(google_sub);
+
+                    CREATE TABLE IF NOT EXISTS documents (
+                        id TEXT PRIMARY KEY,
+                        user_id TEXT,
+                        filename TEXT NOT NULL,
+                        file_type TEXT NOT NULL,
+                        status TEXT NOT NULL,
+                        stage TEXT DEFAULT 'pending',
+                        error TEXT,
+                        page_count INTEGER DEFAULT 1,
+                        raw_text TEXT,
+                        tree_json TEXT,
+                        flow_json TEXT,
+                        created_at TEXT NOT NULL
+                    );
+
+                    CREATE TABLE IF NOT EXISTS concepts (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+                        name TEXT NOT NULL,
+                        definition TEXT DEFAULT '',
+                        topic TEXT DEFAULT 'General',
+                        score REAL NOT NULL,
+                        importance INTEGER NOT NULL,
+                        source_excerpt TEXT NOT NULL,
+                        page INTEGER DEFAULT 1,
+                        flow_order INTEGER NOT NULL DEFAULT 0,
+                        flow_group TEXT NOT NULL DEFAULT 'General'
+                    );
+
+                    CREATE TABLE IF NOT EXISTS relations (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+                        concept_id INTEGER NOT NULL REFERENCES concepts(id) ON DELETE CASCADE,
+                        related_name TEXT NOT NULL,
+                        weight INTEGER NOT NULL,
+                        relation_type TEXT NOT NULL DEFAULT 'related',
+                        label TEXT NOT NULL DEFAULT ''
+                    );
+
+                    CREATE INDEX IF NOT EXISTS idx_concepts_document_id ON concepts(document_id);
+                    CREATE INDEX IF NOT EXISTS idx_concepts_importance ON concepts(importance);
+                    CREATE INDEX IF NOT EXISTS idx_relations_concept_id ON relations(concept_id);
+                    CREATE INDEX IF NOT EXISTS idx_relations_document_id ON relations(document_id);
+                """)
+
+                cursor = conn.execute("PRAGMA table_info(documents);")
+                columns = [row["name"] for row in cursor.fetchall()]
+                if "user_id" not in columns:
+                    conn.execute("ALTER TABLE documents ADD COLUMN user_id TEXT;")
+                if "subject_id" not in columns:
+                    conn.execute("ALTER TABLE documents ADD COLUMN subject_id TEXT;")
+                if "tree_json" not in columns:
+                    conn.execute("ALTER TABLE documents ADD COLUMN tree_json TEXT;")
+                if "flow_json" not in columns:
+                    conn.execute("ALTER TABLE documents ADD COLUMN flow_json TEXT;")
+                concept_columns = {row["name"] for row in conn.execute("PRAGMA table_info(concepts)")}
+                if "flow_order" not in concept_columns:
+                    conn.execute("ALTER TABLE concepts ADD COLUMN flow_order INTEGER NOT NULL DEFAULT 0;")
+                if "flow_group" not in concept_columns:
+                    conn.execute("ALTER TABLE concepts ADD COLUMN flow_group TEXT NOT NULL DEFAULT 'General';")
+                relation_columns = {row["name"] for row in conn.execute("PRAGMA table_info(relations)")}
+                if "relation_type" not in relation_columns:
+                    conn.execute("ALTER TABLE relations ADD COLUMN relation_type TEXT NOT NULL DEFAULT 'related';")
+                if "label" not in relation_columns:
+                    conn.execute("ALTER TABLE relations ADD COLUMN label TEXT NOT NULL DEFAULT '';")
+                if "processing_time_sec" not in columns:
+                    conn.execute("ALTER TABLE documents ADD COLUMN processing_time_sec REAL DEFAULT 0.0;")
+                if "provider_used" not in columns:
+                    conn.execute("ALTER TABLE documents ADD COLUMN provider_used TEXT DEFAULT 'on-device';")
+                if "skipped_pages" not in columns:
+                    conn.execute("ALTER TABLE documents ADD COLUMN skipped_pages TEXT DEFAULT '[]';")
+                if "progress" not in columns:
+                    conn.execute("ALTER TABLE documents ADD COLUMN progress INTEGER DEFAULT 0;")
+                if "stage_message" not in columns:
+                    conn.execute("ALTER TABLE documents ADD COLUMN stage_message TEXT DEFAULT '';")
+                if "ocr_current_page" not in columns:
+                    conn.execute("ALTER TABLE documents ADD COLUMN ocr_current_page INTEGER DEFAULT 0;")
+                if "ocr_total_pages" not in columns:
+                    conn.execute("ALTER TABLE documents ADD COLUMN ocr_total_pages INTEGER DEFAULT 0;")
+                if "file_hash" not in columns:
+                    conn.execute("ALTER TABLE documents ADD COLUMN file_hash TEXT;")
+                if "result_json" not in columns:
+                    conn.execute("ALTER TABLE documents ADD COLUMN result_json TEXT;")
+                if "concept_count" not in columns:
+                    conn.execute("ALTER TABLE documents ADD COLUMN concept_count INTEGER DEFAULT 0;")
+                if "chapter_count" not in columns:
+                    conn.execute("ALTER TABLE documents ADD COLUMN chapter_count INTEGER DEFAULT 0;")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_user_id ON documents(user_id);")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_file_hash ON documents(file_hash);")
+
+                u_info = list(conn.execute("PRAGMA table_info(users);"))
+                u_cols = {row["name"] for row in u_info}
+                if "name" not in u_cols:
+                    conn.execute("ALTER TABLE users ADD COLUMN name TEXT;")
+                    conn.execute("UPDATE users SET name = COALESCE(display_name, username) WHERE name IS NULL;")
+                if "avatar" not in u_cols:
+                    conn.execute("ALTER TABLE users ADD COLUMN avatar TEXT;")
+                    conn.execute("UPDATE users SET avatar = avatar_url WHERE avatar IS NULL;")
+                if "role" not in u_cols:
+                    conn.execute("ALTER TABLE users ADD COLUMN role TEXT;")
+        finally:
+            conn.close()
+
+    # Re-clean topics and normalize concept names for existing concepts
+    try:
+        conn = get_connection()
+        try:
+            with conn:
                 cursor = conn.execute("SELECT id, name, topic FROM concepts")
                 rows = cursor.fetchall()
                 concept_updates = []
@@ -283,30 +655,31 @@ def init_db() -> None:
                         concept_updates.append((new_name, new_topic, cid))
                 if concept_updates:
                     conn.executemany("UPDATE concepts SET name = ?, topic = ? WHERE id = ?", concept_updates)
-            except Exception:
-                pass
+        finally:
+            conn.close()
+    except Exception:
+        pass
 
-            # Initialize study planner schema & migrations
-            try:
-                try:
-                    from backend.services.planner_db import init_planner_db
-                except ImportError:
-                    from services.planner_db import init_planner_db
-                init_planner_db()
-            except Exception as plan_mig_err:
-                pass
+    # Initialize study planner schema & migrations
+    try:
+        try:
+            from backend.services.planner_db import init_planner_db
+        except ImportError:
+            from services.planner_db import init_planner_db
+        init_planner_db()
+    except Exception:
+        pass
 
-            # Initialize personal notes schema & migrations
-            try:
-                try:
-                    from backend.services.notes_db import init_notes_db
-                except ImportError:
-                    from services.notes_db import init_notes_db
-                init_notes_db()
-            except Exception as notes_mig_err:
-                pass
-    finally:
-        conn.close()
+    # Initialize personal notes schema & migrations
+    try:
+        try:
+            from backend.services.notes_db import init_notes_db
+        except ImportError:
+            from services.notes_db import init_notes_db
+        init_notes_db()
+    except Exception:
+        pass
+
 
 # ==================== User Operations ====================
 
@@ -337,6 +710,7 @@ def create_user(
     now_iso = datetime.now(timezone.utc).isoformat()
     clean_name = (name or display_name or username).strip()
     clean_avatar = avatar or avatar_url
+    clean_email = email.strip().lower() if email else None
     conn = get_connection()
     try:
         with conn:
@@ -345,14 +719,14 @@ def create_user(
                 INSERT INTO users (id, username, display_name, name, email, password_hash, google_sub, avatar, avatar_url, role, created_at, last_login_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (user_id, username.strip().lower(), clean_name, clean_name, email, password_hash, google_sub, clean_avatar, clean_avatar, role, now_iso, now_iso)
+                (user_id, username.strip().lower(), clean_name, clean_name, clean_email, password_hash, google_sub, clean_avatar, clean_avatar, role, now_iso, now_iso)
             )
         return {
             "id": user_id,
             "username": username.strip().lower(),
             "display_name": clean_name,
             "name": clean_name,
-            "email": email,
+            "email": clean_email,
             "avatar": clean_avatar,
             "avatar_url": clean_avatar,
             "role": role,

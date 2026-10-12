@@ -67,9 +67,10 @@ ConceptLens/
 | `VITE_API_URL` | Production | Base URL of deployed backend (e.g. `https://conceptlens-api.onrender.com`). Falls back to `http://localhost:8000/api` or `/api` proxy in dev. |
 | `VITE_GOOGLE_CLIENT_ID`| Optional | Google OAuth 2.0 Web Client ID for Google login. |
 
-### Backend (`backend/.env`)
+### Backend (`backend/.env` & Render Dashboard)
 | Variable | Required | Description |
 |---|---|---|
+| `DATABASE_URL` | **Yes (in Prod)** | Hosted PostgreSQL connection string (e.g. Neon pooled endpoint `postgresql://...-pooler...neon.tech/neondb?sslmode=require`). Automatically falls back to local SQLite if unset. |
 | `GEMINI_API_KEY` | **Yes (in Prod)** | Google Gemini API key from AI Studio (`https://aistudio.google.com/app/apikey`). |
 | `GEMINI_MODEL` | Optional | Free-tier multimodal model (default: `gemini-3.7-flash`; also supports `gemini-3.5-flash`). |
 | `PORT` | Auto | Server port (Render sets this dynamically; defaults to `8000`). |
@@ -79,7 +80,7 @@ ConceptLens/
 | `JWT_SECRET` | Production | Random secret string of at least 32 characters (`openssl rand -hex 32`). |
 | `COOKIE_SECURE` | Production | `true` in production with HTTPS. |
 | `COOKIE_SAMESITE` | Production | `none` in cross-domain production (Vercel + Render). |
-| `DATABASE_PATH` | Optional | SQLite file path (default: `conceptlens.db`). |
+| `DATABASE_PATH` | Optional | Local SQLite file path fallback (default: `conceptlens.db`). |
 | `UPLOAD_DIR` | Optional | Uploads storage folder (default: `uploads`). |
 | `GUEST_UPLOAD_LIMIT` | Optional | Free guest uploads allowed before sign in (default: `5`). |
 
@@ -276,10 +277,26 @@ ConceptLens is fully mobile-first and installable as a Progressive Web App (PWA)
 
 ---
 
+## 🐘 Persistent Hosted Database & Backups
+
+For cloud deployments (such as Render free tier, where local disks are ephemeral), ConceptLens seamlessly supports hosted **PostgreSQL** (specifically **Neon**) via `DATABASE_URL`:
+
+- **Automatic Selection**: When `DATABASE_URL` is set, ConceptLens connects to PostgreSQL using optimized pooling (`pool_pre_ping=True`, `pool_recycle=280` to safely handle Neon's 5-minute compute suspension, `pool_size=5`, `max_overflow=2`, `prepare_threshold=None`).
+- **Zero-Config Local Fallback**: When `DATABASE_URL` is empty or unset, ConceptLens automatically falls back to local SQLite at `conceptlens.db` with WAL mode.
+- **Additive Migrations**: Startup migrations idempotently create missing tables, columns, and indexes without dropping or modifying existing data.
+- **Database Health Check**: Endpoint `GET /health/db` (and `/api/health/db`) tests connectivity with `SELECT 1` without exposing connection strings or credentials.
+- **Data Export & Backup**: Export users (excluding passwords), notes, and documents with concepts and relations to portable JSON:
+  ```bash
+  python scripts/export_data.py -o backups/my_backup.json
+  ```
+
+---
+
 ## 🔒 Offline & Privacy Guarantee
 
-All extraction, OCR, sentence parsing, and database storage happens **locally on your machine**:
-- SQLite database is stored locally as `backend/conceptlens.db`.
-- Passwords hashed with Argon2id and authenticated via signed httpOnly cookies.
-- No embeddings, tokens, or documents are transmitted to external AI servers.
+All extraction, OCR, sentence parsing, and database storage can run **completely locally on your machine**:
+- SQLite database is stored locally as `backend/conceptlens.db` by default.
+- Passwords hashed with Argon2id / bcrypt and authenticated via signed httpOnly cookies.
+- Hosted PostgreSQL (Neon) can be enabled optionally for cloud persistence across server restarts.
 - Safe for proprietary lecture notes, research documents, and personal study materials.
+
