@@ -2,6 +2,8 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
+const buildVersion = `v${Date.now()}`;
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
@@ -37,11 +39,29 @@ export default defineConfig({
         ],
       },
       workbox: {
-        navigateFallbackDenylist: [/^\/api/],
+        cacheId: `conceptlens-${buildVersion}`,
+        cleanupOutdatedCaches: true,
+        skipWaiting: true,
+        clientsClaim: true,
+        // Exclude all API routes and backend calls from service worker navigation fallback
+        navigateFallbackDenylist: [/^\/api/, /^https?:\/\/.*\/api/],
+        // Precache and serve ONLY static build assets (JS, CSS, HTML, fonts, icons)
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        // Exclude API calls entirely from runtime caching so the browser dispatches them directly via network
         runtimeCaching: [
           {
-            urlPattern: ({ url }) => url.pathname.startsWith('/api'),
-            handler: 'NetworkOnly', // NEVER cache API calls or uploads in service worker
+            urlPattern: /^https:\/\/fonts\.(?:googleapis|gstatic)\.com\/.*/i,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'google-fonts',
+              expiration: {
+                maxEntries: 20,
+                maxAgeSeconds: 60 * 60 * 24 * 365,
+              },
+              cacheableResponse: {
+                statuses: [0, 200],
+              },
+            },
           },
         ],
       },

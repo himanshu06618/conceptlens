@@ -562,9 +562,13 @@ def ensure_default_subject_and_chapters_for_user(user_id: str) -> str:
                 (subject_id, user_id)
             )
 
-            # Link all completed documents owned by user to this subject
+            # Link unlinked completed documents owned by user to this subject
             docs = conn.execute(
-                "SELECT id FROM documents WHERE user_id = ? AND status = 'completed'",
+                """
+                SELECT d.id FROM documents d
+                WHERE d.user_id = ? AND d.status = 'completed'
+                  AND NOT EXISTS (SELECT 1 FROM chapters c WHERE c.book_id = d.id)
+                """,
                 (user_id,)
             ).fetchall()
 
@@ -619,6 +623,25 @@ def get_subject_overview_data(user_id: str, subject_id: str) -> Dict[str, Any]:
             (subject_id,)
         ).fetchall()
 
+        # Performance optimization: Batch fetch all chapters for all books in this subject in 1 single query (eliminating N+1)
+        all_ch_rows = conn.execute(
+            """
+            SELECT c.id, c.book_id, c.name, c.order_index, c.concept_count,
+                   c.difficulty, c.est_hours,
+                   COALESCE(cp.status, 0) as status
+            FROM chapters c
+            JOIN documents d ON c.book_id = d.id
+            LEFT JOIN chapter_progress cp ON cp.chapter_id = c.id AND cp.user_id = ?
+            WHERE d.subject_id = ?
+            ORDER BY c.book_id, c.order_index ASC
+            """,
+            (user_id, subject_id)
+        ).fetchall()
+
+        book_chapters_map: Dict[str, List[Dict[str, Any]]] = {}
+        for ch in all_ch_rows:
+            book_chapters_map.setdefault(ch["book_id"], []).append(dict(ch))
+
         books = []
         all_chapters = []
         total_concepts = 0
@@ -629,25 +652,13 @@ def get_subject_overview_data(user_id: str, subject_id: str) -> Dict[str, Any]:
 
         for b in books_rows:
             b_id = b["id"]
-            # Fetch chapters for this book with user's progress
-            ch_rows = conn.execute(
-                """
-                SELECT c.id, c.book_id, c.name, c.order_index, c.concept_count,
-                       c.difficulty, c.est_hours,
-                       COALESCE(cp.status, 0) as status
-                FROM chapters c
-                LEFT JOIN chapter_progress cp ON cp.chapter_id = c.id AND cp.user_id = ?
-                WHERE c.book_id = ?
-                ORDER BY c.order_index ASC
-                """,
-                (user_id, b_id)
-            ).fetchall()
+            ch_rows = book_chapters_map.get(b_id, [])
 
             ch_list = []
             book_done = 0
-            for ch in ch_rows:
-                ch_dict = dict(ch)
+            for ch_dict in ch_rows:
                 st = ch_dict["status"]
+
                 total_concepts += ch_dict["concept_count"]
                 total_chapters_count += 1
                 total_est_hours += ch_dict["est_hours"]
@@ -750,6 +761,7 @@ def update_chapter_progress_status(user_id: str, chapter_id: str, status: int) -
                         (user_id, str(cr["id"]), target_concept_status, now_iso)
                     )
 
+        invalidate_user_summary_cache(user_id)
         return {"chapter_id": chapter_id, "status": status, "updated_at": now_iso}
     finally:
         conn.close()
@@ -1022,6 +1034,7 @@ def save_study_plan_record(
                 """,
                 (plan_id, user_id, subject_id, scope_chapter_id, days, order_mode, start_date, route_json, now_iso, now_iso)
             )
+        invalidate_user_summary_cache(user_id)
         return {
             "id": plan_id,
             "user_id": user_id,
@@ -1077,6 +1090,7 @@ def toggle_plan_day_completion(plan_id: str, user_id: str, day_index: int) -> Di
                 "UPDATE study_plans SET done_days = ?, updated_at = ? WHERE id = ?",
                 (json.dumps(done), now_iso, plan_id)
             )
+            invalidate_user_summary_cache(user_id)
             d = dict(row)
             d["done_days"] = done
             d["route"] = json.loads(d["route_json"]) if d.get("route_json") else []
@@ -1092,9 +1106,11 @@ def delete_study_plan_record(plan_id: str, user_id: str) -> bool:
                 "DELETE FROM study_plans WHERE id = ? AND user_id = ?",
                 (plan_id, user_id)
             )
+            invalidate_user_summary_cache(user_id)
             return cursor.rowcount > 0
     finally:
         conn.close()
+
 
 # ==================== Reminder Operations ====================
 
@@ -1262,6 +1278,18 @@ def _gather_chapter_topics_and_relations_internal(chapter_ids: List[str]) -> Tup
     finally:
         conn.close()
 
+_user_summary_cache: Dict[str, Tuple[float, Dict[str, Any]]] = {}
+
+def invalidate_user_summary_cache(user_id: Optional[str] = None) -> None:
+    """Invalidates the short-lived summary cache for a specific user, or all users if user_id is None."""
+    if not user_id:
+        _user_summary_cache.clear()
+        return
+    prefix = f"{user_id}:"
+    keys = [k for k in list(_user_summary_cache.keys()) if k.startswith(prefix)]
+    for k in keys:
+        _user_summary_cache.pop(k, None)
+
 def get_dashboard_summary_data(
     user_id: str,
     subject_id: Optional[str] = None,
@@ -1281,6 +1309,15 @@ def get_dashboard_summary_data(
     - Study Route Planner data (topologically sorted with prerequisite awareness)
     - Related Topics & Learning Clusters (including cross-document links)
     """
+    import time
+    now_ts = time.time()
+    cache_key = f"{user_id}:{subject_id}:{days}:{order_mode}:{scope_chapter_id}:{chapter_for_relations}"
+    cached = _user_summary_cache.get(cache_key)
+    if cached:
+        cached_ts, cached_data = cached
+        if (now_ts - cached_ts) < 15.0:
+            return cached_data
+
     days = 7 if days not in (7, 15, 30) else days
     order_mode = "syllabus" if order_mode not in ("syllabus", "easy", "hard") else order_mode
 
@@ -1445,17 +1482,17 @@ def get_dashboard_summary_data(
         if related_topics_data.get("topics") and not related_topics_data.get("clusters"):
             try:
                 try:
-                    from backend.services.topic_relations import extract_topic_relations
+                    from backend.services.topic_relations import generate_fallback_relations
                 except ImportError:
-                    from services.topic_relations import extract_topic_relations
-                ch_title = related_topics_data.get("chapter", {}).get("name", "")
-                extracted = extract_topic_relations(related_topics_data["topics"], chapter_title=ch_title)
+                    from services.topic_relations import generate_fallback_relations
+                # Fast deterministic relations - NEVER call Gemini on a read endpoint
+                extracted = generate_fallback_relations(related_topics_data["topics"])
                 save_topic_relations(target_ch_id, extracted.get("clusters", []), extracted.get("edges", []))
                 related_topics_data = get_chapter_relations_data(target_ch_id, user_id=user_id)
             except Exception as e_rel:
                 logger.warning(f"Could not extract clusters for chapter {target_ch_id}: {e_rel}")
 
-    return {
+    summary_result = {
         "subject": selected_subject,
         "subjects": subjects,
         "stats": stats,
@@ -1470,4 +1507,8 @@ def get_dashboard_summary_data(
         "relations": related_topics_data,
         "selected_chapter_id": target_ch_id
     }
+    # Cache per-user for 15s to speed up rapid dashboard re-renders
+    _user_summary_cache[cache_key] = (now_ts, summary_result)
+    return summary_result
+
 

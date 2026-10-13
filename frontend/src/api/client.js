@@ -1,4 +1,8 @@
 const getApiBase = () => {
+  if (typeof window !== 'undefined' && window.__API_BASE__) {
+    const custom = String(window.__API_BASE__).trim().replace(/\/+$/, '');
+    return custom.endsWith('/api') ? custom : `${custom}/api`;
+  }
   const envUrl = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE;
   if (envUrl && typeof envUrl === 'string') {
     const trimmed = envUrl.trim().replace(/\/+$/, '');
@@ -8,8 +12,12 @@ const getApiBase = () => {
   if (import.meta.env.DEV) {
     return '/api';
   }
-  // Default fallback to local backend
-  return 'http://localhost:8000/api';
+  // In browser on localhost without env var, use standard local backend
+  if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+    return 'http://localhost:8000/api';
+  }
+  // Production fallback: relative '/api' for platforms with reverse-proxy/rewrites
+  return '/api';
 };
 
 const API_BASE = getApiBase();

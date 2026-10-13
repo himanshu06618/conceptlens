@@ -28,6 +28,7 @@ import {
 } from '../../api/client';
 import ConceptListView from './ConceptListView';
 import ConceptDetailPanel from './ConceptDetailPanel';
+import ViewErrorBoundary from './ViewErrorBoundary';
 import BookshelfLoader from '../ui/BookshelfLoader';
 import '../../styles/results-panel.css';
 
@@ -460,54 +461,64 @@ export default function UnifiedResultsPanel({
             ) : (
               <Suspense fallback={<div className="panel-loader-wrap"><BookshelfLoader message="Loading view..." /></div>}>
                 {activeTab === 'concepts' && (
-                  <ConceptListView
-                    concepts={concepts}
-                    selectedConcept={selectedConcept}
-                    onSelectConcept={setSelectedConcept}
-                    onToggleStudied={handleToggleStudied}
-                    isAuthenticated={isAuthenticated}
-                    onJumpToTab={handleJumpToTab}
-                  />
+                  <ViewErrorBoundary viewName="Concepts List">
+                    <ConceptListView
+                      concepts={concepts}
+                      selectedConcept={selectedConcept}
+                      onSelectConcept={setSelectedConcept}
+                      onToggleStudied={handleToggleStudied}
+                      isAuthenticated={isAuthenticated}
+                      onJumpToTab={handleJumpToTab}
+                    />
+                  </ViewErrorBoundary>
                 )}
 
                 {activeTab === 'tree' && (
-                  <ConceptTreeView
-                    documentData={documentData}
-                    concepts={concepts}
-                    selectedConcept={selectedConcept}
-                    onSelectConcept={setSelectedConcept}
-                    searchQuery={searchQuery}
-                  />
+                  <ViewErrorBoundary viewName="Concept Tree">
+                    <ConceptTreeView
+                      documentData={documentData}
+                      concepts={concepts}
+                      selectedConcept={selectedConcept}
+                      onSelectConcept={setSelectedConcept}
+                      searchQuery={searchQuery}
+                    />
+                  </ViewErrorBoundary>
                 )}
 
                 {activeTab === 'mindmap' && (
-                  <MindMapView
-                    documentData={documentData}
-                    concepts={concepts}
-                    selectedConcept={selectedConcept}
-                    onSelectConcept={setSelectedConcept}
-                    searchQuery={searchQuery}
-                  />
+                  <ViewErrorBoundary viewName="Mind Map">
+                    <MindMapView
+                      documentData={documentData}
+                      concepts={concepts}
+                      selectedConcept={selectedConcept}
+                      onSelectConcept={setSelectedConcept}
+                      searchQuery={searchQuery}
+                    />
+                  </ViewErrorBoundary>
                 )}
 
                 {activeTab === 'flowchart' && (
-                  <FlowchartLearningView
-                    concepts={concepts}
-                    selectedConcept={selectedConcept}
-                    onSelectConcept={setSelectedConcept}
-                    onLearningPathChange={setLearningPath}
-                    searchQuery={searchQuery}
-                  />
+                  <ViewErrorBoundary viewName="Flowchart">
+                    <FlowchartLearningView
+                      concepts={concepts}
+                      selectedConcept={selectedConcept}
+                      onSelectConcept={setSelectedConcept}
+                      onLearningPathChange={setLearningPath}
+                      searchQuery={searchQuery}
+                    />
+                  </ViewErrorBoundary>
                 )}
 
                 {activeTab === 'roadmap' && (
-                  <StudyRoadmapView
-                    concepts={concepts}
-                    selectedConcept={selectedConcept}
-                    onSelectConcept={setSelectedConcept}
-                    onToggleStudied={handleToggleStudied}
-                    isAuthenticated={isAuthenticated}
-                  />
+                  <ViewErrorBoundary viewName="Study Roadmap">
+                    <StudyRoadmapView
+                      concepts={concepts}
+                      selectedConcept={selectedConcept}
+                      onSelectConcept={setSelectedConcept}
+                      onToggleStudied={handleToggleStudied}
+                      isAuthenticated={isAuthenticated}
+                    />
+                  </ViewErrorBoundary>
                 )}
               </Suspense>
             )}

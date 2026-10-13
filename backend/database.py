@@ -2,10 +2,32 @@ import os
 import sqlite3
 import json
 import re
+import logging
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 from pathlib import Path
+from contextvars import ContextVar
 from dotenv import load_dotenv
+
+logger = logging.getLogger("conceptlens.db")
+
+# Thread-safe & request-scoped query counter for performance metrics
+query_counter_var: ContextVar[int] = ContextVar("query_counter_var", default=-1)
+
+def get_query_count() -> int:
+    """Returns the number of SQL queries executed in the current request context."""
+    return query_counter_var.get()
+
+def reset_query_counter() -> None:
+    """Resets the SQL query counter to 0 for the current request."""
+    query_counter_var.set(0)
+
+def increment_query_counter() -> None:
+    """Increments the SQL query counter if tracking is active (>= 0)."""
+    val = query_counter_var.get()
+    if val >= 0:
+        query_counter_var.set(val + 1)
+
 
 # Load environment configuration
 _backend_dir = Path(__file__).resolve().parent
@@ -174,6 +196,11 @@ def create_app_engine():
 engine = create_app_engine()
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
+@event.listens_for(engine, "before_cursor_execute")
+def _receive_before_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+    increment_query_counter()
+
+
 class RowAdapter(dict):
     """A dictionary-like row adapter supporting dict, attribute, and index-based access."""
     def __init__(self, mapping: dict, tuple_vals: tuple):
@@ -251,7 +278,20 @@ class DBConnectionAdapter:
         self._is_pg = is_pg
         self._active_cursor = None
 
+    def cursor(self):
+        return self._conn.cursor()
+
+    @property
+    def row_factory(self):
+        return getattr(self._conn, "row_factory", None)
+
+    @row_factory.setter
+    def row_factory(self, val):
+        if hasattr(self._conn, "row_factory"):
+            self._conn.row_factory = val
+
     def execute(self, sql: str, params: Optional[Any] = None):
+        increment_query_counter()
         cursor = self._conn.cursor()
         self._active_cursor = cursor
         lastrowid = None
@@ -260,7 +300,7 @@ class DBConnectionAdapter:
             # Detect autoincrement primary-key tables where lastrowid is required
             is_auto_insert = bool(re.search(r"^\s*INSERT\s+INTO\s+(concepts|relations|topics|topic_relations|chapter_progress)\b", sql, re.IGNORECASE))
             if is_auto_insert and "RETURNING" not in translated_sql.upper():
-                translated_sql = translated_sql.rstrip(";\s") + " RETURNING id"
+                translated_sql = translated_sql.strip().rstrip(";") + " RETURNING id"
                 if params:
                     cursor.execute(translated_sql, tuple(params))
                 else:
@@ -286,6 +326,7 @@ class DBConnectionAdapter:
             return cursor
 
     def executemany(self, sql: str, seq_of_params: Any):
+        increment_query_counter()
         cursor = self._conn.cursor()
         self._active_cursor = cursor
         if self._is_pg:
@@ -297,6 +338,7 @@ class DBConnectionAdapter:
             return cursor
 
     def executescript(self, script: str):
+        increment_query_counter()
         if self._is_pg:
             cursor = self._conn.cursor()
             for stmt in script.strip().split(";"):
@@ -306,6 +348,7 @@ class DBConnectionAdapter:
             return DBCursorAdapter(cursor)
         else:
             return self._conn.executescript(script)
+
 
     def commit(self):
         self._conn.commit()
@@ -398,14 +441,22 @@ def get_connection():
         conn.execute("PRAGMA journal_mode = WAL;")
         conn.execute("PRAGMA synchronous = NORMAL;")
         conn.execute("PRAGMA temp_store = MEMORY;")
-        return conn
+        return DBConnectionAdapter(conn, is_pg=False)
+
 
 def init_db() -> None:
     """Initializes the database schema and performs safe, non-destructive startup migrations."""
     if is_postgres():
         # Postgres DDL
         conn = get_connection()
+        lock_acquired = False
         try:
+            try:
+                conn.execute("SELECT pg_advisory_lock(7429103);")
+                lock_acquired = True
+            except Exception as e_lock:
+                logger.warning(f"Advisory lock warning (non-fatal): {e_lock}")
+
             with conn:
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS users (
@@ -457,6 +508,7 @@ def init_db() -> None:
                 """)
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_user_id ON documents(user_id);")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_file_hash ON documents(file_hash);")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_subject_id ON documents(subject_id);")
 
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS concepts (
@@ -475,6 +527,7 @@ def init_db() -> None:
                 """)
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_concepts_document_id ON concepts(document_id);")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_concepts_importance ON concepts(importance);")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_concepts_doc_flow ON concepts(document_id, flow_order);")
 
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS relations (
@@ -516,17 +569,32 @@ def init_db() -> None:
                 conn.execute("ALTER TABLE documents ADD COLUMN IF NOT EXISTS concept_count INTEGER DEFAULT 0;")
                 conn.execute("ALTER TABLE documents ADD COLUMN IF NOT EXISTS chapter_count INTEGER DEFAULT 0;")
 
+                conn.execute("ALTER TABLE documents ADD COLUMN IF NOT EXISTS schema_version INTEGER DEFAULT 2;")
+
                 conn.execute("ALTER TABLE concepts ADD COLUMN IF NOT EXISTS flow_order INTEGER NOT NULL DEFAULT 0;")
                 conn.execute("ALTER TABLE concepts ADD COLUMN IF NOT EXISTS flow_group TEXT NOT NULL DEFAULT 'General';")
+                conn.execute("ALTER TABLE concepts ADD COLUMN IF NOT EXISTS chapter TEXT DEFAULT 'General';")
+                conn.execute("ALTER TABLE concepts ADD COLUMN IF NOT EXISTS schema_version INTEGER DEFAULT 2;")
+                conn.execute("ALTER TABLE concepts ADD COLUMN IF NOT EXISTS stage_index INTEGER DEFAULT 0;")
+                conn.execute("ALTER TABLE concepts ADD COLUMN IF NOT EXISTS chapter_order INTEGER DEFAULT 1;")
+                conn.execute("ALTER TABLE concepts ADD COLUMN IF NOT EXISTS estimated_minutes INTEGER DEFAULT 10;")
 
                 conn.execute("ALTER TABLE relations ADD COLUMN IF NOT EXISTS relation_type TEXT NOT NULL DEFAULT 'related';")
                 conn.execute("ALTER TABLE relations ADD COLUMN IF NOT EXISTS label TEXT NOT NULL DEFAULT '';")
+                conn.execute("ALTER TABLE relations ADD COLUMN IF NOT EXISTS target_id TEXT DEFAULT '';")
 
                 conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS name TEXT;")
                 conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar TEXT;")
                 conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'student';")
+                conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER DEFAULT 1;")
         finally:
+            if lock_acquired:
+                try:
+                    conn.execute("SELECT pg_advisory_unlock(7429103);")
+                except Exception:
+                    pass
             conn.close()
+
     else:
         # SQLite DDL
         conn = get_connection()
@@ -649,8 +717,24 @@ def init_db() -> None:
                     conn.execute("ALTER TABLE documents ADD COLUMN concept_count INTEGER DEFAULT 0;")
                 if "chapter_count" not in columns:
                     conn.execute("ALTER TABLE documents ADD COLUMN chapter_count INTEGER DEFAULT 0;")
+                if "schema_version" not in columns:
+                    conn.execute("ALTER TABLE documents ADD COLUMN schema_version INTEGER DEFAULT 2;")
+                if "chapter" not in concept_columns:
+                    conn.execute("ALTER TABLE concepts ADD COLUMN chapter TEXT DEFAULT 'General';")
+                if "schema_version" not in concept_columns:
+                    conn.execute("ALTER TABLE concepts ADD COLUMN schema_version INTEGER DEFAULT 2;")
+                if "stage_index" not in concept_columns:
+                    conn.execute("ALTER TABLE concepts ADD COLUMN stage_index INTEGER DEFAULT 0;")
+                if "chapter_order" not in concept_columns:
+                    conn.execute("ALTER TABLE concepts ADD COLUMN chapter_order INTEGER DEFAULT 1;")
+                if "estimated_minutes" not in concept_columns:
+                    conn.execute("ALTER TABLE concepts ADD COLUMN estimated_minutes INTEGER DEFAULT 10;")
+                if "target_id" not in relation_columns:
+                    conn.execute("ALTER TABLE relations ADD COLUMN target_id TEXT DEFAULT '';")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_user_id ON documents(user_id);")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_file_hash ON documents(file_hash);")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_subject_id ON documents(subject_id);")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_concepts_doc_flow ON concepts(document_id, flow_order);")
 
                 u_info = list(conn.execute("PRAGMA table_info(users);"))
                 u_cols = {row["name"] for row in u_info}
@@ -662,6 +746,8 @@ def init_db() -> None:
                     conn.execute("UPDATE users SET avatar = avatar_url WHERE avatar IS NULL;")
                 if "role" not in u_cols:
                     conn.execute("ALTER TABLE users ADD COLUMN role TEXT;")
+                if "token_version" not in u_cols:
+                    conn.execute("ALTER TABLE users ADD COLUMN token_version INTEGER DEFAULT 1;")
         finally:
             conn.close()
 
@@ -707,6 +793,84 @@ def init_db() -> None:
         init_notes_db()
     except Exception:
         pass
+
+
+EXPECTED_TABLE_COLUMNS: Dict[str, List[str]] = {
+    "users": ["id", "username", "display_name", "created_at", "last_login_at"],
+    "documents": ["id", "filename", "file_type", "status", "created_at"],
+    "concepts": ["id", "document_id", "name", "score", "importance", "source_excerpt"],
+    "relations": ["id", "document_id", "concept_id", "related_name", "weight"],
+    "concept_progress": ["user_id", "concept_id", "status", "updated_at"],
+    "subjects": ["id", "user_id", "name", "created_at"],
+    "chapters": ["id", "book_id", "name", "order_index", "concept_count", "difficulty", "est_hours", "created_at"],
+    "topics": ["id", "chapter_id", "order_index", "name"],
+    "topic_relations": ["id", "from_topic_id", "to_topic_id", "type"],
+    "chapter_progress": ["id", "user_id", "chapter_id", "status", "updated_at"],
+    "study_plans": ["id", "user_id", "subject_id", "days", "order_mode", "start_date", "route_json", "done_days", "created_at", "updated_at"],
+    "reminders": ["id", "user_id", "time", "weekdays", "label", "enabled", "created_at"],
+    "notes": ["id", "user_id", "title", "content", "created_at", "updated_at"],
+}
+
+def check_database_schema_health() -> Dict[str, Any]:
+    """
+    Checks database health: executes 'SELECT 1', then verifies that every expected table and column exists.
+    Returns {"status": "ok"} or {"status": "error", "missing": [names only]}.
+    Never exposes connection strings, passwords, or internal error tracebacks.
+    """
+    try:
+        conn = get_connection()
+        try:
+            # 1. Verify connectivity with SELECT 1
+            conn.execute("SELECT 1")
+
+            missing: List[str] = []
+
+            if is_postgres():
+                # Query Postgres information_schema for existing tables and columns
+                rows = conn.execute(
+                    """
+                    SELECT table_name, column_name
+                    FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                    """
+                ).fetchall()
+                existing_schema: Dict[str, Set[str]] = {}
+                for r in rows:
+                    t_name = str(r["table_name"]).lower()
+                    c_name = str(r["column_name"]).lower()
+                    existing_schema.setdefault(t_name, set()).add(c_name)
+
+                for table, cols in EXPECTED_TABLE_COLUMNS.items():
+                    if table.lower() not in existing_schema:
+                        missing.append(table)
+                    else:
+                        table_cols = existing_schema[table.lower()]
+                        for col in cols:
+                            if col.lower() not in table_cols:
+                                missing.append(f"{table}.{col}")
+            else:
+                # Query SQLite sqlite_master and PRAGMA table_info
+                t_rows = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+                existing_tables = {str(r["name"]).lower() for r in t_rows}
+                for table, cols in EXPECTED_TABLE_COLUMNS.items():
+                    if table.lower() not in existing_tables:
+                        missing.append(table)
+                    else:
+                        c_rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
+                        table_cols = {str(r["name"]).lower() for r in c_rows}
+                        for col in cols:
+                            if col.lower() not in table_cols:
+                                missing.append(f"{table}.{col}")
+
+            if missing:
+                return {"status": "error", "missing": missing}
+            return {"status": "ok"}
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.error(f"Health check connectivity failure: {type(e).__name__}")
+        return {"status": "error", "missing": ["database_unreachable"]}
+
 
 
 # ==================== User Operations ====================
@@ -1257,7 +1421,17 @@ def delete_document_by_id(user_id: str, doc_id: str) -> bool:
 
             # 5. Delete document
             cursor = conn.execute("DELETE FROM documents WHERE id = ? AND user_id = ?", (doc_id, user_id))
-            return cursor.rowcount > 0
+            if cursor.rowcount > 0:
+                try:
+                    try:
+                        from backend.services.planner_db import invalidate_user_summary_cache
+                    except ImportError:
+                        from services.planner_db import invalidate_user_summary_cache
+                    invalidate_user_summary_cache(user_id)
+                except Exception:
+                    pass
+                return True
+            return False
     finally:
         conn.close()
 
@@ -1279,7 +1453,17 @@ def rename_document_by_id(user_id: str, doc_id: str, new_filename: str) -> bool:
                 "UPDATE chapters SET name = ? WHERE book_id = ? AND (order_index = 1 OR order_index = 0)",
                 (stem_title, doc_id)
             )
-            return cursor.rowcount > 0
+            if cursor.rowcount > 0:
+                try:
+                    try:
+                        from backend.services.planner_db import invalidate_user_summary_cache
+                    except ImportError:
+                        from services.planner_db import invalidate_user_summary_cache
+                    invalidate_user_summary_cache(user_id)
+                except Exception:
+                    pass
+                return True
+            return False
     finally:
         conn.close()
 
@@ -1511,18 +1695,21 @@ def get_concept_by_id_and_user(concept_id: str, user_id: str) -> Optional[Dict[s
     """Fetches a concept verifying document ownership by user_id. Returns None if unauthorized."""
     conn = get_connection()
     try:
-        cid_int = int(concept_id) if str(concept_id).isdigit() else -1
+        cid_str = str(concept_id)
         cursor = conn.execute(
             """
             SELECT c.*, d.user_id, d.id as doc_id
             FROM concepts c
             JOIN documents d ON c.document_id = d.id
-            WHERE (c.id = ? OR CAST(c.id AS TEXT) = ?) AND d.user_id = ?
+            WHERE CAST(c.id AS TEXT) = ? AND d.user_id = ?
             """,
-            (cid_int, str(concept_id), user_id)
+            (cid_str, user_id)
         )
         row = cursor.fetchone()
         return dict(row) if row else None
+    except Exception as e:
+        logger.warning(f"Error looking up concept {concept_id} for user {user_id}: {e}")
+        return None
     finally:
         conn.close()
 
@@ -1562,6 +1749,15 @@ def set_concept_progress(user_id: str, concept_id: str, status: str) -> Dict[str
         sync_chapter_progress_from_concept_change(user_id, str(concept_id))
     except Exception as e_sync:
         # Non-fatal sync logging
+        pass
+
+    try:
+        try:
+            from backend.services.planner_db import invalidate_user_summary_cache
+        except ImportError:
+            from services.planner_db import invalidate_user_summary_cache
+        invalidate_user_summary_cache(user_id)
+    except Exception:
         pass
 
     return {
@@ -1607,6 +1803,15 @@ def bulk_set_concept_progress(user_id: str, concept_ids: List[str], status: str)
         except Exception:
             pass
 
+    try:
+        try:
+            from backend.services.planner_db import invalidate_user_summary_cache
+        except ImportError:
+            from services.planner_db import invalidate_user_summary_cache
+        invalidate_user_summary_cache(user_id)
+    except Exception:
+        pass
+
     return updated_count
 
 
@@ -1621,12 +1826,15 @@ def get_concept_progress_for_document(user_id: str, doc_id: str) -> Dict[str, st
             """
             SELECT cp.concept_id, cp.status
             FROM concept_progress cp
-            JOIN concepts c ON (c.id = cp.concept_id OR CAST(c.id AS TEXT) = cp.concept_id)
+            JOIN concepts c ON CAST(c.id AS TEXT) = cp.concept_id
             WHERE cp.user_id = ? AND c.document_id = ?
             """,
             (user_id, doc_id)
         )
         return {str(row["concept_id"]): row["status"] for row in cursor.fetchall()}
+    except Exception as e:
+        logger.warning(f"Error fetching concept progress for document {doc_id}: {e}")
+        return {}
     finally:
         conn.close()
 
@@ -1659,15 +1867,15 @@ def sync_chapter_progress_from_concept_change(user_id: str, concept_id: str) -> 
     try:
         with conn:
             # 1. Identify concept and its document
-            cid_int = int(concept_id) if str(concept_id).isdigit() else -1
+            cid_str = str(concept_id)
             row = conn.execute(
                 """
                 SELECT c.id, c.document_id, c.topic, c.flow_group
                 FROM concepts c
                 JOIN documents d ON c.document_id = d.id
-                WHERE (c.id = ? OR CAST(c.id AS TEXT) = ?) AND d.user_id = ?
+                WHERE CAST(c.id AS TEXT) = ? AND d.user_id = ?
                 """,
-                (cid_int, str(concept_id), user_id)
+                (cid_str, user_id)
             ).fetchone()
             if not row:
                 return

@@ -263,7 +263,7 @@ export default function App() {
       setActiveConcepts(conceptsResp.concepts || []);
       setActiveTopics(conceptsResp.topics || []);
     } catch (err) {
-      addToast(err.message || 'Failed to load concepts', 'error');
+      addToast("Can't open the results right now. Please try again.", 'error');
     } finally {
       setIsConceptsLoading(false);
     }

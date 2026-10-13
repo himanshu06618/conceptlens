@@ -12,7 +12,8 @@ import {
   Layers,
   MapPin,
   Calendar,
-  AlertTriangle
+  AlertTriangle,
+  X
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -40,6 +41,7 @@ import NotesAnalysisSection from '../components/planner/NotesAnalysisSection';
 import MyNotesCard from '../components/planner/MyNotesCard';
 import CompactUploadCard from '../components/planner/CompactUploadCard';
 import DashboardResultsPanel from '../components/planner/DashboardResultsPanel';
+import BookshelfLoader from '../components/ui/BookshelfLoader';
 import '../styles/planner.css';
 
 export default function StudentDashboard({ onToast = () => {} }) {
@@ -69,6 +71,7 @@ export default function StudentDashboard({ onToast = () => {} }) {
   const [activeConcepts, setActiveConcepts] = useState([]);
   const [activeTopics, setActiveTopics] = useState([]);
   const [isResultsLoading, setIsResultsLoading] = useState(false);
+  const [resultsError, setResultsError] = useState(null);
 
   // Planner controls state
   const [days, setDays] = useState(7);
@@ -155,21 +158,25 @@ export default function StudentDashboard({ onToast = () => {} }) {
   // Load full extracted document results (concepts, tree, flowchart) for the in-dashboard results panel
   const loadDocResults = useCallback(async (docId) => {
     if (!docId) return;
+    setActiveDocId(docId);
     setIsResultsLoading(true);
+    setResultsError(null);
     try {
       const [docDetail, conceptsResp] = await Promise.all([
         getDocument(docId),
         getDocumentConcepts(docId)
       ]);
-      setActiveDocId(docId);
       setActiveDocData(docDetail);
       setActiveConcepts(conceptsResp.concepts || []);
       setActiveTopics(conceptsResp.topics || []);
+      setResultsError(null);
     } catch (err) {
       console.error('Failed to load document results:', err);
+      const friendlyMsg = "Can't open the results right now. Please try again.";
+      setResultsError({ docId, message: friendlyMsg });
       onToast({
         type: 'error',
-        message: err.message || 'Could not load document details'
+        message: friendlyMsg
       });
     } finally {
       setIsResultsLoading(false);
@@ -631,8 +638,102 @@ export default function StudentDashboard({ onToast = () => {} }) {
         onToast={onToast}
       />
 
+      {/* In-Dashboard Results Panel: Loading State */}
+      {activeDocId && isResultsLoading && !activeDocData && !resultsError && (
+        <section
+          className="planner-results-loading-card"
+          style={{
+            background: 'var(--planner-card-bg)',
+            border: '1px solid var(--planner-card-border)',
+            borderRadius: 'var(--planner-radius-md)',
+            padding: '40px 20px',
+            marginBottom: '20px',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}
+          aria-live="polite"
+        >
+          <BookshelfLoader message="Loading document concepts & learning pathways..." />
+        </section>
+      )}
+
+      {/* In-Dashboard Results Panel: Error State with Retry Button */}
+      {activeDocId && resultsError && (
+        <div
+          className="planner-results-error-banner"
+          role="alert"
+          style={{
+            background: 'rgba(239, 68, 68, 0.12)',
+            border: '1px solid rgba(239, 68, 68, 0.35)',
+            borderRadius: 'var(--planner-radius-md)',
+            padding: '16px 20px',
+            marginBottom: '20px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '16px',
+            flexWrap: 'wrap'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <AlertTriangle size={22} color="#ef4444" style={{ flexShrink: 0 }} />
+            <div>
+              <div style={{ fontWeight: 600, color: 'var(--planner-text-main)', fontSize: '0.95rem' }}>
+                Unable to Open Results
+              </div>
+              <div style={{ color: 'var(--planner-text-muted)', fontSize: '0.85rem', marginTop: '2px' }}>
+                {resultsError.message || "Can't open the results right now. Please try again."}
+              </div>
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <button
+              type="button"
+              onClick={() => loadDocResults(resultsError.docId || activeDocId)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '8px 16px',
+                background: 'var(--planner-mint)',
+                color: '#1a1f2c',
+                border: 'none',
+                borderRadius: '6px',
+                fontWeight: 600,
+                fontSize: '0.85rem',
+                cursor: 'pointer'
+              }}
+            >
+              <RotateCcw size={14} />
+              Retry
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setResultsError(null);
+                setActiveDocId(null);
+              }}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--planner-text-muted)',
+                cursor: 'pointer',
+                padding: '6px',
+                display: 'flex',
+                alignItems: 'center'
+              }}
+              aria-label="Dismiss error"
+            >
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* In-Dashboard Results Panel: Concept Tree, Flowchart, Concepts */}
-      {activeDocId && activeDocData && (
+      {activeDocId && activeDocData && !resultsError && (
         <DashboardResultsPanel
           documentData={activeDocData}
           concepts={activeConcepts}
@@ -642,6 +743,7 @@ export default function StudentDashboard({ onToast = () => {} }) {
           onClose={() => {
             setActiveDocId(null);
             setActiveDocData(null);
+            setResultsError(null);
           }}
           onDeleteDocument={handleDeleteDocument}
           onRenameDocument={handleRenameDocument}

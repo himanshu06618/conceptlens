@@ -161,16 +161,23 @@ def clean_concept_name(name: str) -> Optional[str]:
     return " ".join(cased_words)
 
 
-def derive_estimated_minutes(importance: int, definition: str, current_minutes: Optional[int] = None) -> int:
+def derive_estimated_minutes(importance: Any, definition: Any, current_minutes: Optional[Any] = None) -> int:
     """Derives or validates estimated study minutes between 1 and 30."""
-    if current_minutes is not None and isinstance(current_minutes, (int, float)):
-        if 1 <= int(current_minutes) <= 30:
-            return int(current_minutes)
+    if current_minutes is not None:
+        try:
+            val = int(current_minutes)
+            if 1 <= val <= 30:
+                return val
+        except (ValueError, TypeError):
+            pass
 
     base = 4
-    imp = max(1, min(3, int(importance or 2)))
+    try:
+        imp = max(1, min(3, int(importance or 2)))
+    except (ValueError, TypeError):
+        imp = 2
     imp_factor = imp * 3
-    def_len = len(definition or "")
+    def_len = len(str(definition or ""))
     len_factor = min(8, def_len // 30)
 
     return max(1, min(30, base + imp_factor + len_factor))
@@ -297,10 +304,17 @@ def normalize_extracted_concepts(raw_concepts: List[Dict[str, Any]]) -> List[Dic
     # 1. Filter and clean concept names
     cleaned_candidates: List[Dict[str, Any]] = []
     sentence_definitions_pool: Dict[str, str] = {}
+    skipped_count = 0
 
     for c in raw_concepts:
+        if not isinstance(c, dict):
+            skipped_count += 1
+            continue
         name_raw = str(c.get("name") or "").strip()
         defn_raw = str(c.get("definition") or "").strip()
+        if not name_raw:
+            skipped_count += 1
+            continue
 
         # Check if name is a sentence-like description
         words = name_raw.split()
@@ -320,6 +334,9 @@ def normalize_extracted_concepts(raw_concepts: List[Dict[str, Any]]) -> List[Dic
         c_copy["chapter"] = str(c.get("chapter") or c.get("topic") or "General").strip() or "General"
         cleaned_candidates.append(c_copy)
 
+    if skipped_count > 0:
+        logger.info(f"Normalizer safely skipped {skipped_count} malformed/non-dict concept entries.")
+
     if not cleaned_candidates:
         return []
 
@@ -335,19 +352,28 @@ def normalize_extracted_concepts(raw_concepts: List[Dict[str, Any]]) -> List[Dic
             canonical_id = str(c.get("id")) if c.get("id") is not None else f"c_{len(canonical_map) + 1}"
             id_remap[orig_id] = canonical_id
             c["id"] = canonical_id
-            c["importance"] = max(1, min(3, int(c.get("importance", 2))))
-            c["estimated_minutes"] = derive_estimated_minutes(c["importance"], c["definition"], c.get("estimated_minutes"))
+            try:
+                c_imp = max(1, min(3, int(c.get("importance") or 2)))
+            except (ValueError, TypeError):
+                c_imp = 2
+            c["importance"] = c_imp
+            c["estimated_minutes"] = derive_estimated_minutes(c_imp, c.get("definition") or "", c.get("estimated_minutes"))
             canonical_map[norm_key] = c
         else:
             existing = canonical_map[norm_key]
             id_remap[orig_id] = existing["id"]
             # Merge: take higher importance
-            curr_imp = max(1, min(3, int(c.get("importance", 2))))
-            if curr_imp > existing["importance"]:
+            try:
+                curr_imp = max(1, min(3, int(c.get("importance") or 2)))
+            except (ValueError, TypeError):
+                curr_imp = 2
+            if curr_imp > existing.get("importance", 1):
                 existing["importance"] = curr_imp
             # Merge: take longer definition
-            if len(c["definition"]) > len(existing["definition"]):
-                existing["definition"] = c["definition"]
+            c_def = str(c.get("definition") or "")
+            ex_def = str(existing.get("definition") or "")
+            if len(c_def) > len(ex_def):
+                existing["definition"] = c_def
             # Merge relations
             existing_rels = existing.setdefault("relations", [])
             existing_rels.extend(c.get("relations", []) or c.get("related_concepts", []))
@@ -432,8 +458,7 @@ def normalize_extracted_concepts(raw_concepts: List[Dict[str, Any]]) -> List[Dic
     # Sub-group chapters with > 12 direct children
     for ch, ch_concepts in list(chapter_groups.items()):
         if len(ch_concepts) > 12:
-            # Sort by stage_index
-            ch_concepts.sort(key=lambda x: (x.get("stage_index", 0), x["name"]))
+            ch_concepts.sort(key=lambda x: (x.get("stage_index") or 0, str(x.get("name") or "")))
             # Chunk into parts of 8-10 concepts
             chunk_size = 10
             for chunk_idx in range(0, len(ch_concepts), chunk_size):

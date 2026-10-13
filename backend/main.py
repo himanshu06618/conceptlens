@@ -24,6 +24,7 @@ if str(backend_dir.parent) not in sys.path:
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks, Query, Request, Response, Depends
 from pydantic import BaseModel, Field
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
 from slowapi.errors import RateLimitExceeded
 from dotenv import load_dotenv
@@ -206,7 +207,12 @@ _worker_lock = threading.Lock()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: initialize database tables and verify Gemini connection
-    logger.info("Initializing SQLite database with schema...")
+    try:
+        from backend.database import is_postgres
+    except ImportError:
+        from database import is_postgres
+    db_type_label = "PostgreSQL (Neon)" if is_postgres() else "SQLite"
+    logger.info(f"Initializing {db_type_label} database with schema...")
     init_db()
     try:
         init_notes_db()
@@ -250,7 +256,51 @@ async def custom_rate_limit_handler(request: Request, exc: RateLimitExceeded):
         content={"detail": "Too many attempts. Please try again in a minute."}
     )
 
-# Enable CORS with credentials for frontend
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    # Log exception traceback server-side (never secrets, tokens, or document content)
+    logger.exception(f"Unhandled server error on {request.method} {request.url.path}: {type(exc).__name__}")
+    response = JSONResponse(
+        status_code=500,
+        content={"detail": "Internal error"}
+    )
+    # Ensure CORS headers are explicitly present on 500 error responses
+    origin = request.headers.get("origin")
+    allowed = False
+    if origin:
+        if origin in ALLOWED_ORIGINS or origin.startswith("http://localhost:") or origin.startswith("http://127.0.0.1:"):
+            allowed = True
+        elif re.match(r"^https:\/\/.*\.vercel\.app$", origin):
+            allowed = True
+    if allowed and origin:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        response.headers["Access-Control-Allow-Headers"] = "*"
+        response.headers["Access-Control-Allow-Methods"] = "*"
+    return response
+
+class TimingProfilerMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        try:
+            from backend.database import reset_query_counter, get_query_count
+        except ImportError:
+            from database import reset_query_counter, get_query_count
+
+        reset_query_counter()
+        t0 = time.perf_counter()
+        try:
+            response = await call_next(request)
+            return response
+        finally:
+            duration_ms = (time.perf_counter() - t0) * 1000.0
+            query_count = get_query_count()
+            # Server-side timing log: endpoint name, duration, number of SQL queries (never content or secrets)
+            logger.info(f"[TIMING] {request.method} {request.url.path} -> {duration_ms:.1f}ms ({query_count} SQL queries)")
+
+# Inner middleware: Request timing profiler
+app.add_middleware(TimingProfilerMiddleware)
+
+# Outermost middleware: CORS with credentials for frontend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
@@ -258,7 +308,9 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
+
 
 # Mount authentication router under both /api/auth and /auth
 app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
@@ -436,21 +488,19 @@ def health_check_root():
 @app.get("/api/health/db")
 def health_db():
     """
-    Database health check: executes 'SELECT 1'.
-    Returns {"status": "ok"} on success or generic {"status": "error"} on failure.
+    Database health check: executes 'SELECT 1' and checks that every expected table and column exists.
+    Returns {"status": "ok"} or {"status": "error", "missing": [names only]}.
     Never exposes connection strings, credentials, or internal error tracebacks.
     """
     try:
-        from sqlalchemy import text
-        try:
-            from backend.database import engine
-        except ImportError:
-            from database import engine
-        with engine.connect() as conn:
-            conn.execute(text("SELECT 1"))
-        return {"status": "ok"}
-    except Exception:
-        return JSONResponse(status_code=503, content={"status": "error"})
+        from backend.database import check_database_schema_health
+    except ImportError:
+        from database import check_database_schema_health
+    result = check_database_schema_health()
+    if result.get("status") == "ok":
+        return result
+    return JSONResponse(status_code=503, content=result)
+
 
 
 @app.get("/api/health")
@@ -769,7 +819,11 @@ def get_document_concepts(
     # 3. Attach user progress status if authenticated
     progress_map = {}
     if actor.get("is_authenticated"):
-        progress_map = get_concept_progress_for_document(actor["id"], doc_id)
+        try:
+            progress_map = get_concept_progress_for_document(actor["id"], doc_id)
+        except Exception as e_prog:
+            logger.warning(f"Could not load concept progress for document {doc_id}: {e_prog}")
+            progress_map = {}
 
     for c in normalized_concepts:
         cid_str = str(c.get("id"))
@@ -822,7 +876,11 @@ def get_document_concept_tree(
 
     # Attach progress
     if actor.get("is_authenticated"):
-        prog = get_concept_progress_for_document(actor["id"], doc_id)
+        try:
+            prog = get_concept_progress_for_document(actor["id"], doc_id)
+        except Exception as e_prog:
+            logger.warning(f"Could not load concept progress for tree {doc_id}: {e_prog}")
+            prog = {}
         for c in cleaned_concepts:
             c["status"] = prog.get(str(c["id"]), "not_started")
 
@@ -847,7 +905,11 @@ def get_document_flowchart(
     cleaned_concepts = normalize_extracted_concepts(raw_concepts)
 
     if actor.get("is_authenticated"):
-        prog = get_concept_progress_for_document(actor["id"], doc_id)
+        try:
+            prog = get_concept_progress_for_document(actor["id"], doc_id)
+        except Exception as e_prog:
+            logger.warning(f"Could not load concept progress for flowchart {doc_id}: {e_prog}")
+            prog = {}
         for c in cleaned_concepts:
             c["status"] = prog.get(str(c["id"]), "not_started")
 
@@ -909,7 +971,11 @@ def get_document_progress_endpoint(
     if not actor.get("is_authenticated"):
         return {"progress": {}}
 
-    progress_map = get_concept_progress_for_document(actor["id"], doc_id)
+    try:
+        progress_map = get_concept_progress_for_document(actor["id"], doc_id)
+    except Exception as e_prog:
+        logger.warning(f"Could not load document progress for {doc_id}: {e_prog}")
+        progress_map = {}
     return {"progress": progress_map}
 
 @app.post("/api/documents/{doc_id}/reanalyze")

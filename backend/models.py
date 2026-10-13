@@ -3,33 +3,33 @@ from pydantic import BaseModel, Field
 
 # Concept and Document Models
 class RelatedConcept(BaseModel):
-    name: str
+    name: Optional[str] = ""
     concept_id: Optional[Union[int, str]] = None
     target_id: Optional[Union[int, str]] = None
-    weight: int = 1
-    type: str = "related"
-    label: str = ""
+    weight: Optional[int] = 1
+    type: Optional[str] = "related"
+    label: Optional[str] = ""
 
 class ConceptItem(BaseModel):
     id: Union[int, str]
     document_id: Optional[str] = None
     name: str
-    definition: str = ""
-    topic: str = "General"
+    definition: Optional[str] = ""
+    topic: Optional[str] = "General"
     chapter: Optional[str] = "General"
-    score: float = 0.5
-    importance: int = Field(default=2, ge=1, le=5)
-    source_excerpt: str = ""
-    page: int = 1
-    flow_order: int = 0
-    flow_group: str = "General"
+    score: Optional[float] = 0.5
+    importance: Optional[int] = 2
+    source_excerpt: Optional[str] = ""
+    page: Optional[int] = 1
+    flow_order: Optional[int] = 0
+    flow_group: Optional[str] = "General"
     stage_index: Optional[int] = 0
     chapter_order: Optional[int] = 1
     estimated_minutes: Optional[int] = 10
     status: Optional[str] = "not_started"
     schema_version: Optional[int] = 2
     relations: Optional[List[Dict[str, Any]]] = []
-    related_concepts: List[RelatedConcept] = []
+    related_concepts: Optional[List[RelatedConcept]] = []
 
 class DocumentItem(BaseModel):
     id: str
