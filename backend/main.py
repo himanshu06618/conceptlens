@@ -251,13 +251,10 @@ async def lifespan(app: FastAPI):
         logger.warning(f"Planner DB initialization / backfill warning: {e}")
 
     gemini_key_set = bool(os.getenv("GEMINI_API_KEY", "").strip())
-    gemini_valid, gemini_msg = check_gemini_key_valid()
-    logger.info(f"Gemini API check: key_set={gemini_key_set}, valid={gemini_valid} ({gemini_msg}), model={GEMINI_MODEL}")
-
-    if gemini_valid:
-        logger.info(f"Default extraction path: GEMINI AI ({GEMINI_MODEL}) multimodal OCR + structured concepts.")
+    if gemini_key_set:
+        logger.info(f"Gemini API configured (model: {GEMINI_MODEL}). Fast startup: verification deferred to upload time.")
     else:
-        logger.info(f"Default extraction path: LIGHTWEIGHT FALLBACK (PyMuPDF + YAKE, reason: {gemini_msg}).")
+        logger.info("Default extraction path: LIGHTWEIGHT FALLBACK (PyMuPDF + YAKE, reason: GEMINI_API_KEY not set).")
 
     yield
     logger.info("Shutting down ConceptLens API server...")
@@ -311,6 +308,7 @@ class TimingProfilerMiddleware(BaseHTTPMiddleware):
 
         reset_query_counter()
         t0 = time.perf_counter()
+        response = None
         try:
             response = await call_next(request)
             return response
@@ -319,9 +317,15 @@ class TimingProfilerMiddleware(BaseHTTPMiddleware):
             query_count = get_query_count()
             # Server-side timing log: endpoint name, duration, number of SQL queries (never content or secrets)
             logger.info(f"[TIMING] {request.method} {request.url.path} -> {duration_ms:.1f}ms ({query_count} SQL queries)")
+            if response is not None and hasattr(response, "headers"):
+                response.headers["X-Process-Time"] = f"{duration_ms:.1f}ms"
 
 # Inner middleware: Request timing profiler
 app.add_middleware(TimingProfilerMiddleware)
+
+# Response compression middleware for fast payload transfers over 1KB
+from starlette.middleware.gzip import GZipMiddleware
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 # Outermost middleware: CORS with credentials for frontend
 app.add_middleware(
@@ -341,6 +345,14 @@ app.include_router(auth_router, prefix="/auth", tags=["auth"])
 
 # Mount planner router
 app.include_router(planner_router)
+try:
+    from backend.routers.planner import get_dashboard_bootstrap_endpoint, get_dashboard_summary_endpoint
+    app.get("/dashboard/bootstrap", tags=["planner"])(get_dashboard_bootstrap_endpoint)
+    app.get("/dashboard/summary", tags=["planner"])(get_dashboard_summary_endpoint)
+except ImportError:
+    from routers.planner import get_dashboard_bootstrap_endpoint, get_dashboard_summary_endpoint
+    app.get("/dashboard/bootstrap", tags=["planner"])(get_dashboard_bootstrap_endpoint)
+    app.get("/dashboard/summary", tags=["planner"])(get_dashboard_summary_endpoint)
 
 # Mount personal notes router under both /api/notes and /notes
 app.include_router(notes_router, prefix="/api/notes", tags=["notes"])

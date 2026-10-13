@@ -6,16 +6,19 @@ import {
   PanelLeftClose
 } from 'lucide-react';
 import StudentDashboard from './pages/StudentDashboard';
-import TeacherDashboard from './pages/TeacherDashboard';
-import NotesView from './pages/NotesView';
 import NeutralSkeleton from './components/planner/NeutralSkeleton';
 import Sidebar from './components/Sidebar';
 import UploadView from './components/UploadView';
-import ResultsView from './components/ResultsView';
-import LandingPage from './components/LandingPage';
 import ToastContainer from './components/Toast';
 import AuthModal from './components/AuthModal';
 import UserMenu from './components/UserMenu';
+
+// Code-split heavy and non-primary pages to minimize the dashboard bundle
+const TeacherDashboard = React.lazy(() => import('./pages/TeacherDashboard'));
+const NotesView = React.lazy(() => import('./pages/NotesView'));
+const ResultsView = React.lazy(() => import('./components/ResultsView'));
+const LandingPage = React.lazy(() => import('./components/LandingPage'));
+const LoaderShowcase = React.lazy(() => import('./components/dev/LoaderShowcase'));
 import { useAuth } from './context/AuthContext';
 import { 
   uploadDocument, 
@@ -26,7 +29,6 @@ import {
   deleteDocument,
   getGuestStatus
 } from './api/client';
-import LoaderShowcase from './components/dev/LoaderShowcase';
 
 import { 
   AmbientBackground,
@@ -554,16 +556,18 @@ export default function App() {
         onScroll={(event) => syncScrollProgress(event.currentTarget.scrollTop)}
       >
         {activeDocId && activeDocData ? (
-          <ResultsView
-            documentData={activeDocData}
-            concepts={activeConcepts}
-            topics={activeTopics}
-            isLoading={isConceptsLoading}
-            isAuthenticated={Boolean(user)}
-            onRefresh={() => loadDocConcepts(activeDocId)}
-            onNewUpload={handleNewUpload}
-            onDeleteDoc={handleDeleteDoc}
-          />
+          <React.Suspense fallback={<NeutralSkeleton />}>
+            <ResultsView
+              documentData={activeDocData}
+              concepts={activeConcepts}
+              topics={activeTopics}
+              isLoading={isConceptsLoading}
+              isAuthenticated={Boolean(user)}
+              onRefresh={() => loadDocConcepts(activeDocId)}
+              onNewUpload={handleNewUpload}
+              onDeleteDoc={handleDeleteDoc}
+            />
+          </React.Suspense>
         ) : (
           <UploadView
             onUpload={handleUpload}
@@ -704,46 +708,48 @@ export default function App() {
       </header>
 
       {/* Routes: Auth-based Home with Dashboard as Default for Logged-In Users */}
-      <Routes>
-        <Route 
-          path="/" 
-          element={renderHome()} 
-        />
+      <React.Suspense fallback={<NeutralSkeleton />}>
+        <Routes>
+          <Route 
+            path="/" 
+            element={renderHome()} 
+          />
 
-        <Route 
-          path="/app" 
-          element={<Navigate to="/" replace />} 
-        />
+          <Route 
+            path="/app" 
+            element={<Navigate to="/" replace />} 
+          />
 
-        <Route 
-          path="/student/dashboard" 
-          element={<Navigate to="/" replace />} 
-        />
+          <Route 
+            path="/student/dashboard" 
+            element={<Navigate to="/" replace />} 
+          />
 
-        <Route 
-          path="/teacher/dashboard" 
-          element={isAuthenticated && user?.role === 'teacher' ? <TeacherDashboard /> : <Navigate to="/" replace />} 
-        />
+          <Route 
+            path="/teacher/dashboard" 
+            element={isAuthenticated && user?.role === 'teacher' ? <TeacherDashboard /> : <Navigate to="/" replace />} 
+          />
 
-        <Route 
-          path="/notes" 
-          element={<NotesView onToast={addToast} />} 
-        />
+          <Route 
+            path="/notes" 
+            element={<NotesView onToast={addToast} />} 
+          />
 
-        <Route 
-          path="/dashboard" 
-          element={<Navigate to="/" replace />} 
-        />
+          <Route 
+            path="/dashboard" 
+            element={<Navigate to="/" replace />} 
+          />
 
-        <Route 
-          path="/landing" 
-          element={<LandingPage onOpenAuth={openAuthModal} />} 
-        />
+          <Route 
+            path="/landing" 
+            element={<LandingPage onOpenAuth={openAuthModal} />} 
+          />
 
-        <Route path="/_dev/loader" element={<LoaderShowcase />} />
+          <Route path="/_dev/loader" element={<LoaderShowcase />} />
 
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </React.Suspense>
 
       {/* Global In-Dashboard Auth Modal */}
       <AuthModal onSuccess={handleAuthSuccess} guestStatus={guestStatus} />

@@ -120,6 +120,8 @@ def init_planner_db() -> None:
                     );
                 """)
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_chapter_progress_user ON chapter_progress(user_id);")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_chapter_progress_user_chapter ON chapter_progress(user_id, chapter_id);")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_chapter_progress_chapter ON chapter_progress(chapter_id);")
 
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS study_plans (
@@ -218,6 +220,8 @@ def init_planner_db() -> None:
                         UNIQUE (user_id, chapter_id)
                     );
                     CREATE INDEX IF NOT EXISTS idx_chapter_progress_user ON chapter_progress(user_id);
+                    CREATE INDEX IF NOT EXISTS idx_chapter_progress_user_chapter ON chapter_progress(user_id, chapter_id);
+                    CREATE INDEX IF NOT EXISTS idx_chapter_progress_chapter ON chapter_progress(chapter_id);
 
                     CREATE TABLE IF NOT EXISTS study_plans (
                         id TEXT PRIMARY KEY,
@@ -1185,6 +1189,7 @@ def create_reminder_record(
                 """,
                 (rem_id, user_id, time_str, json.dumps(weekdays), label, 1 if enabled else 0, now_iso)
             )
+        invalidate_user_summary_cache(user_id)
         return {
             "id": rem_id,
             "user_id": user_id,
@@ -1239,6 +1244,7 @@ def update_reminder_record(
             rd = dict(row)
             rd["weekdays"] = json.loads(rd["weekdays"]) if rd.get("weekdays") else []
             rd["enabled"] = bool(rd["enabled"])
+            invalidate_user_summary_cache(user_id)
             return rd
     finally:
         conn.close()
@@ -1251,7 +1257,10 @@ def delete_reminder_record(reminder_id: str, user_id: str) -> bool:
                 "DELETE FROM reminders WHERE id = ? AND user_id = ?",
                 (reminder_id, user_id)
             )
-            return cursor.rowcount > 0
+            deleted = cursor.rowcount > 0
+            if deleted:
+                invalidate_user_summary_cache(user_id)
+            return deleted
     finally:
         conn.close()
 
@@ -1314,16 +1323,21 @@ def _gather_chapter_topics_and_relations_internal(chapter_ids: List[str]) -> Tup
         conn.close()
 
 _user_summary_cache: Dict[str, Tuple[float, Dict[str, Any]]] = {}
+_user_bootstrap_cache: Dict[str, Tuple[float, Dict[str, Any]]] = {}
 
 def invalidate_user_summary_cache(user_id: Optional[str] = None) -> None:
-    """Invalidates the short-lived summary cache for a specific user, or all users if user_id is None."""
+    """Invalidates the short-lived summary and bootstrap cache for a specific user, or all users if user_id is None."""
     if not user_id:
         _user_summary_cache.clear()
+        _user_bootstrap_cache.clear()
         return
     prefix = f"{user_id}:"
-    keys = [k for k in list(_user_summary_cache.keys()) if k.startswith(prefix)]
-    for k in keys:
-        _user_summary_cache.pop(k, None)
+    for k in list(_user_summary_cache.keys()):
+        if k.startswith(prefix):
+            _user_summary_cache.pop(k, None)
+    for k in list(_user_bootstrap_cache.keys()):
+        if k.startswith(prefix):
+            _user_bootstrap_cache.pop(k, None)
 
 def get_dashboard_summary_data(
     user_id: str,
@@ -1542,5 +1556,86 @@ def get_dashboard_summary_data(
     # Cache per-user for 15s to speed up rapid dashboard re-renders
     _user_summary_cache[cache_key] = (now_ts, summary_result)
     return summary_result
+
+
+def get_dashboard_bootstrap_data(
+    user_id: str,
+    user_profile: Dict[str, Any],
+    subject_id: Optional[str] = None,
+    days: int = 7,
+    order_mode: str = "syllabus"
+) -> Dict[str, Any]:
+    """
+    Consolidated single-trip bootstrap payload for instant first-paint dashboard rendering.
+    Returns:
+    - user: current authenticated user profile
+    - guest_status: guest / upload status
+    - documents: user's document list with chapter/concept counts
+    - overview: full curriculum overview (4 stats, status_line, books with chapters, route, active_plan)
+    - notes: recent notes preview (up to 4 items) and total count for MyNotesCard
+    - reminders: user's reminder list for RemindersCard
+    - cached_at: epoch timestamp
+    """
+    import time
+    now_ts = time.time()
+    cache_key = f"{user_id}:{subject_id or 'default'}:{days}:{order_mode}"
+    cached = _user_bootstrap_cache.get(cache_key)
+    if cached:
+        cached_ts, cached_data = cached
+        if (now_ts - cached_ts) < 20.0:
+            return cached_data
+
+    # 1. Full dashboard overview
+    overview = get_dashboard_summary_data(
+        user_id=user_id,
+        subject_id=subject_id,
+        days=days,
+        order_mode=order_mode
+    )
+
+    # 2. Documents list & count
+    try:
+        from backend.database import get_documents_list, get_document_count_by_user
+    except ImportError:
+        from database import get_documents_list, get_document_count_by_user
+    docs = get_documents_list(user_id=user_id)
+    doc_count = get_document_count_by_user(user_id)
+
+    # 3. Notes preview (4 items for card)
+    try:
+        from backend.services.notes_db import list_notes
+    except ImportError:
+        from services.notes_db import list_notes
+    notes_data = list_notes(user_id=user_id, limit=4, page=1)
+
+    # 4. Reminders
+    reminders_data = get_user_reminders_list(user_id=user_id)
+
+    result = {
+        "user": user_profile,
+        "is_guest": False,
+        "guest_status": {
+            "is_authenticated": True,
+            "uploads_count": doc_count,
+            "upload_limit": None,
+            "remaining": None
+        },
+        "documents": docs,
+        "documents_count": doc_count,
+        "overview": overview,
+        "notes": {
+            "items": notes_data.get("items", []),
+            "total": notes_data.get("total", 0)
+        },
+        "notes_preview": {
+            "items": notes_data.get("items", []),
+            "total": notes_data.get("total", 0)
+        },
+        "reminders": reminders_data,
+        "cached_at": now_ts
+    }
+    _user_bootstrap_cache[cache_key] = (now_ts, result)
+    return result
+
 
 

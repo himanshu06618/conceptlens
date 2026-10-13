@@ -10,8 +10,8 @@ import {
 const WEEKDAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 const WEEKDAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
-export default function RemindersCard({ onToast = () => {} }) {
-  const [reminders, setReminders] = useState([]);
+export default function RemindersCard({ onToast = () => {}, initialReminders = null }) {
+  const [reminders, setReminders] = useState(() => initialReminders || []);
   const [loading, setLoading] = useState(false);
   const [time, setTime] = useState('19:00');
   const [label, setLabel] = useState('Study Session');
@@ -24,10 +24,18 @@ export default function RemindersCard({ onToast = () => {} }) {
 
   const lastFiredMinuteRef = useRef('');
 
-  // Load reminders from server on mount
   useEffect(() => {
-    loadReminders();
-  }, []);
+    if (initialReminders !== null && initialReminders !== undefined) {
+      setReminders(initialReminders);
+    }
+  }, [initialReminders]);
+
+  // Load reminders from server on mount if not provided via bootstrap
+  useEffect(() => {
+    if (initialReminders === null || initialReminders === undefined) {
+      loadReminders();
+    }
+  }, [initialReminders]);
 
   const loadReminders = async () => {
     setLoading(true);

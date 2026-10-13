@@ -1871,3 +1871,158 @@
     font-size: 1.8rem;
   }
 }
+
+/* ==================== Honest Waiting Banner ==================== */
+.planner-waking-banner {
+  background: var(--planner-card-bg, rgba(255, 255, 255, 0.85));
+  border: 1px solid var(--planner-mint-border, rgba(111, 194, 26, 0.4));
+  border-radius: var(--planner-radius-md, 14px);
+  padding: 16px 20px;
+  margin-bottom: 24px;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 8px 24px rgba(111, 194, 26, 0.12);
+  animation: wakingBannerFadeIn 0.35s ease-out;
+  position: relative;
+  overflow: hidden;
+}
+
+@keyframes wakingBannerFadeIn {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.planner-waking-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.planner-waking-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex: 1;
+  min-width: 260px;
+}
+
+.planner-waking-spinner {
+  width: 24px;
+  height: 24px;
+  border: 2.5px solid var(--planner-mint-light, rgba(154, 230, 46, 0.25));
+  border-top-color: var(--planner-mint, #6FC21A);
+  border-radius: 50%;
+  animation: wakingSpin 0.9s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes wakingSpin {
+  to { transform: rotate(360deg); }
+}
+
+.planner-waking-title {
+  display: block;
+  font-family: var(--planner-font-title);
+  font-size: 1.02rem;
+  font-weight: 700;
+  color: var(--planner-text-main);
+  line-height: 1.3;
+}
+
+.planner-waking-sub {
+  font-size: 0.85rem;
+  color: var(--planner-text-muted);
+  margin-top: 3px;
+  line-height: 1.4;
+}
+
+.planner-waking-retry-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 18px;
+  background: var(--planner-mint, #6FC21A);
+  color: #ffffff;
+  border: none;
+  border-radius: var(--planner-radius-sm, 8px);
+  font-family: var(--planner-font-title);
+  font-weight: 600;
+  font-size: 0.88rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(111, 194, 26, 0.25);
+  flex-shrink: 0;
+}
+
+.planner-waking-retry-btn:hover {
+  background: var(--planner-mint-hover, #3E7806);
+  transform: translateY(-1px);
+}
+
+.planner-waking-progress-bar {
+  margin-top: 12px;
+  width: 100%;
+  height: 4px;
+  background: var(--planner-mint-light, rgba(154, 230, 46, 0.15));
+  border-radius: 999px;
+  overflow: hidden;
+  position: relative;
+}
+
+.planner-waking-progress-fill {
+  height: 100%;
+  width: 45%;
+  background: linear-gradient(90deg, var(--planner-mint, #6FC21A), var(--brand-light, #C4F560));
+  border-radius: 999px;
+  animation: wakingProgressIndeterminate 1.8s ease-in-out infinite;
+}
+
+@keyframes wakingProgressIndeterminate {
+  0% { transform: translateX(-100%); }
+  50% { transform: translateX(120%); }
+  100% { transform: translateX(300%); }
+}
+
+/* ==================== Stale-While-Revalidate Indicator ==================== */
+.planner-updating-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  background: var(--planner-mint-light, rgba(154, 230, 46, 0.12));
+  color: var(--planner-mint, #6FC21A);
+  border: 1px solid var(--planner-mint-border, rgba(111, 194, 26, 0.3));
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  animation: fadeInUpdating 0.2s ease-out;
+}
+
+@keyframes fadeInUpdating {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.spin-slow {
+  animation: wakingSpin 1.4s linear infinite;
+}
+
+/* ==================== Instant Real-Size Skeleton Utilities ==================== */
+.skeleton-pulse {
+  animation: skeletonPulseAnim 1.6s ease-in-out infinite;
+}
+
+@keyframes skeletonPulseAnim {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 0.9; }
+}
+
+.skeleton-text-pill {
+  display: inline-block;
+  height: 1.1em;
+  background: var(--planner-card-border, rgba(0,0,0,0.08));
+  border-radius: 4px;
+}

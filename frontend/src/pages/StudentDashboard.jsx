@@ -7,6 +7,7 @@ import {
   Clock,
   TrendingUp,
   RotateCcw,
+  RotateCw,
   Play,
   ListFilter,
   MapPin,
@@ -16,6 +17,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import {
+  getDashboardBootstrap,
   getDashboardSummary,
   renameDocument,
   getPlannerOverview,
@@ -31,6 +33,7 @@ import {
   getDocumentConcepts,
   deleteDocument
 } from '../api/client';
+import { getDashboardCache, saveDashboardCache } from '../utils/dashboardCache';
 
 import RouteMap from '../components/planner/RouteMap';
 import RelatedTopicsCard from '../components/planner/RelatedTopicsCard';
@@ -39,19 +42,34 @@ import RemindersCard from '../components/planner/RemindersCard';
 import NotesAnalysisSection from '../components/planner/NotesAnalysisSection';
 import MyNotesCard from '../components/planner/MyNotesCard';
 import CompactUploadCard from '../components/planner/CompactUploadCard';
-import DashboardResultsPanel from '../components/planner/DashboardResultsPanel';
 import BookshelfLoader from '../components/ui/BookshelfLoader';
 import '../styles/planner.css';
+
+// Code-split heavy document results panel (tree, roadmap, concept details)
+const DashboardResultsPanel = React.lazy(() => import('../components/planner/DashboardResultsPanel'));
 
 export default function StudentDashboard({ onToast = () => {} }) {
   const { user, isAuthenticated, loading: authLoading, openAuthModal } = useAuth();
   const navigate = useNavigate();
 
-  // Overview data from backend
+  // Overview data from backend / cache
   const [overview, setOverview] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [isUpdating, setIsUpdating] = useState(false);
   const [selectedSubjectId, setSelectedSubjectId] = useState(null);
   const [activeBookId, setActiveBookId] = useState(null);
+
+  // Bootstrap preview items for notes and reminders (zero waterfall requests)
+  const [bootstrapNotes, setBootstrapNotes] = useState(null);
+  const [bootstrapNotesCount, setBootstrapNotesCount] = useState(null);
+  const [bootstrapReminders, setBootstrapReminders] = useState(null);
+
+  // Honest server wake-up banner & backoff retry states
+  const [showWakingBanner, setShowWakingBanner] = useState(false);
+  const [wakingError, setWakingError] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+  const waitingTimerRef = useRef(null);
+  const isFetchingBootstrapRef = useRef(false);
 
   // In-Dashboard Document Upload & Processing State
   const [isUploading, setIsUploading] = useState(false);
@@ -96,65 +114,175 @@ export default function StudentDashboard({ onToast = () => {} }) {
     }
   }, [isAuthenticated, authLoading, user, navigate, openAuthModal]);
 
-  // Load unified dashboard summary (one source of truth)
-  const loadOverview = useCallback(async (subId = null) => {
-    try {
-      setLoading(true);
-      const data = await getDashboardSummary({
-        subjectId: subId || selectedSubjectId,
-        days,
-        orderMode,
-        scopeChapterId,
-        chapterForRelations: relationsChapterId
-      });
-      setOverview(data);
+  // 1. Stale-while-revalidate: read cached dashboard immediately from IndexedDB
+  useEffect(() => {
+    let isMounted = true;
+    if (!user?.id) return;
 
-      if (data?.subject) {
-        setSelectedSubjectId(data.subject.id);
-      }
-      if (data?.books?.length > 0) {
-        if (!activeBookId || !data.books.some((b) => b.id === activeBookId)) {
-          setActiveBookId(data.books[0].id);
+    getDashboardCache(user.id)
+      .then((cached) => {
+        if (!isMounted || !cached) return;
+        if (cached.overview) {
+          setOverview(cached.overview);
+          if (cached.overview.subject) {
+            setSelectedSubjectId(cached.overview.subject.id);
+          }
+          if (cached.overview.books?.length > 0) {
+            setActiveBookId(cached.overview.books[0].id);
+          }
+          if (cached.overview.route) {
+            setPreviewRoute(cached.overview.route);
+          }
+          if (cached.overview.selected_chapter_id && !relationsChapterId) {
+            setRelationsChapterId(cached.overview.selected_chapter_id);
+          }
+          if (cached.overview.active_plan) {
+            setDays(cached.overview.active_plan.days || 7);
+            setOrderMode(cached.overview.active_plan.order_mode || 'syllabus');
+            setScopeChapterId(cached.overview.active_plan.scope_chapter_id || '');
+          }
         }
-      } else {
-        setActiveBookId(null);
+        if (cached.notes_preview) {
+          setBootstrapNotes(cached.notes_preview.items || []);
+          setBootstrapNotesCount(cached.notes_preview.total || 0);
+        }
+        if (cached.reminders) {
+          setBootstrapReminders(cached.reminders || []);
+        }
+        // Cached data is ready immediately: show instant paint
+        setLoading(false);
+        setIsUpdating(true);
+      })
+      .catch((err) => {
+        console.warn('Dashboard cache read failed:', err);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [user?.id]);
+
+  // 2. Fetch fresh bootstrap data with honest waking banner & exponential backoff retries
+  const loadBootstrap = useCallback(
+    async (subId = null, attempt = 0) => {
+      if (isFetchingBootstrapRef.current) return;
+      isFetchingBootstrapRef.current = true;
+
+      // Start 3-second timer for honest waking banner
+      if (attempt === 0) {
+        if (waitingTimerRef.current) clearTimeout(waitingTimerRef.current);
+        waitingTimerRef.current = setTimeout(() => {
+          setShowWakingBanner(true);
+        }, 3000);
       }
 
-      if (data?.route) {
-        setPreviewRoute(data.route);
-      }
-
-      if (data?.selected_chapter_id && !relationsChapterId) {
-        setRelationsChapterId(data.selected_chapter_id);
-      }
-
-      // If there's an active plan, set initial planner controls to match
-      if (data?.active_plan) {
-        setDays(data.active_plan.days || 7);
-        setOrderMode(data.active_plan.order_mode || 'syllabus');
-        setScopeChapterId(data.active_plan.scope_chapter_id || '');
-      }
-    } catch (err) {
-      console.error('Failed to load dashboard summary:', err);
       try {
-        const fallbackData = await getPlannerOverview(subId);
-        setOverview(fallbackData);
-      } catch (fallbackErr) {
+        const data = await getDashboardBootstrap({
+          subjectId: subId || selectedSubjectId,
+          days,
+          orderMode,
+          scopeChapterId
+        });
+
+        // Backend answered: clear waking timer and banner
+        if (waitingTimerRef.current) clearTimeout(waitingTimerRef.current);
+        setShowWakingBanner(false);
+        setWakingError(false);
+        setRetryCount(0);
+
+        if (data?.overview) {
+          setOverview(data.overview);
+          if (data.overview.subject) {
+            setSelectedSubjectId(data.overview.subject.id);
+          }
+          if (data.overview.books?.length > 0) {
+            if (!activeBookId || !data.overview.books.some((b) => b.id === activeBookId)) {
+              setActiveBookId(data.overview.books[0].id);
+            }
+          } else {
+            setActiveBookId(null);
+          }
+          if (data.overview.route) {
+            setPreviewRoute(data.overview.route);
+          }
+          if (data.overview.selected_chapter_id && !relationsChapterId) {
+            setRelationsChapterId(data.overview.selected_chapter_id);
+          }
+          if (data.overview.active_plan) {
+            setDays(data.overview.active_plan.days || 7);
+            setOrderMode(data.overview.active_plan.order_mode || 'syllabus');
+            setScopeChapterId(data.overview.active_plan.scope_chapter_id || '');
+          }
+        }
+
+        if (data?.notes_preview) {
+          setBootstrapNotes(data.notes_preview.items || []);
+          setBootstrapNotesCount(data.notes_preview.total || 0);
+        }
+        if (data?.reminders) {
+          setBootstrapReminders(data.reminders || []);
+        }
+
+        // Save fresh per-user payload in IndexedDB
+        if (user?.id) {
+          saveDashboardCache(user.id, data).catch((err) => {
+            console.warn('Failed to cache dashboard bootstrap:', err);
+          });
+        }
+      } catch (err) {
+        console.error('Failed to load dashboard bootstrap:', err);
+        if (attempt < 3) {
+          // Auto-retry with backoff: 2s, 4s, 6s
+          const backoffMs = (attempt + 1) * 2000;
+          setRetryCount(attempt + 1);
+          setShowWakingBanner(true);
+          setTimeout(() => {
+            isFetchingBootstrapRef.current = false;
+            loadBootstrap(subId, attempt + 1);
+          }, backoffMs);
+          return;
+        }
+
+        // Retries exhausted
+        if (waitingTimerRef.current) clearTimeout(waitingTimerRef.current);
+        setWakingError(true);
+        setShowWakingBanner(true);
         onToast({
           type: 'error',
-          message: err.message || 'Could not load study planner'
+          message: err.message || 'Could not connect to server'
         });
+      } finally {
+        isFetchingBootstrapRef.current = false;
+        setLoading(false);
+        setIsUpdating(false);
       }
-    } finally {
-      setLoading(false);
-    }
-  }, [activeBookId, selectedSubjectId, days, orderMode, scopeChapterId, relationsChapterId, onToast]);
+    },
+    [selectedSubjectId, days, orderMode, scopeChapterId, relationsChapterId, activeBookId, user?.id, onToast]
+  );
+
+  const handleManualRetry = () => {
+    setWakingError(false);
+    setRetryCount(0);
+    setShowWakingBanner(true);
+    isFetchingBootstrapRef.current = false;
+    loadBootstrap(selectedSubjectId, 0);
+  };
+
+  const loadOverview = useCallback(
+    (subId = null) => {
+      loadBootstrap(subId, 0);
+    },
+    [loadBootstrap]
+  );
 
   useEffect(() => {
     if (isAuthenticated) {
-      loadOverview(selectedSubjectId);
+      loadBootstrap(selectedSubjectId);
     }
-  }, [isAuthenticated, selectedSubjectId, loadOverview]);
+    return () => {
+      if (waitingTimerRef.current) clearTimeout(waitingTimerRef.current);
+    };
+  }, [isAuthenticated, selectedSubjectId, loadBootstrap]);
 
   // Load full extracted document results (concepts, tree, roadmap) for the in-dashboard results panel
   const loadDocResults = useCallback(async (docId) => {
@@ -581,6 +709,50 @@ export default function StudentDashboard({ onToast = () => {} }) {
 
   return (
     <div className="planner-container">
+      {/* Honest Waiting Banner for Backend Wake-Up */}
+      {showWakingBanner && (
+        <div className="planner-waking-banner" role="alert" aria-live="polite">
+          <div className="planner-waking-content">
+            <div className="planner-waking-left">
+              {!wakingError ? (
+                <div className="planner-waking-spinner" />
+              ) : (
+                <AlertTriangle size={24} color="#ef4444" style={{ flexShrink: 0 }} />
+              )}
+              <div>
+                <strong className="planner-waking-title">
+                  {wakingError
+                    ? 'Backend Server Connection Failed'
+                    : 'Waking up the server. On the free plan this can take up to a minute.'}
+                </strong>
+                <div className="planner-waking-sub">
+                  {wakingError
+                    ? 'Unable to reach the server. Please check your connection and click Retry.'
+                    : retryCount > 0
+                    ? `Waiting for backend instance to start (attempt ${retryCount} of 3)...`
+                    : "Spinning up free-tier compute. Your dashboard will appear automatically as soon as it's ready."}
+                </div>
+              </div>
+            </div>
+            {wakingError && (
+              <button
+                type="button"
+                className="planner-waking-retry-btn"
+                onClick={handleManualRetry}
+              >
+                <RotateCcw size={14} />
+                Retry
+              </button>
+            )}
+          </div>
+          {!wakingError && (
+            <div className="planner-waking-progress-bar">
+              <div className="planner-waking-progress-fill" />
+            </div>
+          )}
+        </div>
+      )}
+
       {/* 1. Header Greeting Section */}
       <section className="planner-header-section">
         <h1 className="planner-greeting">
@@ -592,7 +764,17 @@ export default function StudentDashboard({ onToast = () => {} }) {
         </div>
         <div className="planner-status-line">
           <span className="badge">Status</span>
-          <span>{statusLineMessage}</span>
+          {loading && !overview ? (
+            <span className="skeleton-text-pill skeleton-pulse" style={{ width: 280, height: 16, display: 'inline-block' }} />
+          ) : (
+            <span>{statusLineMessage}</span>
+          )}
+          {isUpdating && (
+            <span className="planner-updating-badge" title="Fetching latest updates from server">
+              <RotateCw size={11} className="spin-slow" />
+              Updating...
+            </span>
+          )}
         </div>
       </section>
 
@@ -628,7 +810,13 @@ export default function StudentDashboard({ onToast = () => {} }) {
               <Sparkles size={18} />
             </div>
           </div>
-          <div className="planner-stat-val">{stats.total_concepts}</div>
+          <div className="planner-stat-val">
+            {loading && !overview ? (
+              <span className="skeleton-text-pill skeleton-pulse" style={{ width: 48, height: 26, display: 'inline-block' }} />
+            ) : (
+              stats.total_concepts
+            )}
+          </div>
           <div className="planner-stat-context">Extracted from your notes & readings</div>
         </div>
 
@@ -641,10 +829,18 @@ export default function StudentDashboard({ onToast = () => {} }) {
             </div>
           </div>
           <div className="planner-stat-val">
-            {stats.chapters_done} / {stats.total_chapters}
+            {loading && !overview ? (
+              <span className="skeleton-text-pill skeleton-pulse" style={{ width: 60, height: 26, display: 'inline-block' }} />
+            ) : (
+              `${stats.chapters_done} / ${stats.total_chapters}`
+            )}
           </div>
           <div className="planner-stat-context">
-            {stats.total_chapters - stats.chapters_done} remaining to master
+            {loading && !overview ? (
+              <span className="skeleton-text-pill skeleton-pulse" style={{ width: 120, height: 14, display: 'inline-block' }} />
+            ) : (
+              `${stats.total_chapters - stats.chapters_done} remaining to master`
+            )}
           </div>
         </div>
 
@@ -656,7 +852,13 @@ export default function StudentDashboard({ onToast = () => {} }) {
               <Clock size={18} />
             </div>
           </div>
-          <div className="planner-stat-val">{stats.study_time_left}h</div>
+          <div className="planner-stat-val">
+            {loading && !overview ? (
+              <span className="skeleton-text-pill skeleton-pulse" style={{ width: 48, height: 26, display: 'inline-block' }} />
+            ) : (
+              `${stats.study_time_left}h`
+            )}
+          </div>
           <div className="planner-stat-context">Estimated at your personalized pace</div>
         </div>
 
@@ -668,7 +870,13 @@ export default function StudentDashboard({ onToast = () => {} }) {
               <TrendingUp size={18} />
             </div>
           </div>
-          <div className="planner-stat-val">{stats.mastery_percent}%</div>
+          <div className="planner-stat-val">
+            {loading && !overview ? (
+              <span className="skeleton-text-pill skeleton-pulse" style={{ width: 48, height: 26, display: 'inline-block' }} />
+            ) : (
+              `${stats.mastery_percent}%`
+            )}
+          </div>
           <div className="planner-stat-context">Based on completed chapter milestones</div>
         </div>
       </section>
@@ -783,24 +991,26 @@ export default function StudentDashboard({ onToast = () => {} }) {
 
       {/* In-Dashboard Results Panel: Concepts, Concept Tree, Roadmap */}
       {activeDocId && activeDocData && !resultsError && (
-        <DashboardResultsPanel
-          documentData={activeDocData}
-          concepts={activeConcepts}
-          topics={activeTopics}
-          chapterCount={activeDocData.chapter_count || activeTopics.length}
-          isLoading={isResultsLoading}
-          selectedConceptName={selectedConceptForResults}
-          onClose={() => {
-            setActiveDocId(null);
-            setActiveDocData(null);
-            setResultsError(null);
-            setSelectedConceptForResults(null);
-          }}
-          onDeleteDocument={handleDeleteDocument}
-          onRenameDocument={handleRenameDocument}
-          onProgressChange={() => loadOverview()}
-          onToast={onToast}
-        />
+        <React.Suspense fallback={<BookshelfLoader message="Loading document concepts & learning pathways..." />}>
+          <DashboardResultsPanel
+            documentData={activeDocData}
+            concepts={activeConcepts}
+            topics={activeTopics}
+            chapterCount={activeDocData.chapter_count || activeTopics.length}
+            isLoading={isResultsLoading}
+            selectedConceptName={selectedConceptForResults}
+            onClose={() => {
+              setActiveDocId(null);
+              setActiveDocData(null);
+              setResultsError(null);
+              setSelectedConceptForResults(null);
+            }}
+            onDeleteDocument={handleDeleteDocument}
+            onRenameDocument={handleRenameDocument}
+            onProgressChange={() => loadOverview()}
+            onToast={onToast}
+          />
+        </React.Suspense>
       )}
 
       {/* Main Layout: Left Column (Analysis & Route) / Right Column (Relations, Status, Reminders) */}
@@ -825,7 +1035,11 @@ export default function StudentDashboard({ onToast = () => {} }) {
           />
 
           {/* Personal Notes Card */}
-          <MyNotesCard onToast={onToast} />
+          <MyNotesCard
+            onToast={onToast}
+            initialNotes={bootstrapNotes}
+            initialTotalCount={bootstrapNotesCount}
+          />
 
           {/* 4 & 5. Study Route Planner & RouteMap */}
           <section className="planner-section-card">
@@ -1035,7 +1249,10 @@ export default function StudentDashboard({ onToast = () => {} }) {
           />
 
           {/* 8. Reminders */}
-          <RemindersCard onToast={onToast} />
+          <RemindersCard
+            onToast={onToast}
+            initialReminders={bootstrapReminders}
+          />
         </div>
       </div>
     </div>

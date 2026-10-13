@@ -445,7 +445,36 @@ export async function checkUsernameAvailability(username) {
   }
 }
 
-// ==================== Study Planner API ====================
+export async function getDashboardBootstrap({
+  subjectId = null,
+  days = 7,
+  orderMode = 'syllabus'
+} = {}) {
+  const params = new URLSearchParams();
+  if (subjectId) params.append('subject_id', subjectId);
+  if (days) params.append('days', String(days));
+  if (orderMode) params.append('order_mode', orderMode);
+
+  const query = params.toString() ? `?${params.toString()}` : '';
+  const res = await apiFetch(`/dashboard/bootstrap${query}`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Failed to load dashboard bootstrap');
+  }
+  return res.json();
+}
+
+/**
+ * Lightweight background warm-up request fired as soon as the app shell loads.
+ * Completely non-blocking; wakes up sleeping Render free-tier instance early.
+ */
+export function wakeBackendServer() {
+  try {
+    const base = getApiBase().replace(/\/api$/, '');
+    const healthUrl = `${base}/health`;
+    fetch(healthUrl, { method: 'GET', keepalive: true, credentials: 'omit' }).catch(() => {});
+  } catch {}
+}
 
 export async function getDashboardSummary({
   subjectId = null,

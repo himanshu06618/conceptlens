@@ -186,3 +186,37 @@ def test_reminders_crud(client_with_user):
     del_resp = client.delete(f"/api/reminders/{rem_id}")
     assert del_resp.status_code == 200
     assert del_resp.json()["deleted"] is True
+
+
+def test_dashboard_bootstrap_endpoint(client_with_user):
+    client, user = client_with_user
+
+    # 1. Fetch bootstrap endpoint
+    resp = client.get("/api/dashboard/bootstrap")
+    assert resp.status_code == 200
+    data = resp.json()
+
+    assert "user" in data
+    assert data["user"]["id"] == user["id"]
+    assert "is_guest" in data
+    assert data["is_guest"] is False
+    assert "guest_status" in data
+    assert "documents" in data
+    assert "documents_count" in data
+    assert "overview" in data
+    assert "stats" in data["overview"]
+    assert "books" in data["overview"]
+    assert "notes_preview" in data
+    assert "reminders" in data
+
+    # 2. Verify second call returns cached data
+    cached_resp = client.get("/api/dashboard/bootstrap")
+    assert cached_resp.status_code == 200
+    cached_data = cached_resp.json()
+    assert cached_data["user"]["id"] == user["id"]
+
+    # 3. Verify root mount alias works identically
+    root_resp = client.get("/dashboard/bootstrap")
+    assert root_resp.status_code == 200
+    assert root_resp.json()["user"]["id"] == user["id"]
+

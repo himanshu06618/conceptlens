@@ -1,6 +1,7 @@
 import re
 import uuid
 import shutil
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Dict, Any
 
@@ -102,6 +103,7 @@ EMAIL_REGEX = re.compile(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$")
 def format_user_response(user: Dict[str, Any]) -> UserResponse:
     name_val = user.get("name") or user.get("display_name") or user.get("username") or ""
     avatar_val = user.get("avatar") or user.get("avatar_url")
+    created_at_val = user.get("created_at") or datetime.now(timezone.utc).isoformat()
     return UserResponse(
         id=user["id"],
         username=user.get("username", ""),
@@ -112,7 +114,7 @@ def format_user_response(user: Dict[str, Any]) -> UserResponse:
         avatar_url=avatar_val,
         role=user.get("role"),
         has_password=bool(user.get("password_hash")),
-        created_at=user["created_at"]
+        created_at=created_at_val
     )
 
 def create_auth_response(user: Dict[str, Any], token: str, is_new: bool = False) -> Dict[str, Any]:

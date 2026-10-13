@@ -6,6 +6,10 @@ import './styles/index.css';
 import App from './App.jsx';
 import { AuthProvider } from './context/AuthContext.jsx';
 import { GoogleOAuthProvider } from '@react-oauth/google';
+import { wakeBackendServer } from './api/client';
+
+// Fire early non-blocking backend warm-up request immediately on shell parse
+wakeBackendServer();
 
 const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID?.trim() || '';
 

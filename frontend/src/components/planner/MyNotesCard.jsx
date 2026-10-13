@@ -31,13 +31,21 @@ function formatRelativeTime(isoString) {
   }
 }
 
-export default function MyNotesCard({ onToast = () => {} }) {
+export default function MyNotesCard({ onToast = () => {}, initialNotes = null, initialTotalCount = null }) {
   const { isAuthenticated, openAuthModal } = useAuth();
   const navigate = useNavigate();
 
-  const [notes, setNotes] = useState([]);
-  const [totalCount, setTotalCount] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const [notes, setNotes] = useState(() => initialNotes || []);
+  const [totalCount, setTotalCount] = useState(() => initialTotalCount ?? (initialNotes ? initialNotes.length : 0));
+  const [loading, setLoading] = useState(() => initialNotes === null);
+
+  useEffect(() => {
+    if (initialNotes !== null && initialNotes !== undefined) {
+      setNotes(initialNotes);
+      setTotalCount(initialTotalCount ?? initialNotes.length);
+      setLoading(false);
+    }
+  }, [initialNotes, initialTotalCount]);
 
   const fetchNotes = useCallback(async () => {
     if (!isAuthenticated) {
@@ -60,8 +68,10 @@ export default function MyNotesCard({ onToast = () => {} }) {
   }, [isAuthenticated]);
 
   useEffect(() => {
-    fetchNotes();
-  }, [fetchNotes]);
+    if (initialNotes === null || initialNotes === undefined) {
+      fetchNotes();
+    }
+  }, [fetchNotes, initialNotes]);
 
   const handleOpenNewNote = (e) => {
     e.stopPropagation();

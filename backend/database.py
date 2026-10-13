@@ -509,6 +509,7 @@ def init_db() -> None:
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_user_id ON documents(user_id);")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_file_hash ON documents(file_hash);")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_subject_id ON documents(subject_id);")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_user_subject ON documents(user_id, subject_id);")
 
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS concepts (
@@ -540,6 +541,8 @@ def init_db() -> None:
                         label TEXT NOT NULL DEFAULT ''
                     );
                 """)
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_relations_document_id ON relations(document_id);")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_relations_concept_id ON relations(concept_id);")
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS concept_progress (
                         user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -739,6 +742,7 @@ def init_db() -> None:
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_user_id ON documents(user_id);")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_file_hash ON documents(file_hash);")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_subject_id ON documents(subject_id);")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_user_subject ON documents(user_id, subject_id);")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_concepts_doc_flow ON concepts(document_id, flow_order);")
 
                 u_info = list(conn.execute("PRAGMA table_info(users);"))

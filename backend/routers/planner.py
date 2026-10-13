@@ -47,6 +47,7 @@ try:
         delete_reminder,
         get_connection,
         get_dashboard_summary_data,
+        get_dashboard_bootstrap_data,
     )
     from backend.services.plan_engine import (
         build_route,
@@ -84,6 +85,7 @@ except ImportError:
         delete_reminder,
         get_connection,
         get_dashboard_summary_data,
+        get_dashboard_bootstrap_data,
     )
     from services.plan_engine import (
         build_route,
@@ -240,6 +242,48 @@ async def get_dashboard_summary_endpoint(
         scope_chapter_id=scope_chapter_id,
         chapter_for_relations=chapter_for_relations
     )
+
+
+# ==================== Unified Dashboard Bootstrap ====================
+
+@router.get("/dashboard/bootstrap")
+async def get_dashboard_bootstrap_endpoint(
+    subject_id: Optional[str] = Query(default=None),
+    days: int = Query(default=7),
+    order_mode: str = Query(default="syllabus"),
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """
+    Consolidated single-request bootstrap endpoint for the dashboard first paint.
+    Delivers user session, guest status, document list, curriculum overview,
+    recent notes preview, and reminders in one round-trip.
+    """
+    try:
+        from backend.routers.auth import format_user_response
+    except ImportError:
+        try:
+            from routers.auth import format_user_response
+        except ImportError:
+            format_user_response = lambda u: {
+                "id": u["id"],
+                "username": u.get("username", ""),
+                "display_name": u.get("display_name", ""),
+                "role": u.get("role", "student"),
+                "email": u.get("email"),
+                "created_at": u.get("created_at"),
+                "last_login_at": u.get("last_login_at"),
+                "avatar_url": u.get("avatar_url")
+            }
+
+    user_profile = format_user_response(current_user)
+    return get_dashboard_bootstrap_data(
+        user_id=current_user["id"],
+        user_profile=user_profile,
+        subject_id=subject_id,
+        days=days,
+        order_mode=order_mode
+    )
+
 
 
 # ==================== Chapter Progress & Meta ====================

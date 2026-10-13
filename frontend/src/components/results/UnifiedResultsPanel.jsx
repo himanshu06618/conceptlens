@@ -24,13 +24,13 @@ import {
   reanalyzeDocument, 
   getDocumentProgress 
 } from '../../api/client';
-import ConceptListView from './ConceptListView';
-import ConceptDetailPanel from './ConceptDetailPanel';
 import ViewErrorBoundary from './ViewErrorBoundary';
 import BookshelfLoader from '../ui/BookshelfLoader';
 import '../../styles/results-panel.css';
 
-// Lazy-load heavier diagram views to keep dashboard initial load fast
+// Lazy-load view components to keep initial dashboard bundle lightweight
+const ConceptListView = lazy(() => import('./ConceptListView'));
+const ConceptDetailPanel = lazy(() => import('./ConceptDetailPanel'));
 const ConceptTreeView = lazy(() => import('./ConceptTreeView'));
 const StudyRoadmapView = lazy(() => import('./StudyRoadmapView'));
 
@@ -541,15 +541,17 @@ export default function UnifiedResultsPanel({
 
           {/* Shared Detail Panel (Desktop Right Panel / Mobile Bottom Sheet) */}
           {selectedConcept && (
-            <ConceptDetailPanel
-              concept={selectedConcept}
-              allConcepts={concepts}
-              isAuthenticated={isAuthenticated}
-              onClose={() => setSelectedConcept(null)}
-              onSelectConcept={setSelectedConcept}
-              onToggleStudied={handleToggleStudied}
-              onJumpToTab={handleJumpToTab}
-            />
+            <Suspense fallback={null}>
+              <ConceptDetailPanel
+                concept={selectedConcept}
+                allConcepts={concepts}
+                isAuthenticated={isAuthenticated}
+                onClose={() => setSelectedConcept(null)}
+                onSelectConcept={setSelectedConcept}
+                onToggleStudied={handleToggleStudied}
+                onJumpToTab={handleJumpToTab}
+              />
+            </Suspense>
           )}
         </div>
       )}

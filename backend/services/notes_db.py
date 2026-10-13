@@ -17,9 +17,27 @@ except ImportError:
     from database import engine, SessionLocal, is_postgres
 
 
+try:
+    from backend.services.planner_db import invalidate_user_summary_cache
+except ImportError:
+    try:
+        from services.planner_db import invalidate_user_summary_cache
+    except ImportError:
+        invalidate_user_summary_cache = lambda uid=None: None
+
+
 def init_notes_db() -> None:
     """Safely creates the notes table and indexes if they do not already exist."""
     Note.__table__.create(engine, checkfirst=True)
+    try:
+        with engine.connect() as conn:
+            with conn.begin():
+                conn.execute(text("CREATE INDEX IF NOT EXISTS idx_notes_user_id ON notes(user_id);"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS idx_notes_document_id ON notes(document_id);"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS idx_notes_user_updated ON notes(user_id, updated_at);"))
+    except Exception as e:
+        logger = logging.getLogger("conceptlens.notes")
+        logger.warning(f"Note index creation warning: {e}")
 
 def format_note(note: Note) -> Dict[str, Any]:
     """Formats a Note ORM instance into a clean JSON-serializable dictionary."""
@@ -91,6 +109,7 @@ def create_note(
         session.add(note)
         session.commit()
         session.refresh(note)
+        invalidate_user_summary_cache(user_id)
         return format_note(note)
 
 def get_note_by_id(user_id: str, note_id: str) -> Optional[Dict[str, Any]]:
@@ -208,6 +227,7 @@ def update_note(
 
         session.commit()
         session.refresh(note)
+        invalidate_user_summary_cache(user_id)
         return format_note(note)
 
 def delete_note(user_id: str, note_id: str) -> bool:
@@ -220,4 +240,5 @@ def delete_note(user_id: str, note_id: str) -> bool:
 
         session.delete(note)
         session.commit()
+        invalidate_user_summary_cache(user_id)
         return True

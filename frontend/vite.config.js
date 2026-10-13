@@ -50,8 +50,17 @@ export default defineConfig({
         // Exclude API calls entirely from runtime caching so the browser dispatches them directly via network
         runtimeCaching: [
           {
-            // Explicitly route all /api calls strictly via NetworkOnly
-            urlPattern: ({ url }) => url.pathname.startsWith('/api') || url.pathname.startsWith('/documents') || url.pathname.startsWith('/dashboard'),
+            // Explicitly route all API/backend calls strictly via NetworkOnly (never cache API in SW)
+            urlPattern: ({ url }) =>
+              url.pathname.startsWith('/api') ||
+              url.pathname.startsWith('/documents') ||
+              url.pathname.startsWith('/dashboard') ||
+              url.pathname.startsWith('/health') ||
+              url.pathname.startsWith('/auth') ||
+              url.pathname.startsWith('/guest') ||
+              url.pathname.startsWith('/notes') ||
+              url.pathname.startsWith('/reminders') ||
+              url.hostname.includes('onrender.com'),
             handler: 'NetworkOnly',
           },
           {
@@ -85,5 +94,22 @@ export default defineConfig({
   preview: {
     host: '0.0.0.0',
     port: 5173,
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules/framer-motion')) {
+            return 'framer-motion';
+          }
+          if (id.includes('node_modules/@xyflow') || id.includes('node_modules/@dagrejs')) {
+            return 'flow-vendor';
+          }
+          if (id.includes('node_modules/lucide-react')) {
+            return 'lucide-icons';
+          }
+        },
+      },
+    },
   },
 });
