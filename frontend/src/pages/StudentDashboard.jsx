@@ -64,6 +64,8 @@ export default function StudentDashboard({ onToast = () => {} }) {
   const [lastUploadedFile, setLastUploadedFile] = useState(null);
   const pollingRef = useRef(null);
   const progressTimerRef = useRef(null);
+  const uploadInFlightRef = useRef(false);
+  const completedJobsRef = useRef(new Set());
 
   // In-Dashboard Document Results Panel State
   const [activeDocId, setActiveDocId] = useState(null);
@@ -217,20 +219,24 @@ export default function StudentDashboard({ onToast = () => {} }) {
         if (doc.status === 'completed') {
           clearInterval(pollingRef.current);
           if (progressTimerRef.current) clearInterval(progressTimerRef.current);
-          setProcessingProgress(100);
-          setProcessingMessage('Extraction completed successfully!');
 
-          setTimeout(async () => {
-            setIsUploading(false);
-            setProcessingDoc(null);
-            setProcessingError(null);
-            await loadDocResults(docId);
-            await loadOverview(selectedSubjectId);
-            onToast({
-              type: 'success',
-              message: 'Concepts successfully extracted!'
-            });
-          }, 400);
+          if (!completedJobsRef.current.has(docId)) {
+            completedJobsRef.current.add(docId);
+            setProcessingProgress(100);
+            setProcessingMessage('Extraction completed successfully!');
+
+            setTimeout(async () => {
+              setIsUploading(false);
+              setProcessingDoc(null);
+              setProcessingError(null);
+              await loadDocResults(docId);
+              await loadOverview(selectedSubjectId);
+              onToast({
+                type: 'success',
+                message: 'Concepts successfully extracted!'
+              });
+            }, 300);
+          }
         } else if (doc.status === 'failed') {
           clearInterval(pollingRef.current);
           if (progressTimerRef.current) clearInterval(progressTimerRef.current);
@@ -247,6 +253,8 @@ export default function StudentDashboard({ onToast = () => {} }) {
 
   // Start document upload from dashboard
   const handleUpload = async (file, options = {}) => {
+    if (uploadInFlightRef.current || isUploading) return;
+    uploadInFlightRef.current = true;
     setLastUploadedFile(file);
     setIsUploading(true);
     setProcessingError(null);
@@ -256,12 +264,31 @@ export default function StudentDashboard({ onToast = () => {} }) {
     setProcessingDoc({ filename: file.name });
 
     try {
-      const resp = await uploadDocument(file, options);
+      const idempotencyKey = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const resp = await uploadDocument(file, { ...options, idempotencyKey });
       setProcessingDoc({ id: resp.id, filename: resp.filename });
-      startPolling(resp.id);
+
+      if (resp.status === 'completed') {
+        if (!completedJobsRef.current.has(resp.id)) {
+          completedJobsRef.current.add(resp.id);
+          setIsUploading(false);
+          setProcessingDoc(null);
+          setProcessingError(null);
+          await loadDocResults(resp.id);
+          await loadOverview(selectedSubjectId);
+          onToast({
+            type: 'success',
+            message: 'Document loaded successfully!'
+          });
+        }
+      } else {
+        startPolling(resp.id);
+      }
     } catch (err) {
       setIsUploading(false);
       setProcessingError(err.message || 'Upload failed. Please try again.');
+    } finally {
+      uploadInFlightRef.current = false;
     }
   };
 

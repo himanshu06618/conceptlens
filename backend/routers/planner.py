@@ -154,9 +154,6 @@ async def get_planner_overview(
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
     user_id = current_user["id"]
-    # Ensure user has default subject, synthesized chapters and books
-    ensure_default_subject_and_chapters_for_user(user_id)
-
     subjects = get_user_subjects(user_id)
     if not subjects:
         return {

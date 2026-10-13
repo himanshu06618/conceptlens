@@ -366,28 +366,36 @@ def link_document_to_curriculum(doc_id: str, user_id: str) -> bool:
                     t_name = (tr["topic"] or f"Unit {idx + 1}").strip()
                     c_count = tr["c_count"]
                     avg_imp = float(tr["avg_imp"] or 2.0)
-                    ch_id = str(uuid.uuid4())
 
-                    topic_prereqs = conn.execute(
-                        """
-                        SELECT COUNT(*) as cnt FROM relations r
-                        JOIN concepts c ON r.concept_id = c.id
-                        WHERE c.document_id = ? AND c.topic = ? AND r.relation_type = 'prerequisite'
-                        """,
-                        (doc_id, tr["topic"])
-                    ).fetchone()["cnt"]
+                    existing_ch = conn.execute(
+                        "SELECT id FROM chapters WHERE book_id = ? AND (order_index = ? OR LOWER(TRIM(name)) = LOWER(TRIM(?))) LIMIT 1",
+                        (doc_id, idx + 1, t_name)
+                    ).fetchone()
 
-                    difficulty = derive_chapter_difficulty(c_count, avg_imp, topic_prereqs)
-                    est_hours = calc_default_est_hours(c_count, difficulty)
+                    if existing_ch:
+                        ch_id = existing_ch["id"]
+                    else:
+                        ch_id = str(uuid.uuid4())
+                        topic_prereqs = conn.execute(
+                            """
+                            SELECT COUNT(*) as cnt FROM relations r
+                            JOIN concepts c ON r.concept_id = c.id
+                            WHERE c.document_id = ? AND c.topic = ? AND r.relation_type = 'prerequisite'
+                            """,
+                            (doc_id, tr["topic"])
+                        ).fetchone()["cnt"]
 
-                    conn.execute(
-                        """
-                        INSERT INTO chapters (id, book_id, name, order_index, concept_count, difficulty, est_hours, created_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                        """,
-                        (ch_id, doc_id, t_name, idx + 1, c_count, difficulty, est_hours, doc["created_at"] or now_iso)
-                    )
-                    created_chapters_count += 1
+                        difficulty = derive_chapter_difficulty(c_count, avg_imp, topic_prereqs)
+                        est_hours = calc_default_est_hours(c_count, difficulty)
+
+                        conn.execute(
+                            """
+                            INSERT INTO chapters (id, book_id, name, order_index, concept_count, difficulty, est_hours, created_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                            """,
+                            (ch_id, doc_id, t_name, idx + 1, c_count, difficulty, est_hours, doc["created_at"] or now_iso)
+                        )
+                        created_chapters_count += 1
 
                     concepts = conn.execute(
                         "SELECT id, name FROM concepts WHERE document_id = ? AND topic = ? ORDER BY page ASC, flow_order ASC, id ASC",
@@ -395,14 +403,21 @@ def link_document_to_curriculum(doc_id: str, user_id: str) -> bool:
                     ).fetchall()
                     for t_idx, c in enumerate(concepts):
                         cluster_idx = (t_idx // 4) + 1
-                        c_cursor = conn.execute(
-                            """
-                            INSERT INTO topics (chapter_id, order_index, name, cluster_id, cluster_name)
-                            VALUES (?, ?, ?, ?, ?)
-                            """,
-                            (ch_id, t_idx + 1, c["name"], f"c{cluster_idx}", f"Cluster {cluster_idx}")
-                        )
-                        tid = getattr(c_cursor, "lastrowid", None)
+                        existing_top = conn.execute(
+                            "SELECT id FROM topics WHERE chapter_id = ? AND (order_index = ? OR LOWER(TRIM(name)) = LOWER(TRIM(?))) LIMIT 1",
+                            (ch_id, t_idx + 1, c["name"])
+                        ).fetchone()
+                        if existing_top:
+                            tid = existing_top["id"]
+                        else:
+                            c_cursor = conn.execute(
+                                """
+                                INSERT INTO topics (chapter_id, order_index, name, cluster_id, cluster_name)
+                                VALUES (?, ?, ?, ?, ?)
+                                """,
+                                (ch_id, t_idx + 1, c["name"], f"c{cluster_idx}", f"Cluster {cluster_idx}")
+                            )
+                            tid = getattr(c_cursor, "lastrowid", None)
                         if tid:
                             concept_name_to_topic_id[c["name"].strip().lower()] = tid
 
@@ -417,23 +432,31 @@ def link_document_to_curriculum(doc_id: str, user_id: str) -> bool:
             else:
                 # Single topic / General
                 ch_name = Path(doc["filename"]).stem.replace("_", " ").title()
-                ch_id = str(uuid.uuid4())
-                avg_imp_row = conn.execute(
-                    "SELECT AVG(importance) as avg_imp FROM concepts WHERE document_id = ?",
-                    (doc_id,)
+                existing_ch = conn.execute(
+                    "SELECT id FROM chapters WHERE book_id = ? AND (order_index = 1 OR LOWER(TRIM(name)) = LOWER(TRIM(?))) LIMIT 1",
+                    (doc_id, ch_name or "Chapter 1: Foundations")
                 ).fetchone()
-                avg_imp = float(avg_imp_row["avg_imp"] or 2.0) if avg_imp_row else 2.0
-                difficulty = derive_chapter_difficulty(concept_cnt, avg_imp, total_prereqs)
-                est_hours = calc_default_est_hours(concept_cnt, difficulty)
 
-                conn.execute(
-                    """
-                    INSERT INTO chapters (id, book_id, name, order_index, concept_count, difficulty, est_hours, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (ch_id, doc_id, ch_name or "Chapter 1: Foundations", 1, concept_cnt, difficulty, est_hours, doc["created_at"] or now_iso)
-                )
-                created_chapters_count += 1
+                if existing_ch:
+                    ch_id = existing_ch["id"]
+                else:
+                    ch_id = str(uuid.uuid4())
+                    avg_imp_row = conn.execute(
+                        "SELECT AVG(importance) as avg_imp FROM concepts WHERE document_id = ?",
+                        (doc_id,)
+                    ).fetchone()
+                    avg_imp = float(avg_imp_row["avg_imp"] or 2.0) if avg_imp_row else 2.0
+                    difficulty = derive_chapter_difficulty(concept_cnt, avg_imp, total_prereqs)
+                    est_hours = calc_default_est_hours(concept_cnt, difficulty)
+
+                    conn.execute(
+                        """
+                        INSERT INTO chapters (id, book_id, name, order_index, concept_count, difficulty, est_hours, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (ch_id, doc_id, ch_name or "Chapter 1: Foundations", 1, concept_cnt, difficulty, est_hours, doc["created_at"] or now_iso)
+                    )
+                    created_chapters_count += 1
 
                 concepts = conn.execute(
                     "SELECT id, name FROM concepts WHERE document_id = ? ORDER BY page ASC, flow_order ASC, id ASC",
@@ -441,14 +464,21 @@ def link_document_to_curriculum(doc_id: str, user_id: str) -> bool:
                 ).fetchall()
                 for t_idx, c in enumerate(concepts):
                     cluster_idx = (t_idx // 4) + 1
-                    c_cursor = conn.execute(
-                        """
-                        INSERT INTO topics (chapter_id, order_index, name, cluster_id, cluster_name)
-                        VALUES (?, ?, ?, ?, ?)
-                        """,
-                        (ch_id, t_idx + 1, c["name"], f"c{cluster_idx}", f"Cluster {cluster_idx}")
-                    )
-                    tid = getattr(c_cursor, "lastrowid", None)
+                    existing_top = conn.execute(
+                        "SELECT id FROM topics WHERE chapter_id = ? AND (order_index = ? OR LOWER(TRIM(name)) = LOWER(TRIM(?))) LIMIT 1",
+                        (ch_id, t_idx + 1, c["name"])
+                    ).fetchone()
+                    if existing_top:
+                        tid = existing_top["id"]
+                    else:
+                        c_cursor = conn.execute(
+                            """
+                            INSERT INTO topics (chapter_id, order_index, name, cluster_id, cluster_name)
+                            VALUES (?, ?, ?, ?, ?)
+                            """,
+                            (ch_id, t_idx + 1, c["name"], f"c{cluster_idx}", f"Cluster {cluster_idx}")
+                        )
+                        tid = getattr(c_cursor, "lastrowid", None)
                     if tid:
                         concept_name_to_topic_id[c["name"].strip().lower()] = tid
 
@@ -613,7 +643,7 @@ def get_subject_overview_data(user_id: str, subject_id: str) -> Dict[str, Any]:
         books_rows = conn.execute(
             """
             SELECT d.id, d.filename, d.file_type, d.created_at,
-                   COUNT(c.id) as chapter_count
+                   COUNT(DISTINCT c.id) as chapter_count
             FROM documents d
             LEFT JOIN chapters c ON c.book_id = d.id
             WHERE d.subject_id = ?
@@ -639,7 +669,12 @@ def get_subject_overview_data(user_id: str, subject_id: str) -> Dict[str, Any]:
         ).fetchall()
 
         book_chapters_map: Dict[str, List[Dict[str, Any]]] = {}
+        seen_ch_keys: Set[tuple] = set()
         for ch in all_ch_rows:
+            ch_key = (ch["book_id"], (ch["name"] or "").strip().lower())
+            if ch_key in seen_ch_keys:
+                continue
+            seen_ch_keys.add(ch_key)
             book_chapters_map.setdefault(ch["book_id"], []).append(dict(ch))
 
         books = []
@@ -1321,9 +1356,6 @@ def get_dashboard_summary_data(
     days = 7 if days not in (7, 15, 30) else days
     order_mode = "syllabus" if order_mode not in ("syllabus", "easy", "hard") else order_mode
 
-    # Ensure Core Curriculum exists and user's documents are linked
-    ensure_default_subject_and_chapters_for_user(user_id)
-
     subjects = get_user_subjects(user_id)
     if not subjects:
         return {
@@ -1339,7 +1371,7 @@ def get_dashboard_summary_data(
                 "mastery_percent": 0.0,
                 "mastery_percentage": 0.0
             },
-            "status_line": "No subjects found. Upload notes to begin.",
+            "status_line": "You have 0h left. Upload notes to begin.",
             "books": [],
             "active_plan": None,
             "plan_status": None,
@@ -1374,7 +1406,7 @@ def get_dashboard_summary_data(
     try:
         user_concepts = conn.execute(
             """
-            SELECT c.id, c.importance, c.definition, c.topic
+            SELECT DISTINCT c.id, c.importance, c.definition, c.topic
             FROM concepts c
             JOIN documents d ON c.document_id = d.id
             WHERE d.user_id = ?

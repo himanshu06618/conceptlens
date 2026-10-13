@@ -35,10 +35,12 @@ export default function CompactUploadCard({
   const fileInputRef = useRef(null);
   const cameraInputRef = useRef(null);
 
+  const inFlightRef = useRef(false);
+
   const handleDrag = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    if (isUploading) return;
+    if (isUploading || inFlightRef.current) return;
     if (e.type === 'dragenter' || e.type === 'dragover') {
       setIsDragActive(true);
     } else if (e.type === 'dragleave') {
@@ -50,7 +52,7 @@ export default function CompactUploadCard({
     e.preventDefault();
     e.stopPropagation();
     setIsDragActive(false);
-    if (isUploading) return;
+    if (isUploading || inFlightRef.current) return;
 
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       validateAndProcess(e.dataTransfer.files[0]);
@@ -58,49 +60,58 @@ export default function CompactUploadCard({
   };
 
   const handleFileSelect = (e) => {
+    if (isUploading || inFlightRef.current) return;
     if (e.target.files && e.target.files[0]) {
-      validateAndProcess(e.target.files[0]);
+      const selected = e.target.files[0];
       e.target.value = '';
+      validateAndProcess(selected);
     }
   };
 
   const validateAndProcess = async (file) => {
-    const ext = (file.name.split('.').pop() || '').toLowerCase();
-    if (!ALLOWED_EXTS.includes(ext)) {
-      onToast({
-        type: 'error',
-        message: `Unsupported file format '.${ext}'. Allowed: PDF, PNG, JPG, JPEG, WEBP, TXT, MD.`
-      });
-      return;
-    }
-
-    if (file.size > MAX_FILE_SIZE_BYTES) {
-      const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
-      onToast({
-        type: 'error',
-        message: `File size (${sizeMb} MB) exceeds maximum allowed limit of ${MAX_FILE_SIZE_MB} MB.`
-      });
-      return;
-    }
-
-    if (file.type.startsWith('image/')) {
-      setIsCompressing(true);
-      try {
-        const compressed = await compressImageIfNeeded(file);
-        onUpload(compressed);
-      } catch (err) {
-        console.warn('Image compression fallback:', err);
-        onUpload(file);
-      } finally {
-        setIsCompressing(false);
+    if (isUploading || inFlightRef.current) return;
+    inFlightRef.current = true;
+    try {
+      const ext = (file.name.split('.').pop() || '').toLowerCase();
+      if (!ALLOWED_EXTS.includes(ext)) {
+        onToast({
+          type: 'error',
+          message: `Unsupported file format '.${ext}'. Allowed: PDF, PNG, JPG, JPEG, WEBP, TXT, MD.`
+        });
+        return;
       }
-    } else {
-      onUpload(file);
+
+      if (file.size > MAX_FILE_SIZE_BYTES) {
+        const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
+        onToast({
+          type: 'error',
+          message: `File size (${sizeMb} MB) exceeds maximum allowed limit of ${MAX_FILE_SIZE_MB} MB.`
+        });
+        return;
+      }
+
+      if (file.type.startsWith('image/')) {
+        setIsCompressing(true);
+        try {
+          const compressed = await compressImageIfNeeded(file);
+          await onUpload(compressed);
+        } catch (err) {
+          console.warn('Image compression fallback:', err);
+          await onUpload(file);
+        } finally {
+          setIsCompressing(false);
+        }
+      } else {
+        await onUpload(file);
+      }
+    } finally {
+      inFlightRef.current = false;
     }
   };
 
   const handleOpenFilePicker = (e) => {
     e.stopPropagation();
+    if (isUploading || inFlightRef.current) return;
     fileInputRef.current?.click();
   };
 

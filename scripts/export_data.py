@@ -93,6 +93,36 @@ def export_data(output_path: Path) -> None:
             doc["concepts"] = concepts
             doc["relations"] = relations
 
+        # 4. Export subjects
+        subjects = []
+        try:
+            subjects_cursor = conn.execute("SELECT * FROM subjects ORDER BY created_at ASC")
+            subjects = [dict(r) for r in subjects_cursor.fetchall()]
+        except Exception as e:
+            print(f"[WARN] Could not export subjects: {e}")
+
+        # 5. Export chapters & topics
+        chapters = []
+        topics = []
+        try:
+            chapters_cursor = conn.execute("SELECT * FROM chapters ORDER BY created_at ASC")
+            chapters = [dict(r) for r in chapters_cursor.fetchall()]
+            topics_cursor = conn.execute("SELECT * FROM topics ORDER BY id ASC")
+            topics = [dict(r) for r in topics_cursor.fetchall()]
+        except Exception as e:
+            print(f"[WARN] Could not export chapters/topics: {e}")
+
+        # 6. Export progress
+        concept_progress = []
+        chapter_progress = []
+        try:
+            cp_cursor = conn.execute("SELECT * FROM concept_progress")
+            concept_progress = [dict(r) for r in cp_cursor.fetchall()]
+            chp_cursor = conn.execute("SELECT * FROM chapter_progress")
+            chapter_progress = [dict(r) for r in chp_cursor.fetchall()]
+        except Exception as e:
+            print(f"[WARN] Could not export progress: {e}")
+
         backup_payload = {
             "metadata": {
                 "app": "ConceptLens",
@@ -103,11 +133,21 @@ def export_data(output_path: Path) -> None:
                     "users": len(users),
                     "notes": len(notes),
                     "documents": len(documents),
+                    "subjects": len(subjects),
+                    "chapters": len(chapters),
+                    "topics": len(topics),
+                    "concept_progress": len(concept_progress),
+                    "chapter_progress": len(chapter_progress)
                 }
             },
             "users": users,
             "notes": notes,
-            "documents": documents
+            "documents": documents,
+            "subjects": subjects,
+            "chapters": chapters,
+            "topics": topics,
+            "concept_progress": concept_progress,
+            "chapter_progress": chapter_progress
         }
 
         output_path.parent.mkdir(parents=True, exist_ok=True)

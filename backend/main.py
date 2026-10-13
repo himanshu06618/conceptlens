@@ -21,7 +21,7 @@ if str(backend_dir) not in sys.path:
 if str(backend_dir.parent) not in sys.path:
     sys.path.insert(0, str(backend_dir.parent))
 
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks, Query, Request, Response, Depends
+from fastapi import FastAPI, UploadFile, File, Form, Header, HTTPException, BackgroundTasks, Query, Request, Response, Depends
 from pydantic import BaseModel, Field
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -36,6 +36,8 @@ load_dotenv()
 try:
     from backend.database import (
         init_db,
+        get_connection,
+        is_postgres,
         create_document,
         update_document_stage,
         mark_document_completed,
@@ -53,6 +55,8 @@ try:
         get_document_flowchart_cache,
         document_exists,
         find_completed_document_by_hash,
+        find_document_by_hash,
+        find_document_by_idempotency_key,
         clone_cached_document,
         rename_document_by_id,
         get_concept_by_id_and_user,
@@ -112,6 +116,8 @@ try:
 except ImportError:
     from database import (
         init_db,
+        get_connection,
+        is_postgres,
         create_document,
         update_document_stage,
         mark_document_completed,
@@ -129,6 +135,8 @@ except ImportError:
         get_document_flowchart_cache,
         document_exists,
         find_completed_document_by_hash,
+        find_document_by_hash,
+        find_document_by_idempotency_key,
         clone_cached_document,
         rename_document_by_id,
         get_concept_by_id_and_user,
@@ -221,9 +229,24 @@ async def lifespan(app: FastAPI):
 
     try:
         init_planner_db()
-        backfilled = backfill_unlinked_documents()
-        if backfilled > 0:
-            logger.info(f"Startup backfill: linked {backfilled} earlier documents to Core Curriculum.")
+        conn = get_connection()
+        try:
+            acquired = True
+            if is_postgres():
+                lock_res = conn.execute("SELECT pg_try_advisory_lock(7429104)").fetchone()
+                acquired = bool(lock_res and (lock_res[0] is True or lock_res[0] == 1))
+            if acquired:
+                try:
+                    backfilled = backfill_unlinked_documents()
+                    if backfilled > 0:
+                        logger.info(f"Startup backfill: linked {backfilled} earlier documents to Core Curriculum.")
+                finally:
+                    if is_postgres():
+                        conn.execute("SELECT pg_advisory_unlock(7429104)")
+            else:
+                logger.info("Startup backfill skipped: advisory lock currently held by another worker.")
+        finally:
+            conn.close()
     except Exception as e:
         logger.warning(f"Planner DB initialization / backfill warning: {e}")
 
@@ -445,6 +468,13 @@ def process_document_background(
                 stage_message="Saving knowledge structures & relations (95%)..."
             )
             save_concepts_and_relations(doc_id, concepts)
+
+            # Process chapters & relations for Study Planner BEFORE marking completed
+            try:
+                process_document_chapters_and_relations(doc_id)
+            except Exception as e_rel:
+                logger.warning(f"Could not build chapter relations for document {doc_id}: {e_rel}")
+
             t_total = time.perf_counter() - t_start
 
             mark_document_completed(
@@ -454,12 +484,6 @@ def process_document_background(
                 processing_time_sec=t_total,
                 provider_used=provider_used
             )
-
-            # Process chapters & relations for Study Planner
-            try:
-                process_document_chapters_and_relations(doc_id)
-            except Exception as e_rel:
-                logger.warning(f"Could not build chapter relations for document {doc_id}: {e_rel}")
 
             logger.info(f"Document {doc_id} processing completed successfully in {t_total:.2f}s ({len(concepts)} concepts).")
 
@@ -565,9 +589,25 @@ async def upload_document(
     file: UploadFile = File(...),
     pdf_password: Optional[str] = Form(None),
     extraction_mode: Optional[str] = Form(None),
+    idempotency_key: Optional[str] = Form(None),
+    x_idempotency_key: Optional[str] = Header(None, alias="X-Idempotency-Key"),
     actor: Dict[str, Any] = Depends(get_current_user_or_guest)
 ):
     verify_csrf(request)
+
+    effective_key = (idempotency_key or x_idempotency_key or "").strip() or None
+    if effective_key:
+        existing_by_key = find_document_by_idempotency_key(effective_key, actor["id"])
+        if existing_by_key:
+            logger.info(f"Idempotent upload HIT for key {effective_key} (doc {existing_by_key['id']})")
+            return UploadResponse(
+                id=existing_by_key["id"],
+                filename=existing_by_key.get("filename", Path(file.filename or "uploaded_file").name),
+                file_type=Path(existing_by_key.get("filename", "")).suffix.lower().lstrip("."),
+                status=existing_by_key.get("status", "processing"),
+                stage=existing_by_key.get("stage", "reading"),
+                message="Existing document returned for idempotency key."
+            )
 
     # Enforce free guest limit (5 uploads) before requiring login
     if not actor["is_authenticated"]:
@@ -620,24 +660,27 @@ async def upload_document(
     # Compute SHA-256 hash for deduplication and quota preservation
     file_hash = hashlib.sha256(content).hexdigest()
 
-    # Check database cache for instant return
-    cached_doc = find_completed_document_by_hash(file_hash, user_id=actor["id"])
-    if cached_doc:
-        logger.info(f"Cache HIT for hash {file_hash[:12]}... (doc {cached_doc['id']})")
-        doc_id = cached_doc["id"]
-        if actor["is_authenticated"]:
+    # Check database cache for instant return (both completed and in-flight processing)
+    existing_by_hash = find_document_by_hash(file_hash, user_id=actor["id"], include_failed=False)
+    if existing_by_hash:
+        doc_id = existing_by_hash["id"]
+        status = existing_by_hash.get("status", "processing")
+        stage = existing_by_hash.get("stage", "reading")
+        logger.info(f"Upload duplicate HIT for hash {file_hash[:12]}... (doc {doc_id}, status={status})")
+        if status == "completed" and actor["is_authenticated"]:
             try:
                 link_document_to_curriculum(doc_id, actor["id"])
             except Exception as e_link:
                 logger.warning(f"Could not link cached document {doc_id} to curriculum: {e_link}")
 
+        msg = "Document extracted instantly from cache." if status == "completed" else "Document upload in progress."
         return UploadResponse(
             id=doc_id,
-            filename=cached_doc.get("filename", safe_filename),
+            filename=existing_by_hash.get("filename", safe_filename),
             file_type=ext.lstrip("."),
-            status="completed",
-            stage="completed",
-            message="Document extracted instantly from cache."
+            status=status,
+            stage=stage,
+            message=msg
         )
 
     doc_id = str(uuid.uuid4())
@@ -652,13 +695,28 @@ async def upload_document(
     # For authenticated users, ensure default Core Curriculum subject exists
     subject_id = None
     if actor["is_authenticated"]:
+        conn = get_connection()
         try:
-            subject_id = ensure_default_subject_and_chapters_for_user(actor["id"])
+            with conn:
+                sub_row = conn.execute(
+                    "SELECT id FROM subjects WHERE user_id = ? ORDER BY (CASE WHEN name = 'Core Curriculum' THEN 0 ELSE 1 END), created_at ASC LIMIT 1",
+                    (actor["id"],)
+                ).fetchone()
+                if sub_row:
+                    subject_id = sub_row["id"]
+                else:
+                    subject_id = str(uuid.uuid4())
+                    conn.execute(
+                        "INSERT INTO subjects (id, user_id, name, code, created_at) VALUES (?, ?, ?, ?, ?)",
+                        (subject_id, actor["id"], "Core Curriculum", "CC-101", datetime.now(timezone.utc).isoformat())
+                    )
         except Exception as e_sub:
             logger.warning(f"Could not prepare default subject for user {actor['id']}: {e_sub}")
+        finally:
+            conn.close()
 
-    # Create document row in database tied to actor["id"] and file_hash
-    create_document(
+    # Create document row in database tied to actor["id"] and file_hash (handling concurrent conflicts)
+    doc_record = create_document(
         user_id=actor["id"],
         doc_id=doc_id,
         filename=safe_filename,
@@ -666,8 +724,20 @@ async def upload_document(
         status="processing",
         stage="reading",
         file_hash=file_hash,
-        subject_id=subject_id
+        subject_id=subject_id,
+        idempotency_key=effective_key
     )
+
+    if doc_record.get("id") != doc_id:
+        logger.info(f"Concurrent upload conflict resolved to existing doc {doc_record['id']}")
+        return UploadResponse(
+            id=doc_record["id"],
+            filename=doc_record.get("filename", safe_filename),
+            file_type=ext.lstrip("."),
+            status=doc_record.get("status", "processing"),
+            stage=doc_record.get("stage", "reading"),
+            message="Existing document returned after concurrent upload."
+        )
 
     prefer_cloud = True
     if extraction_mode and extraction_mode.lower() in ("private", "on-device", "local", "offline"):

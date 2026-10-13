@@ -50,6 +50,11 @@ export default defineConfig({
         // Exclude API calls entirely from runtime caching so the browser dispatches them directly via network
         runtimeCaching: [
           {
+            // Explicitly route all /api calls strictly via NetworkOnly
+            urlPattern: ({ url }) => url.pathname.startsWith('/api') || url.pathname.startsWith('/documents') || url.pathname.startsWith('/dashboard'),
+            handler: 'NetworkOnly',
+          },
+          {
             urlPattern: /^https:\/\/fonts\.(?:googleapis|gstatic)\.com\/.*/i,
             handler: 'CacheFirst',
             options: {

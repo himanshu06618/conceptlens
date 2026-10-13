@@ -181,6 +181,8 @@ export default function App() {
   const [pendingUploadFile, setPendingUploadFile] = useState(null);
   const pollingRef = useRef(null);
   const progressTimerRef = useRef(null);
+  const uploadInFlightRef = useRef(false);
+  const completedJobsRef = useRef(new Set());
 
   // Toast Notifications
   const [toasts, setToasts] = useState([]);
@@ -340,30 +342,34 @@ export default function App() {
         if (doc.status === 'completed') {
           clearInterval(pollingRef.current);
           if (progressTimerRef.current) clearInterval(progressTimerRef.current);
-          setProcessingProgress(100);
-          setProcessingMessage('Extraction completed successfully!');
 
-          setTimeout(async () => {
-            setIsUploading(false);
-            await refreshDocumentsList();
-            await refreshGuestStatus();
-            try {
-              const [docDetail, conceptsResp] = await Promise.all([
-                getDocument(docId),
-                getDocumentConcepts(docId),
-              ]);
-              setActiveDocData(docDetail);
-              setActiveConcepts(conceptsResp.concepts || []);
-              setActiveTopics(conceptsResp.topics || []);
-              setActiveDocId(docId);
-              setProcessingDoc(null);
-              setProcessingError(null);
-              navigate('/app');
-              addToast('Concepts successfully extracted!', 'success');
-            } catch (err) {
-              setProcessingError(`Processing completed, but the results could not be loaded: ${err.message || 'Please try again.'}`);
-            }
-          }, 400);
+          if (!completedJobsRef.current.has(docId)) {
+            completedJobsRef.current.add(docId);
+            setProcessingProgress(100);
+            setProcessingMessage('Extraction completed successfully!');
+
+            setTimeout(async () => {
+              setIsUploading(false);
+              await refreshDocumentsList();
+              await refreshGuestStatus();
+              try {
+                const [docDetail, conceptsResp] = await Promise.all([
+                  getDocument(docId),
+                  getDocumentConcepts(docId),
+                ]);
+                setActiveDocData(docDetail);
+                setActiveConcepts(conceptsResp.concepts || []);
+                setActiveTopics(conceptsResp.topics || []);
+                setActiveDocId(docId);
+                setProcessingDoc(null);
+                setProcessingError(null);
+                navigate('/app');
+                addToast('Concepts successfully extracted!', 'success');
+              } catch (err) {
+                setProcessingError(`Processing completed, but the results could not be loaded: ${err.message || 'Please try again.'}`);
+              }
+            }, 300);
+          }
         } else if (doc.status === 'failed') {
           clearInterval(pollingRef.current);
           if (progressTimerRef.current) clearInterval(progressTimerRef.current);
@@ -387,29 +393,58 @@ export default function App() {
   }, []);
 
   const handleUpload = async (file, options = {}) => {
-    if (!isAuthenticated && guestStatus && guestStatus.uploads_count >= (guestStatus.upload_limit || 5)) {
-      setPendingUploadFile(file);
-      openAuthModal(
-        'signup',
-        `You've reached your free guest limit (${guestStatus.upload_limit || 5} uploads). Create an account to save your notes.`
-      );
-      return;
-    }
-
-    setLastUploadedFile(file);
-    setIsUploading(true);
-    setProcessingError(null);
-    setProcessingStage('reading');
-    setProcessingProgress(8);
-    setProcessingMessage(`Uploading ${file.name}...`);
-    setOcrPageInfo({ current: 0, total: 0 });
-    setProcessingDoc({ filename: file.name });
-    navigate('/app');
-
+    if (uploadInFlightRef.current || isUploading) return;
+    uploadInFlightRef.current = true;
     try {
-      const resp = await uploadDocument(file, options);
+      if (!isAuthenticated && guestStatus && guestStatus.uploads_count >= (guestStatus.upload_limit || 5)) {
+        setPendingUploadFile(file);
+        openAuthModal(
+          'signup',
+          `You've reached your free guest limit (${guestStatus.upload_limit || 5} uploads). Create an account to save your notes.`
+        );
+        return;
+      }
+
+      setLastUploadedFile(file);
+      setIsUploading(true);
+      setProcessingError(null);
+      setProcessingStage('reading');
+      setProcessingProgress(8);
+      setProcessingMessage(`Uploading ${file.name}...`);
+      setOcrPageInfo({ current: 0, total: 0 });
+      setProcessingDoc({ filename: file.name });
+      navigate('/app');
+
+      const idempotencyKey = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const resp = await uploadDocument(file, { ...options, idempotencyKey });
       setProcessingDoc({ id: resp.id, filename: resp.filename });
-      startPolling(resp.id);
+
+      if (resp.status === 'completed') {
+        if (!completedJobsRef.current.has(resp.id)) {
+          completedJobsRef.current.add(resp.id);
+          setIsUploading(false);
+          await refreshDocumentsList();
+          await refreshGuestStatus();
+          try {
+            const [docDetail, conceptsResp] = await Promise.all([
+              getDocument(resp.id),
+              getDocumentConcepts(resp.id),
+            ]);
+            setActiveDocData(docDetail);
+            setActiveConcepts(conceptsResp.concepts || []);
+            setActiveTopics(conceptsResp.topics || []);
+            setActiveDocId(resp.id);
+            setProcessingDoc(null);
+            setProcessingError(null);
+            navigate('/app');
+            addToast('Document loaded successfully!', 'success');
+          } catch (err) {
+            setProcessingError(`Processing completed, but results could not be loaded: ${err.message}`);
+          }
+        }
+      } else {
+        startPolling(resp.id);
+      }
     } catch (err) {
       setIsUploading(false);
       const is403 = err.status === 403 || (err.message && err.message.includes('Guest upload limit'));
@@ -424,6 +459,8 @@ export default function App() {
       } else {
         setProcessingError(err.message || 'Upload failed. Please try again.');
       }
+    } finally {
+      uploadInFlightRef.current = false;
     }
   };
 

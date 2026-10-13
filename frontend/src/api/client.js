@@ -87,9 +87,11 @@ export async function getGuestStatus() {
   }
 }
 
-export async function uploadDocument(file, { password = null, mode = null } = {}) {
+export async function uploadDocument(file, { password = null, mode = null, idempotencyKey = null, signal = null } = {}) {
+  const key = idempotencyKey || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
   const formData = new FormData();
   formData.append('file', file);
+  formData.append('idempotency_key', key);
   if (password) {
     formData.append('pdf_password', password);
   }
@@ -100,6 +102,10 @@ export async function uploadDocument(file, { password = null, mode = null } = {}
   const res = await apiFetch('/documents', {
     method: 'POST',
     body: formData,
+    headers: {
+      'X-Idempotency-Key': key,
+    },
+    signal,
   });
 
   if (!res.ok) {

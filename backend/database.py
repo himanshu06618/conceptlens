@@ -568,6 +568,8 @@ def init_db() -> None:
                 conn.execute("ALTER TABLE documents ADD COLUMN IF NOT EXISTS result_json TEXT;")
                 conn.execute("ALTER TABLE documents ADD COLUMN IF NOT EXISTS concept_count INTEGER DEFAULT 0;")
                 conn.execute("ALTER TABLE documents ADD COLUMN IF NOT EXISTS chapter_count INTEGER DEFAULT 0;")
+                conn.execute("ALTER TABLE documents ADD COLUMN IF NOT EXISTS idempotency_key TEXT;")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_idempotency_key ON documents(user_id, idempotency_key);")
 
                 conn.execute("ALTER TABLE documents ADD COLUMN IF NOT EXISTS schema_version INTEGER DEFAULT 2;")
 
@@ -717,6 +719,9 @@ def init_db() -> None:
                     conn.execute("ALTER TABLE documents ADD COLUMN concept_count INTEGER DEFAULT 0;")
                 if "chapter_count" not in columns:
                     conn.execute("ALTER TABLE documents ADD COLUMN chapter_count INTEGER DEFAULT 0;")
+                if "idempotency_key" not in columns:
+                    conn.execute("ALTER TABLE documents ADD COLUMN idempotency_key TEXT;")
+                    conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_idempotency_key ON documents(user_id, idempotency_key);")
                 if "schema_version" not in columns:
                     conn.execute("ALTER TABLE documents ADD COLUMN schema_version INTEGER DEFAULT 2;")
                 if "chapter" not in concept_columns:
@@ -793,6 +798,142 @@ def init_db() -> None:
         init_notes_db()
     except Exception:
         pass
+
+    # Apply safe structural unique constraints (skips and logs warnings if duplicates exist)
+    try:
+        conn = get_connection()
+        try:
+            with conn:
+                apply_safe_unique_constraints(conn)
+        finally:
+            conn.close()
+    except Exception as e_uq:
+        logger.warning(f"Safe unique constraints check warning: {e_uq}")
+
+
+def apply_safe_unique_constraints(conn) -> Dict[str, Any]:
+    """
+    Safely adds unique constraints or unique indexes:
+      - documents (user_id, file_hash)
+      - chapters (book_id, order_index) and (book_id, LOWER(TRIM(name)))
+      - concepts (document_id, LOWER(TRIM(name)))
+      - relations (concept_id, LOWER(TRIM(related_name)), relation_type)
+      - topics (chapter_id, LOWER(TRIM(name))) and (chapter_id, order_index)
+
+    Strict Migration Rule:
+    A migration may add a constraint only after existing duplicates in that table have been removed.
+    If duplicates exist, the migration skips creating that constraint, logs a clear warning
+    (table name and count, no content), and does not crash.
+    """
+    applied = []
+    skipped = []
+
+    # 1. documents (user_id, file_hash)
+    try:
+        dup_docs = conn.execute("""
+            SELECT COUNT(*) FROM (
+                SELECT user_id, file_hash FROM documents
+                WHERE file_hash IS NOT NULL AND file_hash != ''
+                GROUP BY user_id, file_hash HAVING COUNT(*) > 1
+            ) sub
+        """).fetchone()[0]
+        if dup_docs > 0:
+            logger.warning(f"Skipping UNIQUE constraint on documents(user_id, file_hash): {dup_docs} duplicate groups exist. Run scripts/dedupe_data.py to resolve.")
+            skipped.append(("documents", dup_docs))
+        else:
+            conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_documents_user_file_hash ON documents(user_id, file_hash) WHERE file_hash IS NOT NULL AND file_hash != '';")
+            conn.commit()
+            applied.append("documents(user_id, file_hash)")
+    except Exception as e:
+        logger.warning(f"Could not apply unique constraint on documents: {e}")
+
+    # 2. chapters (book_id, name) & (book_id, order_index)
+    try:
+        dup_chs = conn.execute("""
+            SELECT COUNT(*) FROM (
+                SELECT book_id, LOWER(TRIM(name)) FROM chapters
+                GROUP BY book_id, LOWER(TRIM(name)) HAVING COUNT(*) > 1
+            ) sub
+        """).fetchone()[0]
+        dup_ch_order = conn.execute("""
+            SELECT COUNT(*) FROM (
+                SELECT book_id, order_index FROM chapters
+                GROUP BY book_id, order_index HAVING COUNT(*) > 1
+            ) sub
+        """).fetchone()[0]
+        if dup_chs > 0 or dup_ch_order > 0:
+            logger.warning(f"Skipping UNIQUE constraint on chapters: {max(dup_chs, dup_ch_order)} duplicate groups exist. Run scripts/dedupe_data.py to resolve.")
+            skipped.append(("chapters", max(dup_chs, dup_ch_order)))
+        else:
+            conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_chapters_book_name_norm ON chapters(book_id, LOWER(TRIM(name)));")
+            conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_chapters_book_order ON chapters(book_id, order_index);")
+            conn.commit()
+            applied.append("chapters(book_id, name/order)")
+    except Exception as e:
+        logger.warning(f"Could not apply unique constraint on chapters: {e}")
+
+    # 3. concepts (document_id, LOWER(TRIM(name)))
+    try:
+        dup_cons = conn.execute("""
+            SELECT COUNT(*) FROM (
+                SELECT document_id, LOWER(TRIM(name)) FROM concepts
+                GROUP BY document_id, LOWER(TRIM(name)) HAVING COUNT(*) > 1
+            ) sub
+        """).fetchone()[0]
+        if dup_cons > 0:
+            logger.warning(f"Skipping UNIQUE constraint on concepts(document_id, name): {dup_cons} duplicate groups exist. Run scripts/dedupe_data.py to resolve.")
+            skipped.append(("concepts", dup_cons))
+        else:
+            conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_concepts_doc_name_norm ON concepts(document_id, LOWER(TRIM(name)));")
+            conn.commit()
+            applied.append("concepts(document_id, name)")
+    except Exception as e:
+        logger.warning(f"Could not apply unique constraint on concepts: {e}")
+
+    # 4. relations (concept_id, LOWER(TRIM(related_name)), relation_type)
+    try:
+        dup_rels = conn.execute("""
+            SELECT COUNT(*) FROM (
+                SELECT concept_id, LOWER(TRIM(related_name)), relation_type FROM relations
+                GROUP BY concept_id, LOWER(TRIM(related_name)), relation_type HAVING COUNT(*) > 1
+            ) sub
+        """).fetchone()[0]
+        if dup_rels > 0:
+            logger.warning(f"Skipping UNIQUE constraint on relations(concept_id, related_name, type): {dup_rels} duplicate groups exist. Run scripts/dedupe_data.py to resolve.")
+            skipped.append(("relations", dup_rels))
+        else:
+            conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_relations_concept_rel_type ON relations(concept_id, LOWER(TRIM(related_name)), relation_type);")
+            conn.commit()
+            applied.append("relations(concept_id, related_name, type)")
+    except Exception as e:
+        logger.warning(f"Could not apply unique constraint on relations: {e}")
+
+    # 5. topics (chapter_id, LOWER(TRIM(name))) & (chapter_id, order_index)
+    try:
+        dup_tops = conn.execute("""
+            SELECT COUNT(*) FROM (
+                SELECT chapter_id, LOWER(TRIM(name)) FROM topics
+                GROUP BY chapter_id, LOWER(TRIM(name)) HAVING COUNT(*) > 1
+            ) sub
+        """).fetchone()[0]
+        dup_top_order = conn.execute("""
+            SELECT COUNT(*) FROM (
+                SELECT chapter_id, order_index FROM topics
+                GROUP BY chapter_id, order_index HAVING COUNT(*) > 1
+            ) sub
+        """).fetchone()[0]
+        if dup_tops > 0 or dup_top_order > 0:
+            logger.warning(f"Skipping UNIQUE constraint on topics: {max(dup_tops, dup_top_order)} duplicate groups exist. Run scripts/dedupe_data.py to resolve.")
+            skipped.append(("topics", max(dup_tops, dup_top_order)))
+        else:
+            conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_topics_chapter_name_norm ON topics(chapter_id, LOWER(TRIM(name)));")
+            conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_topics_chapter_order ON topics(chapter_id, order_index);")
+            conn.commit()
+            applied.append("topics(chapter_id, name/order)")
+    except Exception as e:
+        logger.warning(f"Could not apply unique constraint on topics: {e}")
+
+    return {"applied": applied, "skipped": skipped}
 
 
 EXPECTED_TABLE_COLUMNS: Dict[str, List[str]] = {
@@ -1182,6 +1323,37 @@ def clone_cached_document(source_doc_id: str, target_doc_id: str) -> bool:
     finally:
         conn.close()
 
+def find_document_by_hash(file_hash: str, user_id: str, include_failed: bool = False) -> Optional[Dict[str, Any]]:
+    """Finds an existing document with matching SHA-256 hash strictly belonging to user_id."""
+    if not file_hash or not user_id:
+        return None
+    conn = get_connection()
+    try:
+        query = "SELECT * FROM documents WHERE file_hash = ? AND user_id = ?"
+        if not include_failed:
+            query += " AND status != 'failed'"
+        query += " ORDER BY created_at DESC LIMIT 1"
+        cursor = conn.execute(query, (file_hash, user_id))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+def find_document_by_idempotency_key(idempotency_key: str, user_id: str) -> Optional[Dict[str, Any]]:
+    """Finds an existing document with matching idempotency key strictly belonging to user_id."""
+    if not idempotency_key or not user_id:
+        return None
+    conn = get_connection()
+    try:
+        cursor = conn.execute(
+            "SELECT * FROM documents WHERE idempotency_key = ? AND user_id = ? ORDER BY created_at DESC LIMIT 1",
+            (idempotency_key, user_id)
+        )
+        row = cursor.fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
 def create_document(
     user_id: str,
     doc_id: str,
@@ -1190,38 +1362,60 @@ def create_document(
     status: str = "processing",
     stage: str = "reading",
     file_hash: Optional[str] = None,
-    subject_id: Optional[str] = None
+    subject_id: Optional[str] = None,
+    idempotency_key: Optional[str] = None
 ) -> Dict[str, Any]:
     created_at = datetime.now(timezone.utc).isoformat()
     conn = get_connection()
     try:
-        with conn:
-            conn.execute(
-                """
-                INSERT INTO documents (
-                    id, user_id, subject_id, filename, file_type, status, stage, page_count, raw_text,
-                    progress, stage_message, ocr_current_page, ocr_total_pages, file_hash, created_at
+        try:
+            with conn:
+                conn.execute(
+                    """
+                    INSERT INTO documents (
+                        id, user_id, subject_id, filename, file_type, status, stage, page_count, raw_text,
+                        progress, stage_message, ocr_current_page, ocr_total_pages, file_hash, idempotency_key, created_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 1, '', 5, 'Initializing document analysis...', 0, 0, ?, ?, ?)
+                    """,
+                    (doc_id, user_id, subject_id, filename, file_type, status, stage, file_hash, idempotency_key, created_at)
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, 1, '', 5, 'Initializing document analysis...', 0, 0, ?, ?)
-                """,
-                (doc_id, user_id, subject_id, filename, file_type, status, stage, file_hash, created_at)
-            )
-        return {
-            "id": doc_id,
-            "user_id": user_id,
-            "subject_id": subject_id,
-            "filename": filename,
-            "file_type": file_type,
-            "status": status,
-            "stage": stage,
-            "progress": 5,
-            "stage_message": "Initializing document analysis...",
-            "ocr_current_page": 0,
-            "ocr_total_pages": 0,
-            "page_count": 1,
-            "file_hash": file_hash,
-            "created_at": created_at
-        }
+            return {
+                "id": doc_id,
+                "user_id": user_id,
+                "subject_id": subject_id,
+                "filename": filename,
+                "file_type": file_type,
+                "status": status,
+                "stage": stage,
+                "progress": 5,
+                "stage_message": "Initializing document analysis...",
+                "ocr_current_page": 0,
+                "ocr_total_pages": 0,
+                "page_count": 1,
+                "file_hash": file_hash,
+                "idempotency_key": idempotency_key,
+                "created_at": created_at
+            }
+        except Exception as exc:
+            # Handle conflict from concurrent uploads with same (user_id, file_hash) or idempotency_key
+            if file_hash:
+                cursor = conn.execute(
+                    "SELECT * FROM documents WHERE user_id = ? AND file_hash = ? ORDER BY created_at DESC LIMIT 1",
+                    (user_id, file_hash)
+                )
+                existing = cursor.fetchone()
+                if existing:
+                    return dict(existing)
+            if idempotency_key:
+                cursor = conn.execute(
+                    "SELECT * FROM documents WHERE user_id = ? AND idempotency_key = ? ORDER BY created_at DESC LIMIT 1",
+                    (user_id, idempotency_key)
+                )
+                existing = cursor.fetchone()
+                if existing:
+                    return dict(existing)
+            raise exc
     finally:
         conn.close()
 
@@ -1322,7 +1516,7 @@ def get_documents_list(user_id: str) -> List[Dict[str, Any]]:
                 d.provider_used,
                 d.skipped_pages,
                 d.created_at,
-                COUNT(c.id) AS concept_count
+                COUNT(DISTINCT c.id) AS concept_count
             FROM documents d
             LEFT JOIN concepts c ON d.id = c.document_id
             WHERE d.user_id = ?
@@ -1408,16 +1602,21 @@ def delete_document_by_id(user_id: str, doc_id: str) -> bool:
                 # Delete chapters
                 conn.execute("DELETE FROM chapters WHERE book_id = ?", (doc_id,))
 
-            # 3. Delete relations and concepts
+            # 3. Delete concept progress, relations and concepts
+            conn.execute(
+                "DELETE FROM concept_progress WHERE concept_id IN (SELECT id FROM concepts WHERE document_id = ?)",
+                (doc_id,)
+            )
             conn.execute("DELETE FROM relations WHERE document_id = ?", (doc_id,))
             conn.execute("DELETE FROM concepts WHERE document_id = ?", (doc_id,))
 
-            # 4. Nullify scope_chapter_id in study plans if pointing to a deleted chapter
+            # 4. Nullify scope_chapter_id in study plans if pointing to a deleted chapter, and unlink notes
             if ch_ids:
                 conn.execute(
                     "UPDATE study_plans SET scope_chapter_id = NULL WHERE user_id = ? AND scope_chapter_id IN ({seq})".format(seq=",".join("?" * len(ch_ids))),
                     [user_id] + ch_ids
                 )
+            conn.execute("UPDATE notes SET document_id = NULL WHERE document_id = ?", (doc_id,))
 
             # 5. Delete document
             cursor = conn.execute("DELETE FROM documents WHERE id = ? AND user_id = ?", (doc_id, user_id))
@@ -1551,9 +1750,22 @@ def save_concepts_and_relations(
     conn = get_connection()
     try:
         with conn:
+            conn.execute("DELETE FROM relations WHERE document_id = ?", (doc_id,))
             conn.execute("DELETE FROM concepts WHERE document_id = ?", (doc_id,))
-            relation_rows = []
+            
+            seen_concepts: Set[str] = set()
+            deduped_concepts = []
             for c in concepts_data:
+                clean_name = normalize_concept_display_name(c.get("name", ""))
+                norm_key = clean_name.strip().lower()
+                if not norm_key or norm_key in seen_concepts:
+                    continue
+                seen_concepts.add(norm_key)
+                deduped_concepts.append(c)
+
+            relation_rows = []
+            seen_relations: Set[tuple] = set()
+            for c in deduped_concepts:
                 clean_name = normalize_concept_display_name(c["name"])
                 clean_topic = clean_topic_heading(c.get("topic", "General"))
                 cursor = conn.execute(
@@ -1584,12 +1796,16 @@ def save_concepts_and_relations(
                     rel_name = rel.get("name") if isinstance(rel, dict) else str(rel)
                     clean_rel_name = normalize_concept_display_name(rel_name)
                     rel_weight = rel.get("weight", 1) if isinstance(rel, dict) else 1
+                    rel_type = rel.get("type", "related") if isinstance(rel, dict) else "related"
+                    rel_label = rel.get("label", "") if isinstance(rel, dict) else ""
                     if clean_rel_name and clean_rel_name.lower() != clean_name.lower():
-                        relation_rows.append((
-                            doc_id, concept_id, clean_rel_name, int(rel_weight),
-                            rel.get("type", "related") if isinstance(rel, dict) else "related",
-                            rel.get("label", "") if isinstance(rel, dict) else ""
-                        ))
+                        rel_key = (concept_id, clean_rel_name.strip().lower(), rel_type)
+                        if rel_key not in seen_relations:
+                            seen_relations.add(rel_key)
+                            relation_rows.append((
+                                doc_id, concept_id, clean_rel_name, int(rel_weight),
+                                rel_type, rel_label
+                            ))
             if relation_rows:
                 conn.executemany(
                     """
@@ -1600,7 +1816,7 @@ def save_concepts_and_relations(
                     """,
                     relation_rows
                 )
-            conn.execute("UPDATE documents SET tree_json = NULL, flow_json = NULL, concept_count = ? WHERE id = ?", (len(concepts_data), doc_id))
+            conn.execute("UPDATE documents SET tree_json = NULL, flow_json = NULL, concept_count = ? WHERE id = ?", (len(deduped_concepts), doc_id))
     finally:
         conn.close()
 
