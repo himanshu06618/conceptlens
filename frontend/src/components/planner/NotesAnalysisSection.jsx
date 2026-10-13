@@ -181,7 +181,7 @@ export default function NotesAnalysisSection({
                     fontWeight: 600,
                     cursor: 'pointer'
                   }}
-                  title="Open Concept Tree, Flowchart & Concepts in results panel"
+                  title="Open Concepts, Concept Tree & Roadmap in results panel"
                 >
                   <GitBranch size={13} color="var(--planner-mint)" />
                   <span>Open Results</span>

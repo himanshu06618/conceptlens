@@ -7,8 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "oxlint",
-    "preview": "vite preview",
-    "test:flowchart": "node --test tests/flowchart-export.test.js"
+    "preview": "vite preview"
   },
   "dependencies": {
     "@dagrejs/dagre": "^3.1.1",

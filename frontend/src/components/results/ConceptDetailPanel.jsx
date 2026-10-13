@@ -6,9 +6,6 @@ import {
   Circle, 
   Lock, 
   GitBranch, 
-  Waypoints, 
-  Compass, 
-  Network, 
   ArrowRight,
   Sparkles,
   BookOpen
@@ -240,24 +237,6 @@ export default function ConceptDetailPanel({
             >
               <GitBranch size={14} />
               <span>Tree</span>
-            </button>
-            <button
-              type="button"
-              className="detail-jump-btn"
-              onClick={() => onJumpToTab && onJumpToTab('mindmap')}
-              title="Locate in Mind Map"
-            >
-              <Compass size={14} />
-              <span>Mind Map</span>
-            </button>
-            <button
-              type="button"
-              className="detail-jump-btn"
-              onClick={() => onJumpToTab && onJumpToTab('flowchart')}
-              title="Locate in Flowchart"
-            >
-              <Waypoints size={14} />
-              <span>Flowchart</span>
             </button>
             <button
               type="button"

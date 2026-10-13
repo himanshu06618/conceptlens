@@ -248,7 +248,7 @@ export default function LandingPage({ onOpenAuth }) {
             </div>
             <h3 className="step-title">Explore the concept tree</h3>
             <p className="step-description">
-              Interact with a hierarchical flowchart of your entire unit. Zoom into core sub-branches, inspect source citations, and export to Anki or CSV.
+              Interact with a hierarchical concept tree of your entire unit. Zoom into core sub-branches, inspect source citations, and export to study guides or CSV.
             </p>
           </Card>
         </div>
@@ -271,7 +271,7 @@ export default function LandingPage({ onOpenAuth }) {
           <Card className="bento-card bento-span-8" hoverable spotlight>
             <div className="bento-content">
               <Badge variant="amber" size="sm">Signature Feature</Badge>
-              <h3 className="bento-title">Interactive Concept Tree & Flowchart</h3>
+              <h3 className="bento-title">Interactive Concept Tree & Roadmap</h3>
               <p className="bento-description">
                 Visualize how ideas connect across your lecture syllabus. Expand and collapse branches, inspect parent-child relationships, and switch between horizontal and vertical orientations.
               </p>
@@ -328,7 +328,7 @@ export default function LandingPage({ onOpenAuth }) {
               <Download size={20} strokeWidth={1.8} style={{ color: 'var(--branch-rose)' }} />
               <h3 className="bento-title">Versatile Export Formats</h3>
               <p className="bento-description">
-                Export concepts into CSV tables, structured JSON, high-res flowcharts, or pre-formatted flashcards for study apps.
+                Export concepts into CSV tables, structured JSON, Study Guides, or formatted notes for study apps.
               </p>
             </div>
           </Card>

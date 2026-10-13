@@ -9,7 +9,7 @@ This guide explains how to deploy the **ConceptLens** frontend to **Vercel** (`h
 - **Frontend (Vercel)**:
   - React 19 + Vite Single Page Application (SPA)
   - Progressive Web App (PWA) with offline capabilities
-  - Interactive Concept Tree, Flowchart (@xyflow/react), and Student Study Planner
+  - Interactive Concept Tree, Roadmap, Concepts list, and Student Study Planner
   - Deployed to Vercel's global Edge CDN
 - **Backend (Render / Railway / Fly.io / VPS / Docker)**:
   - Python 3.11 + FastAPI with PyMuPDF, OpenCV, spaCy, YAKE, and OCR
@@ -144,4 +144,4 @@ This repository includes a production multi-stage [Dockerfile](file:///d:/Concep
 - [x] `.vercelignore` excludes `.venv`, `.db` files, and heavy archives from Vercel uploads.
 - [x] API client normalizes `VITE_API_URL` with or without trailing `/api`.
 - [x] Concept Tree component unified to use `getDocumentTree()` via the centralized API client.
-- [x] Frontend tests pass: `npm run test:flowchart --prefix frontend`.
+- [x] Frontend build passes: `npm run build --prefix frontend`.

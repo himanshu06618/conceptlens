@@ -9,7 +9,6 @@ import {
   RotateCcw,
   Play,
   ListFilter,
-  Layers,
   MapPin,
   Calendar,
   AlertTriangle,
@@ -79,7 +78,7 @@ export default function StudentDashboard({ onToast = () => {} }) {
   const [days, setDays] = useState(7);
   const [scopeChapterId, setScopeChapterId] = useState('');
   const [orderMode, setOrderMode] = useState('syllabus');
-  const [viewMode, setViewMode] = useState('flowchart'); // 'flowchart' | 'list'
+  const [viewMode, setViewMode] = useState('route'); // 'route' | 'list'
   const [previewRoute, setPreviewRoute] = useState(null);
   const [isStartingPlan, setIsStartingPlan] = useState(false);
   const [animTrigger, setAnimTrigger] = useState(0);
@@ -157,7 +156,7 @@ export default function StudentDashboard({ onToast = () => {} }) {
     }
   }, [isAuthenticated, selectedSubjectId, loadOverview]);
 
-  // Load full extracted document results (concepts, tree, flowchart) for the in-dashboard results panel
+  // Load full extracted document results (concepts, tree, roadmap) for the in-dashboard results panel
   const loadDocResults = useCallback(async (docId) => {
     if (!docId) return;
     setActiveDocId(docId);
@@ -759,7 +758,7 @@ export default function StudentDashboard({ onToast = () => {} }) {
         </div>
       )}
 
-      {/* In-Dashboard Results Panel: Concept Tree, Flowchart, Concepts */}
+      {/* In-Dashboard Results Panel: Concepts, Concept Tree, Roadmap */}
       {activeDocId && activeDocData && !resultsError && (
         <DashboardResultsPanel
           documentData={activeDocData}
@@ -888,15 +887,15 @@ export default function StudentDashboard({ onToast = () => {} }) {
                   <option value="hard">Hardest First</option>
                 </select>
 
-                {/* Flowchart / List toggle */}
+                {/* Timeline / List toggle */}
                 <button
                   type="button"
                   className="view-toggle-btn"
-                  onClick={() => setViewMode(viewMode === 'flowchart' ? 'list' : 'flowchart')}
-                  title="Switch between Flowchart and List view"
+                  onClick={() => setViewMode(viewMode === 'route' ? 'list' : 'route')}
+                  title="Switch between Timeline and List view"
                 >
                   <ListFilter size={15} />
-                  <span>{viewMode === 'flowchart' ? 'List View' : 'Flowchart View'}</span>
+                  <span>{viewMode === 'route' ? 'List View' : 'Timeline View'}</span>
                 </button>
 
                 {/* Start this plan button */}
@@ -913,7 +912,7 @@ export default function StudentDashboard({ onToast = () => {} }) {
             </div>
 
             {/* Route Rendering */}
-            {viewMode === 'flowchart' ? (
+            {viewMode === 'route' ? (
               <RouteMap
                 route={displayRoute}
                 subjectName={overview?.subject?.name || 'Core Curriculum'}

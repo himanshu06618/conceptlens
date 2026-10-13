@@ -180,19 +180,6 @@ export async function getDocumentTree(docId) {
   return res.json();
 }
 
-export async function getDocumentFlowchart(docId, { topic = '', subflow = 0, includeRelated = false } = {}) {
-  const params = new URLSearchParams();
-  if (topic) params.set('topic', topic);
-  if (subflow) params.set('subflow', String(subflow));
-  if (includeRelated) params.set('include_related', 'true');
-  const query = params.toString() ? `?${params.toString()}` : '';
-  const res = await apiFetch(`/documents/${docId}/flowchart${query}`);
-  if (!res.ok) {
-    const errorData = await res.json().catch(() => ({}));
-    throw new Error(errorData.detail || 'Failed to load flowchart');
-  }
-  return res.json();
-}
 
 export async function deleteDocument(docId) {
   const res = await apiFetch(`/documents/${docId}`, {

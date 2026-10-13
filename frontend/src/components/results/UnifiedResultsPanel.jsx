@@ -2,8 +2,6 @@ import React, { useState, useMemo, useEffect, useRef, lazy, Suspense } from 'rea
 import {
   List,
   GitBranch,
-  Compass,
-  Waypoints,
   ArrowRight,
   Maximize2,
   Minimize2,
@@ -34,9 +32,45 @@ import '../../styles/results-panel.css';
 
 // Lazy-load heavier diagram views to keep dashboard initial load fast
 const ConceptTreeView = lazy(() => import('./ConceptTreeView'));
-const MindMapView = lazy(() => import('./MindMapView'));
-const FlowchartLearningView = lazy(() => import('./FlowchartLearningView'));
 const StudyRoadmapView = lazy(() => import('./StudyRoadmapView'));
+
+const VALID_TABS = ['concepts', 'tree', 'roadmap'];
+
+function resolveInitialTab() {
+  try {
+    if (typeof window !== 'undefined' && window.location) {
+      // 1. Check URL query parameters (?view=... or ?tab=...)
+      const params = new URLSearchParams(window.location.search);
+      const urlView = (params.get('view') || params.get('tab') || '').toLowerCase().trim();
+      if (urlView) {
+        if (VALID_TABS.includes(urlView)) return urlView;
+        if (urlView === 'flowchart' || urlView === 'mindmap' || urlView === 'mind-map') return 'tree';
+      }
+
+      // 2. Check URL hash (#flowchart, #mindmap, etc.)
+      const hash = (window.location.hash || '').replace('#', '').toLowerCase().trim();
+      if (hash) {
+        if (VALID_TABS.includes(hash)) return hash;
+        if (hash === 'flowchart' || hash === 'mindmap' || hash === 'mind-map') return 'tree';
+      }
+
+      // 3. Check persistent stored last view
+      const stored = (localStorage.getItem('conceptlens_last_view') || sessionStorage.getItem('conceptlens_last_view') || '').toLowerCase().trim();
+      if (stored) {
+        if (VALID_TABS.includes(stored)) return stored;
+        if (stored === 'flowchart' || stored === 'mindmap' || stored === 'mind-map') {
+          try {
+            localStorage.setItem('conceptlens_last_view', 'tree');
+          } catch (_) {}
+          return 'tree';
+        }
+      }
+    }
+  } catch (_) {
+    // Safe fallback
+  }
+  return 'tree';
+}
 
 export default function UnifiedResultsPanel({
   documentData,
@@ -51,8 +85,8 @@ export default function UnifiedResultsPanel({
   onProgressChange = () => {},
   onToast = () => {}
 }) {
-  // Tabs: 'concepts' | 'tree' | 'mindmap' | 'flowchart' | 'roadmap'
-  const [activeTab, setActiveTab] = useState('tree');
+  // Tabs: 'concepts' | 'tree' | 'roadmap' (default is 'tree')
+  const [activeTab, setActiveTab] = useState(resolveInitialTab);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
@@ -65,7 +99,6 @@ export default function UnifiedResultsPanel({
   // Shared search & selected concept state
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedConcept, setSelectedConcept] = useState(null);
-  const [learningPath, setLearningPath] = useState(null);
 
   // Local concepts state for optimistic updates
   const [concepts, setConcepts] = useState(initialConcepts);
@@ -166,9 +199,17 @@ export default function UnifiedResultsPanel({
     }
   };
 
-  // Tab jump handler
+  // Tab change & jump handler with persistence
+  const handleTabChange = (targetTab) => {
+    const next = VALID_TABS.includes(targetTab) ? targetTab : 'tree';
+    setActiveTab(next);
+    try {
+      localStorage.setItem('conceptlens_last_view', next);
+    } catch (_) {}
+  };
+
   const handleJumpToTab = (targetTab) => {
-    setActiveTab(targetTab);
+    handleTabChange(targetTab);
   };
 
   const totalConceptCount = concepts.length;
@@ -380,7 +421,7 @@ export default function UnifiedResultsPanel({
               role="tab"
               aria-selected={activeTab === 'concepts'}
               className={`panel-tab-btn ${activeTab === 'concepts' ? 'active' : ''}`}
-              onClick={() => setActiveTab('concepts')}
+              onClick={() => handleTabChange('concepts')}
             >
               <List size={15} />
               <span>Concepts</span>
@@ -392,43 +433,19 @@ export default function UnifiedResultsPanel({
               role="tab"
               aria-selected={activeTab === 'tree'}
               className={`panel-tab-btn ${activeTab === 'tree' ? 'active' : ''}`}
-              onClick={() => setActiveTab('tree')}
+              onClick={() => handleTabChange('tree')}
             >
               <GitBranch size={15} />
               <span>Concept Tree</span>
             </button>
 
-            {/* Tab 3: Mind Map */}
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeTab === 'mindmap'}
-              className={`panel-tab-btn ${activeTab === 'mindmap' ? 'active' : ''}`}
-              onClick={() => setActiveTab('mindmap')}
-            >
-              <Compass size={15} />
-              <span>Mind Map</span>
-            </button>
-
-            {/* Tab 4: Flowchart */}
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeTab === 'flowchart'}
-              className={`panel-tab-btn ${activeTab === 'flowchart' ? 'active' : ''}`}
-              onClick={() => setActiveTab('flowchart')}
-            >
-              <Waypoints size={15} />
-              <span>Flowchart</span>
-            </button>
-
-            {/* Tab 5: Roadmap */}
+            {/* Tab 3: Roadmap */}
             <button
               type="button"
               role="tab"
               aria-selected={activeTab === 'roadmap'}
               className={`panel-tab-btn ${activeTab === 'roadmap' ? 'active' : ''}`}
-              onClick={() => setActiveTab('roadmap')}
+              onClick={() => handleTabChange('roadmap')}
             >
               <ArrowRight size={15} />
               <span>Roadmap</span>
@@ -485,29 +502,7 @@ export default function UnifiedResultsPanel({
                   </ViewErrorBoundary>
                 )}
 
-                {activeTab === 'mindmap' && (
-                  <ViewErrorBoundary viewName="Mind Map">
-                    <MindMapView
-                      documentData={documentData}
-                      concepts={concepts}
-                      selectedConcept={selectedConcept}
-                      onSelectConcept={setSelectedConcept}
-                      searchQuery={searchQuery}
-                    />
-                  </ViewErrorBoundary>
-                )}
 
-                {activeTab === 'flowchart' && (
-                  <ViewErrorBoundary viewName="Flowchart">
-                    <FlowchartLearningView
-                      concepts={concepts}
-                      selectedConcept={selectedConcept}
-                      onSelectConcept={setSelectedConcept}
-                      onLearningPathChange={setLearningPath}
-                      searchQuery={searchQuery}
-                    />
-                  </ViewErrorBoundary>
-                )}
 
                 {activeTab === 'roadmap' && (
                   <ViewErrorBoundary viewName="Study Roadmap">
@@ -534,7 +529,6 @@ export default function UnifiedResultsPanel({
               onSelectConcept={setSelectedConcept}
               onToggleStudied={handleToggleStudied}
               onJumpToTab={handleJumpToTab}
-              learningPath={activeTab === 'flowchart' ? learningPath : null}
             />
           )}
         </div>

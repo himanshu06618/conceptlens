@@ -22,7 +22,7 @@
 - **Calm, Modern Study UI**:
   - React + Vite with custom CSS design system and vibrant purple gradient glassmorphism.
   - Light and Dark modes with persistent storage.
-  - Interactive Concept Tree, Flowchart diagrams, and study planner.
+  - Interactive Concept Tree, Roadmap, Concepts list, and student study planner.
   - Live search, topic filtering, importance filtering, and export (CSV, JSON, SVG, PNG).
 
 ---
