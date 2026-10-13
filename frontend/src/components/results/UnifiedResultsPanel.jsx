@@ -79,6 +79,7 @@ export default function UnifiedResultsPanel({
   chapterCount = 0,
   isLoading = false,
   isAuthenticated = true,
+  selectedConceptName = null,
   onClose,
   onDeleteDocument,
   onRenameDocument,
@@ -110,6 +111,25 @@ export default function UnifiedResultsPanel({
   useEffect(() => {
     setDocTitle(documentData?.filename || 'Document Results');
   }, [documentData?.filename]);
+
+  // When selectedConceptName is requested from external action (e.g. Related Topics card)
+  useEffect(() => {
+    if (selectedConceptName && concepts.length > 0) {
+      const trimmedTarget = selectedConceptName.toLowerCase().trim();
+      const match =
+        concepts.find((c) => c.name?.toLowerCase().trim() === trimmedTarget) ||
+        concepts.find(
+          (c) =>
+            c.name?.toLowerCase().includes(trimmedTarget) ||
+            trimmedTarget.includes(c.name?.toLowerCase())
+        );
+      if (match) {
+        setSelectedConcept(match);
+        setActiveTab('tree');
+        setIsCollapsed(false);
+      }
+    }
+  }, [selectedConceptName, concepts]);
 
   // Handle escape key to exit fullscreen
   useEffect(() => {

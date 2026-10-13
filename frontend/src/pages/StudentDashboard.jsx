@@ -350,11 +350,34 @@ export default function StudentDashboard({ onToast = () => {} }) {
     const list = [];
     (overview?.books || []).forEach((b) => {
       (b.chapters || []).forEach((ch) => {
-        list.push({ ...ch, bookFilename: b.filename });
+        list.push({ ...ch, bookFilename: b.filename, documentId: b.id });
       });
     });
     return list;
   }, [overview]);
+
+  // Concept to highlight/open in the unified results panel
+  const [selectedConceptForResults, setSelectedConceptForResults] = useState(null);
+
+  const handleOpenConceptInResults = useCallback(async (chapterId, conceptName) => {
+    const targetChapter = allChapters.find((ch) => ch.id === chapterId);
+    const targetDocId = targetChapter?.documentId || targetChapter?.book_id || activeBookId;
+
+    setSelectedConceptForResults(conceptName);
+
+    if (targetDocId && activeDocId !== targetDocId) {
+      await loadDocResults(targetDocId);
+      setActiveBookId(targetDocId);
+    }
+
+    setTimeout(() => {
+      const resultsEl = document.querySelector('.results-panel-container') ||
+                        document.querySelector('.planner-results-loading-card');
+      if (resultsEl) {
+        resultsEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }, 200);
+  }, [allChapters, activeBookId, activeDocId, loadDocResults]);
 
   // Auto-set relationsChapterId when chapters load
   useEffect(() => {
@@ -766,10 +789,12 @@ export default function StudentDashboard({ onToast = () => {} }) {
           topics={activeTopics}
           chapterCount={activeDocData.chapter_count || activeTopics.length}
           isLoading={isResultsLoading}
+          selectedConceptName={selectedConceptForResults}
           onClose={() => {
             setActiveDocId(null);
             setActiveDocData(null);
             setResultsError(null);
+            setSelectedConceptForResults(null);
           }}
           onDeleteDocument={handleDeleteDocument}
           onRenameDocument={handleRenameDocument}
@@ -1000,7 +1025,13 @@ export default function StudentDashboard({ onToast = () => {} }) {
             chapters={allChapters}
             selectedChapterId={relationsChapterId}
             onSelectChapter={(cId) => setRelationsChapterId(cId)}
+            onOpenConceptInResults={handleOpenConceptInResults}
             activePlan={activePlan}
+            initialRelationsData={
+              relationsChapterId === overview?.selected_chapter_id
+                ? (overview?.related_topics || overview?.relations)
+                : null
+            }
           />
 
           {/* 8. Reminders */}
