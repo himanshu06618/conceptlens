@@ -44,6 +44,7 @@ import MyNotesCard from '../components/planner/MyNotesCard';
 import CompactUploadCard from '../components/planner/CompactUploadCard';
 import BookshelfLoader from '../components/ui/BookshelfLoader';
 import '../styles/planner.css';
+import '../styles/results-panel.css';
 
 // Code-split heavy document results panel (tree, roadmap, concept details)
 const DashboardResultsPanel = React.lazy(() => import('../components/planner/DashboardResultsPanel'));

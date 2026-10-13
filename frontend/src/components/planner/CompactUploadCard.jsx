@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { compressImageIfNeeded } from '../../utils/imageCompressor';
 import { BookshelfLoader } from '../ui';
+import '../../styles/results-panel.css';
 
 const ACCEPTED_TYPES = '.pdf,.png,.jpg,.jpeg,.webp,.txt,.md';
 const ALLOWED_EXTS = ['pdf', 'png', 'jpg', 'jpeg', 'webp', 'txt', 'md'];
