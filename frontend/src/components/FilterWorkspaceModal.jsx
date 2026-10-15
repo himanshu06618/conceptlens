@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { 
   X, 
   SlidersHorizontal, 
@@ -11,11 +11,12 @@ import {
   BookOpen
 } from 'lucide-react';
 import { cleanTopicHeading } from '../utils/textCleaner';
+import { OverlayPortal, useOverlay } from './ui/Overlay';
 
 /**
  * FilterWorkspaceModal Component
  * Luxury centered glassmorphic popup modal for concept filtering,
- * topic exploration, and sorting order.
+ * topic exploration, and sorting order. Rendered via OverlayPortal with focus trap.
  */
 export default function FilterWorkspaceModal({
   isOpen,
@@ -32,22 +33,16 @@ export default function FilterWorkspaceModal({
   debouncedQuery = '',
   onResetFilters
 }) {
-  // Close on Escape key press
-  React.useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape' && isOpen) onClose();
-    };
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-      window.addEventListener('keydown', handleKeyDown);
-    } else {
-      document.body.style.overflow = '';
-    }
-    return () => {
-      document.body.style.overflow = '';
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [isOpen, onClose]);
+  const cardRef = useRef(null);
+
+  useOverlay({
+    isOpen,
+    onClose,
+    containerRef: cardRef,
+    lockScroll: true,
+    closeOnEscape: true,
+    focusTrap: true
+  });
 
   if (!isOpen) return null;
 
@@ -68,17 +63,19 @@ export default function FilterWorkspaceModal({
   ];
 
   return (
-    <div 
-      className="filter-modal-overlay" 
-      onClick={onClose} 
-      role="dialog" 
-      aria-modal="true" 
-      aria-labelledby="filter-workspace-title"
-    >
+    <OverlayPortal>
       <div 
-        className="filter-modal-card" 
-        onClick={(e) => e.stopPropagation()}
+        className="filter-modal-overlay" 
+        onClick={onClose} 
+        role="dialog" 
+        aria-modal="true" 
+        aria-labelledby="filter-workspace-title"
       >
+        <div 
+          ref={cardRef}
+          className="filter-modal-card" 
+          onClick={(e) => e.stopPropagation()}
+        >
         {/* Workspace Header */}
         <div className="filter-modal-header">
           <div className="filter-modal-header-left">
@@ -231,6 +228,6 @@ export default function FilterWorkspaceModal({
           </div>
         </div>
       </div>
-    </div>
+    </OverlayPortal>
   );
 }

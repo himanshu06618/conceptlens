@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   X, 
   Clock, 
@@ -8,11 +9,15 @@ import {
   GitBranch, 
   ArrowRight,
   Sparkles,
-  BookOpen
+  BookOpen,
+  FileText,
+  ExternalLink,
+  Quote
 } from 'lucide-react';
 
 export default function ConceptDetailPanel({
   concept,
+  documentId,
   allConcepts = [],
   isAuthenticated = false,
   onClose,
@@ -22,6 +27,7 @@ export default function ConceptDetailPanel({
   learningPath = null, // array of prerequisite steps to this concept
   className = ''
 }) {
+  const navigate = useNavigate();
   if (!concept) return null;
 
   // Find prerequisite concept objects
@@ -146,6 +152,54 @@ export default function ConceptDetailPanel({
           <p className="detail-definition-text">
             {concept.definition || 'No definition available for this concept.'}
           </p>
+        </div>
+
+        {/* Source Section: Page Badge, Quote, and In-App PDF Link */}
+        <div className="detail-section detail-source-section">
+          <div className="detail-source-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+            <h4 className="detail-section-title" style={{ display: 'flex', alignItems: 'center', gap: '6px', margin: 0 }}>
+              <FileText size={14} className="text-muted" />
+              <span>Source In Document</span>
+            </h4>
+            {concept.source_page ? (
+              <span className="detail-page-badge" style={{ fontSize: '0.75rem', padding: '2px 8px', borderRadius: '12px', background: 'rgba(212, 248, 40, 0.16)', color: 'var(--accent-lime, #d4f828)', fontWeight: 600 }}>
+                Page {concept.source_page}
+              </span>
+            ) : null}
+          </div>
+
+          {concept.source_quote ? (
+            <blockquote className="detail-source-quote" style={{ margin: '0 0 10px 0', padding: '10px 12px', borderRadius: '8px', background: 'rgba(255, 255, 255, 0.04)', borderLeft: '3px solid var(--accent-lime, #d4f828)', fontStyle: 'italic', fontSize: '0.86rem', color: 'var(--text-secondary, #d1d5db)', lineHeight: 1.45 }}>
+              "{concept.source_quote}"
+            </blockquote>
+          ) : (
+            <p className="detail-empty-hint">
+              {concept.source_page 
+                ? `Introduced on page ${concept.source_page}.`
+                : 'Page location not indexed for this concept.'}
+            </p>
+          )}
+
+          {(() => {
+            const docId = concept.document_id || documentId;
+            if (!docId) return null;
+            return (
+              <button
+                type="button"
+                className="detail-open-pdf-btn"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 12px', borderRadius: '8px', background: 'rgba(255, 255, 255, 0.07)', border: '1px solid var(--border-subtle, rgba(255, 255, 255, 0.12))', color: 'var(--text-primary, #f3f4f6)', fontSize: '0.82rem', fontWeight: 500, cursor: 'pointer', transition: 'all 0.15s ease', width: '100%', justifyContent: 'center' }}
+                onClick={() => {
+                  const pageParam = concept.source_page || concept.page || 1;
+                  const queryParam = encodeURIComponent(concept.source_quote || concept.name);
+                  navigate(`/viewer?doc=${docId}&page=${pageParam}&q=${queryParam}`);
+                }}
+                title="Open source page in in-app PDF viewer"
+              >
+                <ExternalLink size={13} style={{ color: 'var(--accent-lime, #d4f828)' }} />
+                <span>Open in PDF Viewer (p. {concept.source_page || concept.page || 1})</span>
+              </button>
+            );
+          })()}
         </div>
 
         {/* Learning Path (if active/provided) */}

@@ -10,10 +10,13 @@ import {
   EyeOff,
   LayoutDashboard,
   BookOpen,
-  FileText
+  FileText,
+  HardDrive
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { Avatar, Button, Modal, Input, PaperSurface } from './ui';
+import { DropdownPortal } from './ui/Overlay';
+import { clearAllSavedFiles } from '../utils/fileStore';
 
 export default function UserMenu({ onToast }) {
   const { 
@@ -27,39 +30,8 @@ export default function UserMenu({ onToast }) {
   const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
   const [activeModal, setActiveModal] = useState(null); // 'profile' | 'password' | 'delete' | null
-  const menuRef = useRef(null);
-
-  // Profile modal state
-  const [displayName, setDisplayName] = useState(user?.display_name || '');
-  const [profileLoading, setProfileLoading] = useState(false);
-  const [profileError, setProfileError] = useState('');
-
-  // Password modal state
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [showCurrentPw, setShowCurrentPw] = useState(false);
-  const [showNewPw, setShowNewPw] = useState(false);
-  const [passwordLoading, setPasswordLoading] = useState(false);
-  const [passwordError, setPasswordError] = useState('');
-
-  // Delete modal state
-  const [deleteConfirmText, setDeleteConfirmText] = useState('');
-  const [deleteLoading, setDeleteLoading] = useState(false);
-  const [deleteError, setDeleteError] = useState('');
-
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (e) => {
-      if (menuRef.current && !menuRef.current.contains(e.target)) {
-        setIsOpen(false);
-      }
-    };
-    if (isOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [isOpen]);
+  const [clearingFiles, setClearingFiles] = useState(false);
+  const avatarBtnRef = useRef(null);
 
   if (!user) return null;
 
@@ -150,9 +122,10 @@ export default function UserMenu({ onToast }) {
   };
 
   return (
-    <div className="user-menu-wrap" ref={menuRef}>
+    <div className="user-menu-wrap">
       {/* Small Avatar Button */}
       <button
+        ref={avatarBtnRef}
         type="button"
         className="user-avatar-btn"
         onClick={() => setIsOpen((prev) => !prev)}
@@ -163,7 +136,12 @@ export default function UserMenu({ onToast }) {
         <Avatar name={user.name || user.display_name} src={user.avatar || user.avatar_url} size={34} />
       </button>
 
-      {isOpen && (
+      <DropdownPortal
+        isOpen={isOpen}
+        onClose={() => setIsOpen(false)}
+        triggerRef={avatarBtnRef}
+        placement="bottom-end"
+      >
         <div className="user-dropdown-panel shadow-md" role="menu" aria-label="Account menu">
           <div className="user-dropdown-header">
             <span className="user-dropdown-eyebrow">YOUR ACCOUNT</span>
@@ -240,6 +218,29 @@ export default function UserMenu({ onToast }) {
             </span>
           </button>
 
+          <button
+            type="button"
+            className="user-dropdown-item"
+            onClick={async () => {
+              setClearingFiles(true);
+              const ok = await clearAllSavedFiles();
+              setClearingFiles(false);
+              setIsOpen(false);
+              if (onToast) {
+                if (ok) onToast('Local document files cleared from this device.', 'success');
+                else onToast('Could not clear local document files.', 'error');
+              }
+            }}
+            disabled={clearingFiles}
+            role="menuitem"
+          >
+            <span className="user-dropdown-item-icon"><HardDrive size={17} strokeWidth={1.75} /></span>
+            <span className="user-dropdown-item-copy">
+              <span className="user-dropdown-item-title">Clear saved files on this device</span>
+              <span className="user-dropdown-item-description">Copies stay on this device only</span>
+            </span>
+          </button>
+
           <div className="user-dropdown-divider" />
 
           <button
@@ -273,7 +274,7 @@ export default function UserMenu({ onToast }) {
             </span>
           </button>
         </div>
-      )}
+      </DropdownPortal>
 
       {/* Edit Profile Modal */}
       <Modal

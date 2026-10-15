@@ -43,14 +43,14 @@ export default defineConfig({
         cleanupOutdatedCaches: true,
         skipWaiting: true,
         clientsClaim: true,
-        // Exclude all API routes and backend calls from service worker navigation fallback
-        navigateFallbackDenylist: [/^\/api/, /^https?:\/\/.*\/api/],
+        // Exclude all API routes, exports, viewer, and storage calls from service worker navigation fallback
+        navigateFallbackDenylist: [/^\/api/, /^https?:\/\/.*\/api/, /export/, /\/file/],
         // Precache and serve ONLY static build assets (JS, CSS, HTML, fonts, icons)
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         // Exclude API calls entirely from runtime caching so the browser dispatches them directly via network
         runtimeCaching: [
           {
-            // Explicitly route all API/backend calls strictly via NetworkOnly (never cache API in SW)
+            // Explicitly route all API/backend/export/storage calls strictly via NetworkOnly (never cache in SW)
             urlPattern: ({ url }) =>
               url.pathname.startsWith('/api') ||
               url.pathname.startsWith('/documents') ||
@@ -60,7 +60,11 @@ export default defineConfig({
               url.pathname.startsWith('/guest') ||
               url.pathname.startsWith('/notes') ||
               url.pathname.startsWith('/reminders') ||
-              url.hostname.includes('onrender.com'),
+              url.pathname.includes('/export') ||
+              url.pathname.includes('/file') ||
+              url.hostname.includes('onrender.com') ||
+              url.hostname.includes('r2.cloudflarestorage.com') ||
+              url.hostname.includes('backblazeb2.com'),
             handler: 'NetworkOnly',
           },
           {

@@ -448,15 +448,19 @@ def init_db() -> None:
     """Initializes the database schema and performs safe, non-destructive startup migrations."""
     if is_postgres():
         # Postgres DDL
+        logger.info("init_db: connecting to Postgres...")
         conn = get_connection()
+        logger.info("init_db: connected. Checking lock...")
         lock_acquired = False
         try:
             try:
-                conn.execute("SELECT pg_advisory_lock(7429103);")
-                lock_acquired = True
+                lock_res = conn.execute("SELECT pg_try_advisory_lock(7429103);").fetchone()
+                lock_acquired = bool(lock_res and (lock_res[0] is True or lock_res[0] == 1))
+                logger.info(f"init_db: advisory lock status: {lock_acquired}")
             except Exception as e_lock:
                 logger.warning(f"Advisory lock warning (non-fatal): {e_lock}")
 
+            logger.info("init_db: executing schema DDL...")
             with conn:
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS users (
@@ -522,6 +526,9 @@ def init_db() -> None:
                         importance INTEGER NOT NULL,
                         source_excerpt TEXT NOT NULL,
                         page INTEGER DEFAULT 1,
+                        source_page INTEGER,
+                        source_quote TEXT DEFAULT '',
+                        source_verified BOOLEAN DEFAULT FALSE,
                         flow_order INTEGER NOT NULL DEFAULT 0,
                         flow_group TEXT NOT NULL DEFAULT 'General'
                     );
@@ -555,6 +562,21 @@ def init_db() -> None:
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_concept_progress_user ON concept_progress(user_id);")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_concept_progress_concept ON concept_progress(concept_id);")
 
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS document_files (
+                        document_id TEXT PRIMARY KEY REFERENCES documents(id) ON DELETE CASCADE,
+                        user_id TEXT NOT NULL,
+                        provider TEXT NOT NULL DEFAULT 'browser',
+                        storage_key TEXT,
+                        size INTEGER NOT NULL DEFAULT 0,
+                        mime TEXT NOT NULL DEFAULT 'application/pdf',
+                        sha256 TEXT NOT NULL,
+                        created_at TEXT NOT NULL
+                    );
+                """)
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_document_files_user ON document_files(user_id);")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_document_files_sha ON document_files(sha256);")
+
                 # Safe non-destructive column additions
                 conn.execute("ALTER TABLE documents ADD COLUMN IF NOT EXISTS user_id TEXT;")
                 conn.execute("ALTER TABLE documents ADD COLUMN IF NOT EXISTS subject_id TEXT;")
@@ -574,15 +596,18 @@ def init_db() -> None:
                 conn.execute("ALTER TABLE documents ADD COLUMN IF NOT EXISTS idempotency_key TEXT;")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_idempotency_key ON documents(user_id, idempotency_key);")
 
-                conn.execute("ALTER TABLE documents ADD COLUMN IF NOT EXISTS schema_version INTEGER DEFAULT 2;")
+                conn.execute("ALTER TABLE documents ADD COLUMN IF NOT EXISTS schema_version INTEGER DEFAULT 3;")
 
                 conn.execute("ALTER TABLE concepts ADD COLUMN IF NOT EXISTS flow_order INTEGER NOT NULL DEFAULT 0;")
                 conn.execute("ALTER TABLE concepts ADD COLUMN IF NOT EXISTS flow_group TEXT NOT NULL DEFAULT 'General';")
                 conn.execute("ALTER TABLE concepts ADD COLUMN IF NOT EXISTS chapter TEXT DEFAULT 'General';")
-                conn.execute("ALTER TABLE concepts ADD COLUMN IF NOT EXISTS schema_version INTEGER DEFAULT 2;")
+                conn.execute("ALTER TABLE concepts ADD COLUMN IF NOT EXISTS schema_version INTEGER DEFAULT 3;")
                 conn.execute("ALTER TABLE concepts ADD COLUMN IF NOT EXISTS stage_index INTEGER DEFAULT 0;")
                 conn.execute("ALTER TABLE concepts ADD COLUMN IF NOT EXISTS chapter_order INTEGER DEFAULT 1;")
                 conn.execute("ALTER TABLE concepts ADD COLUMN IF NOT EXISTS estimated_minutes INTEGER DEFAULT 10;")
+                conn.execute("ALTER TABLE concepts ADD COLUMN IF NOT EXISTS source_page INTEGER;")
+                conn.execute("ALTER TABLE concepts ADD COLUMN IF NOT EXISTS source_quote TEXT DEFAULT '';")
+                conn.execute("ALTER TABLE concepts ADD COLUMN IF NOT EXISTS source_verified BOOLEAN DEFAULT FALSE;")
 
                 conn.execute("ALTER TABLE relations ADD COLUMN IF NOT EXISTS relation_type TEXT NOT NULL DEFAULT 'related';")
                 conn.execute("ALTER TABLE relations ADD COLUMN IF NOT EXISTS label TEXT NOT NULL DEFAULT '';")
@@ -592,6 +617,7 @@ def init_db() -> None:
                 conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar TEXT;")
                 conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'student';")
                 conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER DEFAULT 1;")
+            logger.info("init_db: finished Postgres DDL successfully!")
         finally:
             if lock_acquired:
                 try:
@@ -651,8 +677,24 @@ def init_db() -> None:
                         source_excerpt TEXT NOT NULL,
                         page INTEGER DEFAULT 1,
                         flow_order INTEGER NOT NULL DEFAULT 0,
-                        flow_group TEXT NOT NULL DEFAULT 'General'
+                        flow_group TEXT NOT NULL DEFAULT 'General',
+                        source_page INTEGER,
+                        source_quote TEXT DEFAULT '',
+                        source_verified BOOLEAN DEFAULT 0
                     );
+
+                    CREATE TABLE IF NOT EXISTS document_files (
+                        document_id TEXT PRIMARY KEY REFERENCES documents(id) ON DELETE CASCADE,
+                        user_id TEXT NOT NULL,
+                        provider TEXT NOT NULL DEFAULT 'browser',
+                        storage_key TEXT,
+                        size INTEGER NOT NULL DEFAULT 0,
+                        mime TEXT NOT NULL DEFAULT 'application/pdf',
+                        sha256 TEXT NOT NULL,
+                        created_at TEXT NOT NULL
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_document_files_user ON document_files(user_id);
+                    CREATE INDEX IF NOT EXISTS idx_document_files_sha ON document_files(sha256);
 
                     CREATE TABLE IF NOT EXISTS relations (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -737,6 +779,12 @@ def init_db() -> None:
                     conn.execute("ALTER TABLE concepts ADD COLUMN chapter_order INTEGER DEFAULT 1;")
                 if "estimated_minutes" not in concept_columns:
                     conn.execute("ALTER TABLE concepts ADD COLUMN estimated_minutes INTEGER DEFAULT 10;")
+                if "source_page" not in concept_columns:
+                    conn.execute("ALTER TABLE concepts ADD COLUMN source_page INTEGER;")
+                if "source_quote" not in concept_columns:
+                    conn.execute("ALTER TABLE concepts ADD COLUMN source_quote TEXT DEFAULT '';")
+                if "source_verified" not in concept_columns:
+                    conn.execute("ALTER TABLE concepts ADD COLUMN source_verified BOOLEAN DEFAULT 0;")
                 if "target_id" not in relation_columns:
                     conn.execute("ALTER TABLE relations ADD COLUMN target_id TEXT DEFAULT '';")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_user_id ON documents(user_id);")
@@ -1552,6 +1600,8 @@ def get_document_by_id(user_id: str, doc_id: str) -> Optional[Dict[str, Any]]:
                 d.processing_time_sec,
                 d.provider_used,
                 d.skipped_pages,
+                d.file_hash,
+                d.user_id,
                 d.created_at,
                 COUNT(c.id) AS concept_count
             FROM documents d
@@ -1622,7 +1672,17 @@ def delete_document_by_id(user_id: str, doc_id: str) -> bool:
                 )
             conn.execute("UPDATE notes SET document_id = NULL WHERE document_id = ?", (doc_id,))
 
-            # 5. Delete document
+            # 5. Delete associated document file (and remove from S3 if configured)
+            try:
+                try:
+                    from backend.services.file_storage import delete_document_file
+                except ImportError:
+                    from services.file_storage import delete_document_file
+                delete_document_file(conn, doc_id)
+            except Exception as e:
+                logger.warning(f"Failed to delete document file for {doc_id}: {e}")
+
+            # 6. Delete document
             cursor = conn.execute("DELETE FROM documents WHERE id = ? AND user_id = ?", (doc_id, user_id))
             if cursor.rowcount > 0:
                 try:
@@ -1772,13 +1832,20 @@ def save_concepts_and_relations(
             for c in deduped_concepts:
                 clean_name = normalize_concept_display_name(c["name"])
                 clean_topic = clean_topic_heading(c.get("topic", "General"))
+                src_page = c.get("source_page")
+                if src_page is None and c.get("page") is not None and c.get("source_verified"):
+                    src_page = c.get("page")
+                src_quote = c.get("source_quote") or c.get("source_excerpt", "")
+                src_verified = bool(c.get("source_verified", False))
+
                 cursor = conn.execute(
                     """
                     INSERT INTO concepts (
                         document_id, name, definition, topic, score, importance,
-                        source_excerpt, page, flow_order, flow_group
+                        source_excerpt, page, flow_order, flow_group,
+                        source_page, source_quote, source_verified
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         doc_id,
@@ -1790,7 +1857,10 @@ def save_concepts_and_relations(
                         c.get("source_excerpt", ""),
                         int(c.get("page", 1)),
                         int(c.get("flow_order", 0)),
-                        clean_topic_heading(c.get("flow_group") or c.get("topic", "General"))
+                        clean_topic_heading(c.get("flow_group") or c.get("topic", "General")),
+                        src_page,
+                        src_quote,
+                        src_verified
                     )
                 )
                 concept_id = cursor.lastrowid
@@ -1844,7 +1914,10 @@ def get_concepts_by_document(
                 c.source_excerpt,
                 c.page,
                 c.flow_order,
-                c.flow_group
+                c.flow_group,
+                c.source_page,
+                c.source_quote,
+                c.source_verified
             FROM concepts c
             WHERE c.document_id = ?
         """

@@ -24,6 +24,15 @@ import {
   reanalyzeDocument, 
   getDocumentProgress 
 } from '../../api/client';
+import { OverlayPortal, DropdownPortal, lockBodyScroll, unlockBodyScroll } from '../ui/Overlay';
+import {
+  downloadBlob,
+  generateStudyGuideMarkdown,
+  generateConceptsJson,
+  generateConceptsCsv,
+  getCleanExportFilename,
+  printStudyGuide
+} from '../../utils/exportUtils';
 import ViewErrorBoundary from './ViewErrorBoundary';
 import BookshelfLoader from '../ui/BookshelfLoader';
 import '../../styles/results-panel.css';
@@ -102,11 +111,21 @@ export default function UnifiedResultsPanel({
   const [selectedConcept, setSelectedConcept] = useState(null);
 
   // Local concepts state for optimistic updates
-  const [concepts, setConcepts] = useState(initialConcepts);
+  const [concepts, setConcepts] = useState(() =>
+    (initialConcepts || []).map((c) => ({
+      ...c,
+      document_id: c.document_id || documentData?.id
+    }))
+  );
 
   useEffect(() => {
-    setConcepts(initialConcepts);
-  }, [initialConcepts]);
+    setConcepts(
+      (initialConcepts || []).map((c) => ({
+        ...c,
+        document_id: c.document_id || documentData?.id
+      }))
+    );
+  }, [initialConcepts, documentData?.id]);
 
   useEffect(() => {
     setDocTitle(documentData?.filename || 'Document Results');
@@ -131,16 +150,76 @@ export default function UnifiedResultsPanel({
     }
   }, [selectedConceptName, concepts]);
 
-  // Handle escape key to exit fullscreen
+  // Handle escape key to exit fullscreen and scroll lock
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'Escape' && isFullscreen) {
         setIsFullscreen(false);
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    if (isFullscreen) {
+      lockBodyScroll();
+      window.addEventListener('keydown', handleKeyDown);
+    }
+    return () => {
+      if (isFullscreen) unlockBodyScroll();
+      window.removeEventListener('keydown', handleKeyDown);
+    };
   }, [isFullscreen]);
+
+  const exportBtnRef = useRef(null);
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleExport = async (format) => {
+    setIsExportMenuOpen(false);
+    if (!documentData || concepts.length === 0) {
+      if (onToast) onToast({ type: 'warning', message: 'No concepts available to export.' });
+      return;
+    }
+
+    if (format === 'print') {
+      printStudyGuide(documentData, concepts, topics);
+      return;
+    }
+
+    setIsExporting(true);
+    try {
+      const docTitle = documentData.title || documentData.filename || 'course-notes';
+      let blob = null;
+      let filename = '';
+
+      if (format === 'markdown') {
+        blob = generateStudyGuideMarkdown(documentData, concepts, topics);
+        filename = getCleanExportFilename(docTitle, 'study-guide.md');
+      } else if (format === 'json') {
+        blob = generateConceptsJson(documentData, concepts, topics);
+        filename = getCleanExportFilename(docTitle, 'concepts.json');
+      } else if (format === 'csv') {
+        blob = generateConceptsCsv(documentData, concepts);
+        filename = getCleanExportFilename(docTitle, 'concepts.csv');
+      }
+
+      if (blob) {
+        await downloadBlob(blob, filename);
+        if (onToast) {
+          onToast({
+            type: 'success',
+            message: `Exported ${filename} successfully!`
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Export error:', err);
+      if (onToast) {
+        onToast({
+          type: 'error',
+          message: `Export failed: ${err.message || 'Please try again.'}`
+        });
+      }
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   // Rename handler
   const handleSaveTitle = () => {
@@ -237,11 +316,19 @@ export default function UnifiedResultsPanel({
 
   if (!documentData) return null;
 
-  return (
-    <section
-      className={`dashboard-results-panel unified-results-panel ${isFullscreen ? 'is-fullscreen' : ''} ${isCollapsed ? 'is-collapsed' : ''}`}
-      aria-label="Extracted Course Notes Results Panel"
-    >
+  const panel = (
+    <>
+      {isFullscreen && (
+        <div
+          className="panel-fullscreen-scrim"
+          onClick={() => setIsFullscreen(false)}
+          aria-hidden="true"
+        />
+      )}
+      <section
+        className={`dashboard-results-panel unified-results-panel ${isFullscreen ? 'is-fullscreen' : ''} ${isCollapsed ? 'is-collapsed' : ''}`}
+        aria-label="Extracted Course Notes Results Panel"
+      >
       {/* 1. Header Bar */}
       <div className="results-panel-header">
         <div className="results-panel-title-group">
@@ -320,61 +407,66 @@ export default function UnifiedResultsPanel({
           {/* Export Dropdown */}
           <div className="panel-export-wrap">
             <button
+              ref={exportBtnRef}
               type="button"
               className="panel-action-btn"
               onClick={() => setIsExportMenuOpen((prev) => !prev)}
               aria-expanded={isExportMenuOpen}
+              aria-haspopup="true"
+              disabled={loadingConcepts || isExporting}
               title="Export document results"
             >
               <Download size={15} />
-              <span className="hide-on-mobile">Export</span>
+              <span className="hide-on-mobile">{isExporting ? 'Exporting…' : 'Export'}</span>
               <ChevronDown size={13} />
             </button>
 
-            {isExportMenuOpen && (
-              <>
-                <div
-                  className="dropdown-scrim"
-                  onClick={() => setIsExportMenuOpen(false)}
-                />
-                <div className="panel-export-menu" role="menu">
-                  <a
-                    href={getExportUrl(documentData.id, 'markdown')}
-                    download
-                    className="export-menu-item"
-                    onClick={() => setIsExportMenuOpen(false)}
-                    role="menuitem"
-                  >
-                    <strong>Study Guide (Markdown)</strong>
-                    <span>Full notes & prerequisites</span>
-                  </a>
-                  <a
-                    href={getExportUrl(documentData.id, 'json')}
-                    download
-                    className="export-menu-item"
-                    onClick={() => setIsExportMenuOpen(false)}
-                    role="menuitem"
-                  >
-                    <strong>JSON Data</strong>
-                    <span>Cleaned concepts, DAG relations</span>
-                  </a>
-                  <a
-                    href={getExportUrl(documentData.id, 'csv')}
-                    download
-                    className="export-menu-item"
-                    onClick={() => setIsExportMenuOpen(false)}
-                    role="menuitem"
-                  >
-                    <strong>CSV Spreadsheet</strong>
-                    <span>Tabular concept list & times</span>
-                  </a>
-                  <div className="export-menu-divider" />
-                  <div className="export-menu-notice">
-                    Diagram views can also be printed or captured using browser fullscreen.
-                  </div>
-                </div>
-              </>
-            )}
+            <DropdownPortal
+              isOpen={isExportMenuOpen}
+              onClose={() => setIsExportMenuOpen(false)}
+              triggerRef={exportBtnRef}
+              placement="bottom-end"
+            >
+              <div className="panel-export-menu" role="menu" aria-label="Export options">
+                <button
+                  type="button"
+                  className="export-menu-item"
+                  onClick={() => handleExport('markdown')}
+                  role="menuitem"
+                >
+                  <strong>Study Guide (Markdown)</strong>
+                  <span>Full notes &amp; prerequisites</span>
+                </button>
+                <button
+                  type="button"
+                  className="export-menu-item"
+                  onClick={() => handleExport('json')}
+                  role="menuitem"
+                >
+                  <strong>JSON Data</strong>
+                  <span>Cleaned concepts, DAG relations</span>
+                </button>
+                <button
+                  type="button"
+                  className="export-menu-item"
+                  onClick={() => handleExport('csv')}
+                  role="menuitem"
+                >
+                  <strong>CSV Spreadsheet</strong>
+                  <span>Tabular concept list &amp; times</span>
+                </button>
+                <div className="export-menu-divider" />
+                <button
+                  type="button"
+                  className="export-menu-item export-menu-print"
+                  onClick={() => handleExport('print')}
+                  role="menuitem"
+                >
+                  <strong>Print Study Guide</strong>
+                  <span>Save as PDF or print clean notes</span>
+                </button>
+              </div>
+            </DropdownPortal>
           </div>
 
           {/* Fullscreen Toggle */}
@@ -500,6 +592,7 @@ export default function UnifiedResultsPanel({
                 {activeTab === 'concepts' && (
                   <ViewErrorBoundary viewName="Concepts List">
                     <ConceptListView
+                      documentId={documentData?.id}
                       concepts={concepts}
                       selectedConcept={selectedConcept}
                       onSelectConcept={setSelectedConcept}
@@ -527,6 +620,7 @@ export default function UnifiedResultsPanel({
                 {activeTab === 'roadmap' && (
                   <ViewErrorBoundary viewName="Study Roadmap">
                     <StudyRoadmapView
+                      documentId={documentData?.id}
                       concepts={concepts}
                       selectedConcept={selectedConcept}
                       onSelectConcept={setSelectedConcept}
@@ -543,6 +637,7 @@ export default function UnifiedResultsPanel({
           {selectedConcept && (
             <Suspense fallback={null}>
               <ConceptDetailPanel
+                documentId={documentData?.id}
                 concept={selectedConcept}
                 allConcepts={concepts}
                 isAuthenticated={isAuthenticated}
@@ -556,5 +651,8 @@ export default function UnifiedResultsPanel({
         </div>
       )}
     </section>
+    </>
   );
+
+  return isFullscreen ? <OverlayPortal>{panel}</OverlayPortal> : panel;
 }

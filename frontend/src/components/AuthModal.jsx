@@ -15,6 +15,7 @@ import { GoogleLogin, GoogleOAuthProvider } from '@react-oauth/google';
 import { useAuth } from '../context/AuthContext';
 import { checkUsernameAvailability, getAuthConfig } from '../api/client';
 import { LogoMark, BookshelfLoader, SegmentedTabs } from './ui';
+import { OverlayPortal, lockBodyScroll, unlockBodyScroll } from './ui/Overlay';
 
 const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID?.trim() || '';
 
@@ -379,6 +380,13 @@ export default function AuthModal({ onSuccess, guestStatus }) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [authModalOpen, handleCloseRequest]);
 
+  // Lock body scroll when auth modal is open
+  useEffect(() => {
+    if (!authModalOpen) return;
+    lockBodyScroll();
+    return () => unlockBodyScroll();
+  }, [authModalOpen]);
+
   // Live password strength calculation
   const strength = evaluatePasswordStrength(password);
 
@@ -619,15 +627,16 @@ export default function AuthModal({ onSuccess, guestStatus }) {
   ];
 
   return (
-    <div 
-      className={`auth-modal-backdrop ${isClosing ? 'closing' : ''}`}
-      onClick={(e) => {
-        if (e.target === e.currentTarget) {
-          handleCloseRequest();
-        }
-      }}
-      role="presentation"
-    >
+    <OverlayPortal>
+      <div 
+        className={`auth-modal-backdrop ${isClosing ? 'closing' : ''}`}
+        onClick={(e) => {
+          if (e.target === e.currentTarget) {
+            handleCloseRequest();
+          }
+        }}
+        role="presentation"
+      >
       <div
         ref={dialogRef}
         role="dialog"
@@ -1128,5 +1137,6 @@ export default function AuthModal({ onSuccess, guestStatus }) {
         </div>
       </div>
     </div>
+  </OverlayPortal>
   );
 }

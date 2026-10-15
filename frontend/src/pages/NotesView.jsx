@@ -28,6 +28,7 @@ import {
   deleteNote,
   listDocuments
 } from '../api/client';
+import { Modal } from '../components/ui';
 import '../styles/notes.css';
 
 function formatRelativeTime(isoString) {
@@ -871,34 +872,34 @@ export default function NotesView({ onToast = () => {} }) {
       </div>
 
       {/* Delete confirmation modal */}
-      {showDeleteModal && (
-        <div className="notes-modal-overlay" role="dialog" aria-modal="true">
-          <div className="notes-modal-box">
-            <h3 className="notes-modal-title">Delete Note</h3>
-            <p className="notes-modal-body">
-              Are you sure you want to delete &ldquo;{editorTitle || 'Untitled Note'}&rdquo;? This note will be permanently removed.
-            </p>
-            <div className="notes-modal-actions">
-              <button
-                type="button"
-                className="notes-modal-cancel-btn"
-                onClick={() => setShowDeleteModal(false)}
-                disabled={isDeleting}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="notes-modal-confirm-btn"
-                onClick={confirmDeleteNote}
-                disabled={isDeleting}
-              >
-                {isDeleting ? 'Deleting…' : 'Delete'}
-              </button>
-            </div>
-          </div>
+      <Modal
+        isOpen={showDeleteModal}
+        onClose={() => !isDeleting && setShowDeleteModal(false)}
+        title="Delete Note"
+        maxWidth="420px"
+      >
+        <p className="notes-modal-body" style={{ margin: '0 0 20px', color: 'var(--text-secondary)' }}>
+          Are you sure you want to delete &ldquo;{editorTitle || 'Untitled Note'}&rdquo;? This note will be permanently removed.
+        </p>
+        <div className="notes-modal-actions" style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+          <button
+            type="button"
+            className="notes-modal-cancel-btn"
+            onClick={() => setShowDeleteModal(false)}
+            disabled={isDeleting}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="notes-modal-confirm-btn"
+            onClick={confirmDeleteNote}
+            disabled={isDeleting}
+          >
+            {isDeleting ? 'Deleting…' : 'Delete'}
+          </button>
         </div>
-      )}
+      </Modal>
     </div>
   );
 }

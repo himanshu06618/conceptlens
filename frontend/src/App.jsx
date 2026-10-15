@@ -18,6 +18,7 @@ const TeacherDashboard = React.lazy(() => import('./pages/TeacherDashboard'));
 const NotesView = React.lazy(() => import('./pages/NotesView'));
 const ResultsView = React.lazy(() => import('./components/ResultsView'));
 const LandingPage = React.lazy(() => import('./components/LandingPage'));
+const DocumentViewer = React.lazy(() => import('./pages/DocumentViewer'));
 const LoaderShowcase = React.lazy(() => import('./components/dev/LoaderShowcase'));
 import { useAuth } from './context/AuthContext';
 import { 
@@ -29,6 +30,7 @@ import {
   deleteDocument,
   getGuestStatus
 } from './api/client';
+import { saveLocalFile, deleteLocalFile } from './utils/fileStore';
 
 import { 
   AmbientBackground,
@@ -296,6 +298,11 @@ export default function App() {
   const handleDeleteDoc = async (docId) => {
     try {
       await deleteDocument(docId);
+      try {
+        await deleteLocalFile(user?.id, docId);
+      } catch (fErr) {
+        console.warn('Could not remove file from local store:', fErr);
+      }
       addToast('Document removed', 'info');
       if (activeDocId === docId) {
         handleNewUpload();
@@ -420,6 +427,13 @@ export default function App() {
       const idempotencyKey = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
       const resp = await uploadDocument(file, { ...options, idempotencyKey });
       setProcessingDoc({ id: resp.id, filename: resp.filename });
+
+      // Cache original file locally in browser IndexedDB for instant in-app PDF viewing
+      try {
+        await saveLocalFile(user?.id, resp.id, file, { filename: file.name, mime: file.type });
+      } catch (storeErr) {
+        console.warn('Could not cache file locally in IndexedDB:', storeErr);
+      }
 
       if (resp.status === 'completed') {
         if (!completedJobsRef.current.has(resp.id)) {
@@ -566,6 +580,7 @@ export default function App() {
               onRefresh={() => loadDocConcepts(activeDocId)}
               onNewUpload={handleNewUpload}
               onDeleteDoc={handleDeleteDoc}
+              onToast={addToast}
             />
           </React.Suspense>
         ) : (
@@ -743,6 +758,11 @@ export default function App() {
           <Route 
             path="/landing" 
             element={<LandingPage onOpenAuth={openAuthModal} />} 
+          />
+
+          <Route 
+            path="/viewer" 
+            element={<DocumentViewer onToast={addToast} />} 
           />
 
           <Route path="/_dev/loader" element={<LoaderShowcase />} />

@@ -1,9 +1,11 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useRef } from 'react';
 import { X } from 'lucide-react';
+import { OverlayPortal, useOverlay } from './Overlay';
 
 /**
  * Clean Glassmorphic BottomSheet
  * Used on mobile for modals, filters, and drawers.
+ * Portaled into document.body with scrim, focus trap, and scroll lock.
  */
 export default function BottomSheet({
   isOpen,
@@ -11,55 +13,61 @@ export default function BottomSheet({
   title,
   children,
   showClose = true,
-  className = ''
+  className = '',
+  triggerRef = null,
 }) {
   const sheetRef = useRef(null);
 
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape' && isOpen) onClose();
-    };
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-      window.addEventListener('keydown', handleKeyDown);
-    } else {
-      document.body.style.overflow = '';
-    }
-    return () => {
-      document.body.style.overflow = '';
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [isOpen, onClose]);
+  useOverlay({
+    isOpen,
+    onClose,
+    containerRef: sheetRef,
+    triggerRef,
+    trapFocus: true,
+    lockScroll: true,
+    closeOnEscape: true,
+    closeOnClickOutside: false,
+  });
 
   if (!isOpen) return null;
 
   return (
-    <div className="bottom-sheet-backdrop" onClick={onClose} role="dialog" aria-modal="true">
-      <div
-        ref={sheetRef}
-        className={`bottom-sheet shadow-lg ${className}`.trim()}
-        onClick={(e) => e.stopPropagation()}
+    <OverlayPortal>
+      <div 
+        className="bottom-sheet-backdrop" 
+        onClick={onClose} 
+        role="dialog" 
+        aria-modal="true"
+        aria-labelledby={title ? 'bottom-sheet-title' : undefined}
       >
-        <div className="bottom-sheet-handle-wrap" onClick={onClose}>
-          <div className="bottom-sheet-handle" />
-        </div>
-        {(title || showClose) && (
-          <div className="bottom-sheet-header">
-            {title && <h3 className="bottom-sheet-title">{title}</h3>}
-            {showClose && (
-              <button
-                type="button"
-                className="icon-btn icon-btn-ghost icon-btn-sm"
-                onClick={onClose}
-                aria-label="Close sheet"
-              >
-                <X size={20} strokeWidth={1.75} />
-              </button>
-            )}
+        <div
+          ref={sheetRef}
+          tabIndex={-1}
+          className={`bottom-sheet ${className}`.trim()}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="bottom-sheet-handle-wrap" onClick={onClose}>
+            <div className="bottom-sheet-handle" />
           </div>
-        )}
-        <div className="bottom-sheet-content">{children}</div>
+          {(title || showClose) && (
+            <div className="bottom-sheet-header">
+              {title && <h3 id="bottom-sheet-title" className="bottom-sheet-title">{title}</h3>}
+              {showClose && (
+                <button
+                  type="button"
+                  className="icon-btn icon-btn-ghost icon-btn-sm"
+                  onClick={onClose}
+                  aria-label="Close sheet"
+                >
+                  <X size={20} strokeWidth={1.75} />
+                </button>
+              )}
+            </div>
+          )}
+          <div className="bottom-sheet-content">{children}</div>
+        </div>
       </div>
-    </div>
+    </OverlayPortal>
   );
 }
+

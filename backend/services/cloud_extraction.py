@@ -56,6 +56,7 @@ SYSTEM_INSTRUCTION = (
     "- DO NOT use full sentences, algorithm descriptions, or code fragments as concept names (e.g. NEVER 'find next(k) return the stored item with smallest key larger than k' or 'set at(i) delete first()').\n"
     "- Concept names MUST be concise noun phrases in Title Case (at most 6 words and 60 characters).\n"
     "- Definitions must be 1 or 2 precise sentences.\n"
+    "- If page numbers are visible or known, indicate the 1-based source_page and provide a verbatim source_quote (10-30 words) from that page where the concept appears. Do not guess or hallucinate.\n"
     "- A 'prerequisite' relation means the target concept MUST be understood BEFORE this concept."
 )
 
@@ -76,6 +77,8 @@ class GeminiConcept(BaseModel):
     topic: Optional[str] = Field(default="General", description="Legacy topic alias matching chapter")
     parent_id: Optional[str] = Field(default=None, description="The id of the broader parent concept in the tree hierarchy, or null if top-level concept")
     estimated_minutes: Optional[int] = Field(default=10, ge=1, le=30, description="Estimated study time in minutes (1-30)")
+    source_page: Optional[int] = Field(default=None, description="Physical 1-based page number where this concept is introduced or defined")
+    source_quote: Optional[str] = Field(default="", description="Exact 10 to 30 word verbatim sentence or quote from that page")
     relations: List[GeminiRelation] = Field(default_factory=list, description="Relations to other concepts in this document. Prerequisite means target must be understood before this concept.")
 
 
@@ -246,6 +249,8 @@ def _merge_concept_chunks(chunk_results: List[List[GeminiConcept]]) -> List[Dict
                     "chapter": ch_val,
                     "topic": ch_val,
                     "estimated_minutes": est_min,
+                    "source_page": getattr(c, "source_page", None),
+                    "source_quote": getattr(c, "source_quote", "") or "",
                     "parent_orig_id": f"chunk_{chunk_idx}_{c.parent_id}" if c.parent_id else None,
                     "relations": [
                         {
@@ -258,6 +263,10 @@ def _merge_concept_chunks(chunk_results: List[List[GeminiConcept]]) -> List[Dict
             else:
                 existing = merged_map[norm]
                 id_alias_map[orig_id] = existing["canonical_id"]
+                # Keep source page if existing doesn't have one
+                if getattr(c, "source_page", None) and not existing.get("source_page"):
+                    existing["source_page"] = getattr(c, "source_page", None)
+                    existing["source_quote"] = getattr(c, "source_quote", "") or ""
                 # Keep higher importance
                 if c.importance > existing["importance"]:
                     existing["importance"] = c.importance
@@ -324,9 +333,12 @@ def _merge_concept_chunks(chunk_results: List[List[GeminiConcept]]) -> List[Dict
             "topic": chapter,
             "estimated_minutes": item.get("estimated_minutes", 10),
             "definition": item["definition"],
-            "source_excerpt": item["definition"][:60],
+            "source_excerpt": item.get("source_quote") or item["definition"][:60],
+            "source_page": item.get("source_page"),
+            "source_quote": item.get("source_quote", "") or "",
+            "source_verified": bool(item.get("source_page")),
             "score": round(importance / 3.0, 3),
-            "page": 1,
+            "page": item.get("source_page") or 1,
             "flow_order": idx,
             "flow_group": chapter,
             "parent_name": parent_name,
@@ -490,6 +502,17 @@ def extract_document_with_gemini(
 
     # Deduplicate across all chunks and merge into final concepts
     final_concepts = _merge_concept_chunks(chunk_results)
+
+    # Verify and locate source pages and quotes page-by-page with PyMuPDF
+    try:
+        try:
+            from backend.services.source_locator import locate_concepts_in_document
+        except ImportError:
+            from services.source_locator import locate_concepts_in_document
+        final_concepts = locate_concepts_in_document(file_path, file_path.name, final_concepts)
+    except Exception as e_loc:
+        logger.warning(f"Could not locate source pages in {file_path.name}: {e_loc}")
+
     elapsed = time.perf_counter() - t0
     logger.info(f"Gemini extracted {len(final_concepts)} concepts across {len(chunk_results)} chunk(s) in {elapsed:.2f}s.")
     return final_concepts

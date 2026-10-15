@@ -220,6 +220,49 @@ export function getDocumentFileUrl(docId, page = null) {
   return `${API_BASE}/documents/${docId}/file${hash}`;
 }
 
+export async function fetchDocumentFileUrl(docId) {
+  const res = await apiFetch(`/documents/${docId}/file-url`);
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.detail || 'Failed to fetch document file URL');
+  }
+  return res.json();
+}
+
+export async function downloadDocumentBlob(urlOrDocId) {
+  let url = urlOrDocId;
+  if (!url.startsWith('http') && !url.startsWith('/')) {
+    url = `/documents/${urlOrDocId}/file`;
+  }
+  // External presigned S3 URL
+  if (url.startsWith('https://') && !url.includes('/api/documents/') && typeof window !== 'undefined' && !url.includes(window.location.host)) {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Failed to download file from storage: ${res.statusText}`);
+    return await res.blob();
+  }
+  // Internal API endpoint: authenticated via apiFetch
+  const res = await apiFetch(url);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to download file: ${res.statusText}`);
+  }
+  return await res.blob();
+}
+
+export async function reattachDocumentFile(docId, file) {
+  const formData = new FormData();
+  formData.append('file', file);
+  const res = await apiFetch(`/documents/${docId}/file`, {
+    method: 'POST',
+    body: formData,
+  });
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.detail || 'Failed to re-attach file');
+  }
+  return res.json();
+}
+
 export async function checkBackendHealth() {
   try {
     const res = await apiFetch('/health');

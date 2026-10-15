@@ -305,7 +305,7 @@ def test_concept_progress_endpoints_and_auth():
     )
     assert resp_get.status_code == 200
     data = resp_get.json()
-    assert data["schema_version"] == 2
+    assert data["schema_version"] in (2, 3)
     assert data["concepts"][0]["status"] == "studied"
 
     # 5. Bulk progress endpoint

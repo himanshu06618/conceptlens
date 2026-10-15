@@ -1,9 +1,10 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useRef } from 'react';
 import { X } from 'lucide-react';
+import { OverlayPortal, useOverlay } from './Overlay';
 
 /**
  * Clean Glassmorphic Modal
- * Translucent glass, backdrop blur, radius 24px, subtle animation (<300ms).
+ * Portaled into document.body with scrim, focus trap, Escape, and return focus.
  */
 export default function Modal({
   isOpen,
@@ -13,58 +14,62 @@ export default function Modal({
   children,
   maxWidth = '520px',
   showClose = true,
-  className = ''
+  className = '',
+  triggerRef = null,
 }) {
   const modalRef = useRef(null);
 
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape' && isOpen) {
-        onClose();
-      }
-    };
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-      window.addEventListener('keydown', handleKeyDown);
-    } else {
-      document.body.style.overflow = '';
-    }
-    return () => {
-      document.body.style.overflow = '';
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [isOpen, onClose]);
+  useOverlay({
+    isOpen,
+    onClose,
+    containerRef: modalRef,
+    triggerRef,
+    trapFocus: true,
+    lockScroll: true,
+    closeOnEscape: true,
+    closeOnClickOutside: false, // backdrop handles click directly
+  });
 
   if (!isOpen) return null;
 
   return (
-    <div className="modal-backdrop" onClick={onClose} role="dialog" aria-modal="true">
-      <div
-        ref={modalRef}
-        className={`glass-modal shadow-md ${className}`.trim()}
-        style={{ maxWidth }}
-        onClick={(e) => e.stopPropagation()}
+    <OverlayPortal>
+      <div 
+        className="modal-backdrop" 
+        onClick={onClose} 
+        role="dialog" 
+        aria-modal="true"
+        aria-labelledby={title ? 'modal-dialog-title' : undefined}
       >
-        {(title || showClose) && (
-          <div className="modal-header">
-            <div>
-              {title && <h2 className="modal-title">{title}</h2>}
-              {subtitle && <p className="modal-subtitle">{subtitle}</p>}
+        <div
+          ref={modalRef}
+          tabIndex={-1}
+          className={`glass-modal ${className}`.trim()}
+          style={{ maxWidth }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {(title || showClose) && (
+            <div className="modal-header">
+              <div>
+                {title && <h2 id="modal-dialog-title" className="modal-title">{title}</h2>}
+                {subtitle && <p className="modal-subtitle">{subtitle}</p>}
+              </div>
+              {showClose && (
+                <button
+                  type="button"
+                  className="icon-btn icon-btn-ghost icon-btn-sm"
+                  onClick={onClose}
+                  aria-label="Close dialog"
+                >
+                  <X size={20} strokeWidth={1.75} />
+                </button>
+              )}
             </div>
-            {showClose && (
-              <button
-                type="button"
-                className="icon-btn icon-btn-ghost icon-btn-sm"
-                onClick={onClose}
-                aria-label="Close dialog"
-              >
-                <X size={20} strokeWidth={1.75} />
-              </button>
-            )}
-          </div>
-        )}
-        <div className="modal-body">{children}</div>
+          )}
+          <div className="modal-body">{children}</div>
+        </div>
       </div>
-    </div>
+    </OverlayPortal>
   );
 }
+

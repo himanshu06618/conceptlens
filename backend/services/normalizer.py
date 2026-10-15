@@ -16,7 +16,7 @@ import re
 from typing import List, Dict, Any, Optional, Set, Tuple
 from collections import defaultdict, deque
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 # Blacklisted institutional and boilerplate terms (case-insensitive word boundaries or substrings)
 BOILERPLATE_PATTERNS = [
@@ -509,6 +509,10 @@ def normalize_extracted_concepts(raw_concepts: List[Dict[str, Any]]) -> List[Dic
         c["source_excerpt"] = c["definition"][:60] if c.get("definition") else ""
         c["flow_order"] = c["stage_index"]
         c["flow_group"] = c["chapter"]
+        c["source_page"] = c.get("source_page")
+        c["source_quote"] = c.get("source_quote", "")
+        c["source_verified"] = bool(c.get("source_verified", False))
+        c["document_id"] = c.get("document_id")
 
         result.append(c)
 

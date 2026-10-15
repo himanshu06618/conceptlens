@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Search,
   Filter,
@@ -9,17 +10,20 @@ import {
   ArrowRight,
   BookOpen,
   Layers,
-  Sparkles
+  Sparkles,
+  FileText
 } from 'lucide-react';
 
 export default function ConceptListView({
   concepts = [],
+  documentId,
   selectedConcept,
   onSelectConcept,
   onToggleStudied,
   isAuthenticated = false,
   onJumpToTab
 }) {
+  const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTopic, setSelectedTopic] = useState('ALL');
   const [minImportance, setMinImportance] = useState(0);
@@ -162,6 +166,26 @@ export default function ConceptListView({
                   <BookOpen size={11} />
                   {concept.chapter || concept.topic || 'General'}
                 </span>
+                {(concept.source_page || concept.page) && (
+                  <button
+                    type="button"
+                    className="card-page-chip"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const p = concept.source_page || concept.page || 1;
+                      const q = encodeURIComponent(concept.source_quote || concept.name);
+                      const docId = concept.document_id || documentId;
+                      if (docId) {
+                        navigate(`/viewer?doc=${docId}&page=${p}&q=${q}`);
+                      } else {
+                        onSelectConcept && onSelectConcept(concept);
+                      }
+                    }}
+                    title={`Open page ${concept.source_page || concept.page} in PDF viewer`}
+                  >
+                    p. {concept.source_page || concept.page}
+                  </button>
+                )}
                 <div className="card-importance-dots" aria-label={`Importance: ${importance} of 3`}>
                   {[1, 2, 3].map((dot) => (
                     <span

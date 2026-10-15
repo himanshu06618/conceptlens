@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   CheckCircle2,
   CircleDot,
@@ -14,12 +15,14 @@ import {
 
 export default function StudyRoadmapView({
   concepts = [],
+  documentId,
   selectedConcept,
   onSelectConcept,
   onToggleStudied,
   isAuthenticated = false,
   onMarkChapterComplete
 }) {
+  const navigate = useNavigate();
   // Concept lookup map
   const conceptMap = useMemo(() => {
     const map = new Map();
@@ -293,6 +296,27 @@ export default function StudyRoadmapView({
                       <div className="concept-name-slot">
                         <span className="c-row-name" title={concept.name}>{concept.name}</span>
                       </div>
+
+                      {(concept.source_page || concept.page) && (
+                        <button
+                          type="button"
+                          className="roadmap-page-chip"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const p = concept.source_page || concept.page || 1;
+                            const q = encodeURIComponent(concept.source_quote || concept.name);
+                            const docId = concept.document_id || documentId;
+                            if (docId) {
+                              navigate(`/viewer?doc=${docId}&page=${p}&q=${q}`);
+                            } else {
+                              onSelectConcept && onSelectConcept(concept);
+                            }
+                          }}
+                          title={`Open page ${concept.source_page || concept.page} in PDF viewer`}
+                        >
+                          p.{concept.source_page || concept.page}
+                        </button>
+                      )}
 
                       <div className="concept-time-slot">
                         <span>{concept.estimated_minutes || 5}m</span>

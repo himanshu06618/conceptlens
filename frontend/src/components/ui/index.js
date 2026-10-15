@@ -23,3 +23,4 @@ export { default as Tooltip } from './Tooltip';
 export { default as ProgressRing } from './ProgressRing';
 export { default as LensLoader } from './LensLoader';
 export { default as BookshelfLoader } from './BookshelfLoader';
+export { OverlayPortal, DropdownPortal, useOverlay, lockBodyScroll, unlockBodyScroll } from './Overlay';

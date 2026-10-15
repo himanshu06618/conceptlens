@@ -27,7 +27,10 @@ class ConceptItem(BaseModel):
     chapter_order: Optional[int] = 1
     estimated_minutes: Optional[int] = 10
     status: Optional[str] = "not_started"
-    schema_version: Optional[int] = 2
+    schema_version: Optional[int] = 3
+    source_page: Optional[int] = None
+    source_quote: Optional[str] = ""
+    source_verified: Optional[bool] = False
     relations: Optional[List[Dict[str, Any]]] = []
     related_concepts: Optional[List[RelatedConcept]] = []
 
@@ -65,6 +68,8 @@ class DocumentDetail(BaseModel):
     processing_time_sec: Optional[float] = 0.0
     provider_used: Optional[str] = "on-device"
     skipped_pages: Optional[str] = "[]"
+    file_hash: Optional[str] = None
+    user_id: Optional[str] = None
     created_at: str
     concept_count: int = 0
 
@@ -73,7 +78,7 @@ class DocumentConceptsResponse(BaseModel):
     total_concepts: int
     topics: List[str]
     concepts: List[ConceptItem]
-    schema_version: Optional[int] = 2
+    schema_version: Optional[int] = 3
 
 class UploadResponse(BaseModel):
     id: str

@@ -457,6 +457,16 @@ def process_document_background(
                 logger.info(f"Document {doc_id} was deleted during processing; aborting.")
                 return
 
+            # Ensure concepts have verified physical source pages & quotes
+            try:
+                try:
+                    from backend.services.source_locator import locate_concepts_in_document
+                except ImportError:
+                    from services.source_locator import locate_concepts_in_document
+                concepts = locate_concepts_in_document(file_path, file_path.name, concepts)
+            except Exception as e_loc:
+                logger.warning(f"Could not locate source pages in {file_path.name}: {e_loc}")
+
             # 3. Background Prebuild: Concept Tree & Flowchart
             update_document_stage(
                 doc_id,
@@ -480,6 +490,55 @@ def process_document_background(
                 stage_message="Saving knowledge structures & relations (95%)..."
             )
             save_concepts_and_relations(doc_id, concepts)
+
+            # If S3 storage is enabled, optionally persist to S3 within user quota
+            try:
+                try:
+                    from backend.services.file_storage import (
+                        is_s3_configured,
+                        upload_file_to_s3,
+                        save_document_file_record,
+                        get_user_storage_usage,
+                        DEFAULT_QUOTA_BYTES
+                    )
+                except ImportError:
+                    from services.file_storage import (
+                        is_s3_configured,
+                        upload_file_to_s3,
+                        save_document_file_record,
+                        get_user_storage_usage,
+                        DEFAULT_QUOTA_BYTES
+                    )
+
+                if is_s3_configured() and file_path.exists():
+                    conn_s3 = get_connection()
+                    try:
+                        doc_row = conn_s3.execute("SELECT user_id, file_hash FROM documents WHERE id = ?", (doc_id,)).fetchone()
+                        u_id = doc_row["user_id"] if doc_row else None
+                        f_hash = doc_row["file_hash"] if doc_row else None
+                        if u_id:
+                            f_size = file_path.stat().st_size
+                            used = get_user_storage_usage(conn_s3, u_id)
+                            if used + f_size <= DEFAULT_QUOTA_BYTES:
+                                s3_key = f"documents/{u_id}/{doc_id}/{file_path.name}"
+                                mime = "application/pdf" if file_path.suffix.lower() == ".pdf" else "application/octet-stream"
+                                with open(file_path, "rb") as f_obj:
+                                    uploaded = upload_file_to_s3(s3_key, f_obj, content_type=mime)
+                                if uploaded:
+                                    save_document_file_record(
+                                        conn_s3,
+                                        document_id=doc_id,
+                                        user_id=u_id,
+                                        provider="s3",
+                                        storage_key=s3_key,
+                                        size=f_size,
+                                        mime=mime,
+                                        sha256=f_hash or ""
+                                    )
+                    finally:
+                        conn_s3.close()
+            except Exception as e_s3:
+                logger.warning(f"Could not persist file to S3 for {doc_id}: {e_s3}")
 
             # Process chapters & relations for Study Planner BEFORE marking completed
             try:
@@ -854,6 +913,194 @@ def get_document_file(
         filename=filename,
         content_disposition_type="inline"
     )
+
+@app.get("/api/documents/{doc_id}/file-url")
+@app.get("/documents/{doc_id}/file-url")
+def get_document_file_url(
+    doc_id: str,
+    actor: Dict[str, Any] = Depends(get_current_user_or_guest)
+):
+    """
+    Returns file source URL for the in-app PDF viewer.
+    - If stored in S3: generates a temporary SigV4 presigned download URL (valid 300s).
+    - If stored on server: returns local /api/documents/{doc_id}/file route.
+    - Otherwise: returns provider='browser' indicating client should load from IndexedDB.
+    Strictly scoped to the verified document owner.
+    """
+    doc = get_document_by_id(user_id=actor["id"], doc_id=doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found.")
+
+    conn = get_connection()
+    try:
+        try:
+            from backend.services.file_storage import (
+                is_s3_configured,
+                generate_presigned_download_url,
+                get_document_file_record
+            )
+        except ImportError:
+            from services.file_storage import (
+                is_s3_configured,
+                generate_presigned_download_url,
+                get_document_file_record
+            )
+
+        file_record = get_document_file_record(conn, doc_id)
+        if file_record and file_record.get("provider") == "s3" and file_record.get("storage_key") and is_s3_configured():
+            presigned = generate_presigned_download_url(file_record["storage_key"], expires_in=300)
+            return {
+                "document_id": doc_id,
+                "provider": "s3",
+                "url": presigned,
+                "filename": doc["filename"],
+                "file_hash": doc.get("file_hash"),
+                "mime": file_record.get("mime", "application/pdf")
+            }
+    finally:
+        conn.close()
+
+    filename = doc["filename"]
+    actor_upload_dir = UPLOAD_DIR / actor["id"]
+    file_path = actor_upload_dir / f"{doc_id}_{filename}"
+    if not file_path.exists():
+        fallback_path = UPLOAD_DIR / f"{doc_id}_{filename}"
+        if fallback_path.exists():
+            file_path = fallback_path
+
+    if file_path.exists():
+        return {
+            "document_id": doc_id,
+            "provider": "server",
+            "url": f"/api/documents/{doc_id}/file",
+            "filename": doc["filename"],
+            "file_hash": doc.get("file_hash"),
+            "mime": "application/pdf" if Path(filename).suffix.lower() == ".pdf" else "application/octet-stream"
+        }
+
+    return {
+        "document_id": doc_id,
+        "provider": "browser",
+        "url": None,
+        "filename": doc["filename"],
+        "file_hash": doc.get("file_hash"),
+        "mime": "application/pdf" if Path(filename).suffix.lower() == ".pdf" else "application/octet-stream"
+    }
+
+@app.post("/api/documents/{doc_id}/file")
+@app.post("/documents/{doc_id}/file")
+async def reattach_document_file(
+    doc_id: str,
+    file: UploadFile = File(...),
+    actor: Dict[str, Any] = Depends(get_current_user_or_guest)
+):
+    """
+    Re-attaches an original document file for an existing document.
+    - Owner-scoped check.
+    - Verifies file SHA-256 against documents.file_hash (if set).
+    - Stores file in S3 if configured (quota-checked) or server disk.
+    - Runs PyMuPDF page-by-page locator on stored concepts to backfill source_page and source_quote.
+    - Re-saves updated concepts with verified pages.
+    """
+    doc = get_document_by_id(user_id=actor["id"], doc_id=doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found.")
+
+    content = await file.read()
+    if len(content) == 0:
+        raise HTTPException(status_code=400, detail="The uploaded file is empty (0 bytes).")
+    if len(content) > MAX_FILE_SIZE_BYTES:
+        raise HTTPException(status_code=413, detail=f"File exceeds maximum size limit of 10 MB.")
+
+    file_sha = hashlib.sha256(content).hexdigest()
+    expected_hash = doc.get("file_hash")
+    if expected_hash and expected_hash != file_sha:
+        raise HTTPException(
+            status_code=400,
+            detail="File verification failed: Content does not match the original document."
+        )
+
+    raw_filename = Path(file.filename or doc["filename"]).name
+    safe_filename = re.sub(r'[^a-zA-Z0-9_.-]', '_', raw_filename)
+    actor_upload_dir = UPLOAD_DIR / actor["id"]
+    actor_upload_dir.mkdir(parents=True, exist_ok=True)
+    save_path = actor_upload_dir / f"{doc_id}_{safe_filename}"
+    with open(save_path, "wb") as f_out:
+        f_out.write(content)
+
+    conn = get_connection()
+    provider = "server"
+    try:
+        try:
+            from backend.services.file_storage import (
+                is_s3_configured,
+                upload_file_to_s3,
+                save_document_file_record,
+                get_user_storage_usage,
+                DEFAULT_QUOTA_BYTES
+            )
+        except ImportError:
+            from services.file_storage import (
+                is_s3_configured,
+                upload_file_to_s3,
+                save_document_file_record,
+                get_user_storage_usage,
+                DEFAULT_QUOTA_BYTES
+            )
+
+        if is_s3_configured() and actor.get("id"):
+            used = get_user_storage_usage(conn, actor["id"])
+            if used + len(content) <= DEFAULT_QUOTA_BYTES:
+                s3_key = f"documents/{actor['id']}/{doc_id}/{safe_filename}"
+                mime = "application/pdf" if safe_filename.lower().endswith(".pdf") else "application/octet-stream"
+                uploaded = upload_file_to_s3(s3_key, content, content_type=mime)
+                if uploaded:
+                    save_document_file_record(
+                        conn,
+                        document_id=doc_id,
+                        user_id=actor["id"],
+                        provider="s3",
+                        storage_key=s3_key,
+                        size=len(content),
+                        mime=mime,
+                        sha256=file_sha
+                    )
+                    provider = "s3"
+
+        if provider != "s3":
+            save_document_file_record(
+                conn,
+                document_id=doc_id,
+                user_id=actor["id"],
+                provider="server",
+                storage_key=str(save_path),
+                size=len(content),
+                mime="application/pdf" if safe_filename.lower().endswith(".pdf") else "application/octet-stream",
+                sha256=file_sha
+            )
+    finally:
+        conn.close()
+
+    raw_concepts = get_concepts_by_document(doc_id=doc_id)
+    backfilled_count = 0
+    if raw_concepts:
+        try:
+            from backend.services.source_locator import locate_concepts_in_document
+        except ImportError:
+            from services.source_locator import locate_concepts_in_document
+
+        updated_concepts = locate_concepts_in_document(content, safe_filename, raw_concepts)
+        save_concepts_and_relations(doc_id, updated_concepts)
+        backfilled_count = sum(1 for c in updated_concepts if c.get("source_verified"))
+
+    return {
+        "status": "ok",
+        "message": "File verified and re-attached successfully.",
+        "document_id": doc_id,
+        "provider": provider,
+        "sha256": file_sha,
+        "concepts_verified": backfilled_count
+    }
 
 @app.get("/api/documents", response_model=List[DocumentItem])
 @app.get("/documents", response_model=List[DocumentItem])
