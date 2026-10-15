@@ -273,6 +273,10 @@ export default function UserMenu({ onToast }) {
               <span className="user-dropdown-item-description">Permanently remove your account</span>
             </span>
           </button>
+
+          <div className="user-dropdown-version-badge">
+            Version {typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev'}
+          </div>
         </div>
       </DropdownPortal>
 

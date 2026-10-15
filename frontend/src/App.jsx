@@ -208,6 +208,50 @@ export default function App() {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   };
 
+  // Build / Version update detection for PWA / Service Worker deployments
+  const [newVersionAvailable, setNewVersionAvailable] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    const checkAppVersion = async () => {
+      try {
+        const res = await fetch(`/version.json?_t=${Date.now()}`, { cache: 'no-store' });
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.commit && typeof __APP_VERSION__ !== 'undefined') {
+            if (data.commit !== __APP_VERSION__ && !['dev', 'unknown'].includes(data.commit)) {
+              if (active) setNewVersionAvailable(true);
+            }
+          }
+        }
+      } catch {
+        // Offline or fetch failed, silent ignore
+      }
+    };
+    checkAppVersion();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const handleApplyUpdate = useCallback(async () => {
+    try {
+      if ('serviceWorker' in navigator) {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        for (const reg of registrations) {
+          await reg.unregister();
+        }
+      }
+      if ('caches' in window) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map((k) => caches.delete(k)));
+      }
+    } catch (e) {
+      console.warn('Update cache clear error:', e);
+    }
+    window.location.reload(true);
+  }, []);
+
   // Support opening auth popup from URL hash (#signin or #signup) without creating a route
   useEffect(() => {
     const handleHash = () => {
@@ -632,6 +676,15 @@ export default function App() {
     <div className="app-root" ref={appRootRef}>
       {/* Background Atmosphere */}
       <AmbientBackground variant={isAppRoute ? 'app' : 'landing'} />
+
+      {newVersionAvailable && (
+        <div className="version-update-banner" role="alert">
+          <span>A new version of ConceptLens is available.</span>
+          <button type="button" className="version-update-btn" onClick={handleApplyUpdate}>
+            Refresh to update
+          </button>
+        </div>
+      )}
 
       {/* 3-Column Glass Header (1fr auto 1fr, perfectly centered Logo & title) */}
       <header className="app-header">

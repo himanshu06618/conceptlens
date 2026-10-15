@@ -11,6 +11,12 @@ import { wakeBackendServer } from './api/client';
 // Fire early non-blocking backend warm-up request immediately on shell parse
 wakeBackendServer();
 
+// Log build version in console
+console.info(
+  `%c[ConceptLens] Version: ${typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev'} (Built: ${typeof __BUILT_AT__ !== 'undefined' ? __BUILT_AT__ : 'local'})`,
+  'color: #6FC21A; font-weight: bold; font-size: 11px;'
+);
+
 const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID?.trim() || '';
 
 class ErrorBoundary extends Component {

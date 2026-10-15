@@ -611,6 +611,25 @@ def health_check():
         "guest_upload_limit": GUEST_UPLOAD_LIMIT
     }
 
+@app.get("/version")
+@app.get("/api/version")
+def get_version():
+    """
+    Returns deployment build and commit metadata without exposing secrets.
+    """
+    commit_sha = (
+        os.environ.get("RENDER_GIT_COMMIT") or 
+        os.environ.get("VERCEL_GIT_COMMIT_SHA") or 
+        os.environ.get("GIT_COMMIT") or 
+        "3b1b4f9"
+    )[:7]
+    return {
+        "commit": commit_sha,
+        "built_at": datetime.now(timezone.utc).isoformat(),
+        "environment": os.environ.get("ENVIRONMENT", "production"),
+        "status": "ok"
+    }
+
 @app.get("/api/health/providers")
 def check_providers_health():
     """Reports status of Gemini API, model, and extraction mode."""

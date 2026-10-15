@@ -1009,6 +1009,21 @@ input, select, textarea {
   color: #f87171;
 }
 
+.user-dropdown-version-badge {
+  padding: 8px 16px 10px;
+  text-align: center;
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--text-muted, #728065);
+  border-top: 1px solid var(--border-subtle, rgba(16, 20, 12, 0.08));
+  letter-spacing: 0.02em;
+}
+
+[data-theme='dark'] .user-dropdown-version-badge {
+  color: var(--text-muted, #94a3b8);
+  border-top-color: var(--border-subtle, rgba(255, 255, 255, 0.08));
+}
+
 @keyframes user-dropdown-enter {
   from {
     opacity: 0;
@@ -7556,4 +7571,37 @@ mark.search-highlight {
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
   }
+}
+
+.version-update-banner {
+  background: var(--lime-bright, #d4ff3f);
+  color: #12180e;
+  padding: 8px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  font-size: 13px;
+  font-weight: 500;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  position: relative;
+  z-index: 999;
+  text-align: center;
+}
+
+.version-update-banner .version-update-btn {
+  background: #12180e;
+  color: #ffffff;
+  border: none;
+  border-radius: 9999px;
+  padding: 4px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
+.version-update-banner .version-update-btn:hover {
+  transform: translateY(-1px);
+  opacity: 0.9;
 }
