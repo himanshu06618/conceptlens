@@ -413,7 +413,7 @@ export default function UnifiedResultsPanel({
               onClick={() => setIsExportMenuOpen((prev) => !prev)}
               aria-expanded={isExportMenuOpen}
               aria-haspopup="true"
-              disabled={loadingConcepts || isExporting}
+              disabled={isLoading || isExporting}
               title="Export document results"
             >
               <Download size={15} />

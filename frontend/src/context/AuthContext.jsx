@@ -13,7 +13,7 @@ import {
 
 import { clearAllDashboardCaches } from '../utils/dashboardCache';
 
-const AuthContext = createContext(null);
+export const AuthContext = createContext(null);
 
 function getInitialUser() {
   try {

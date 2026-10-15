@@ -12,6 +12,7 @@ import UploadView from './components/UploadView';
 import ToastContainer from './components/Toast';
 import AuthModal from './components/AuthModal';
 import UserMenu from './components/UserMenu';
+import { getDisplayName } from './utils/userUtils';
 
 // Code-split heavy and non-primary pages to minimize the dashboard bundle
 const TeacherDashboard = React.lazy(() => import('./pages/TeacherDashboard'));
@@ -538,7 +539,7 @@ export default function App() {
   const handleAuthSuccess = async (userData) => {
     await refreshGuestStatus();
     await refreshDocumentsList();
-    const name = userData?.name || userData?.display_name || userData?.username || 'scholar';
+    const name = getDisplayName(userData, 'scholar');
     addToast(`Welcome back, ${name}!`, 'success');
 
     // Resume pending upload after sign-in if triggered by guest limit

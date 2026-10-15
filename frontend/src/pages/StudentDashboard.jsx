@@ -16,11 +16,10 @@ import {
   X
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { getDisplayName } from '../utils/userUtils';
 import {
   getDashboardBootstrap,
-  getDashboardSummary,
   renameDocument,
-  getPlannerOverview,
   updateChapterProgress,
   updateChapterMeta,
   previewStudyPlan,
@@ -663,8 +662,8 @@ export default function StudentDashboard({ onToast = () => {} }) {
   }, []);
 
   const firstName = useMemo(() => {
-    const name = user?.display_name || user?.username || 'Student';
-    return name.split(' ')[0];
+    const name = getDisplayName(user, 'Student');
+    return name.split(' ')[0] || 'Student';
   }, [user]);
 
   const todayDateFormatted = useMemo(() => {

@@ -228,6 +228,7 @@ export default function FilterWorkspaceModal({
           </div>
         </div>
       </div>
-    </OverlayPortal>
+    </div>
+  </OverlayPortal>
   );
 }

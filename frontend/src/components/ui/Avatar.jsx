@@ -1,4 +1,5 @@
 import React from 'react';
+import { getDisplayName, getInitials } from '../../utils/userUtils';
 
 /**
  * Clean Avatar
@@ -11,12 +12,8 @@ export default function Avatar({
   className = '',
   style = {}
 }) {
-  const getInitials = (n) => {
-    if (!n) return 'CL';
-    const parts = n.trim().split(/\s+/);
-    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-  };
+  const safeName = typeof name === 'string' ? name : getDisplayName(name);
+  const initials = getInitials(safeName);
 
   return (
     <div
@@ -39,17 +36,17 @@ export default function Avatar({
         overflow: 'hidden',
         ...style
       }}
-      title={name}
-      aria-label={name}
+      title={safeName}
+      aria-label={safeName}
     >
       {src ? (
         <img
           src={src}
-          alt={name}
+          alt={safeName}
           style={{ width: '100%', height: '100%', objectFit: 'cover' }}
         />
       ) : (
-        <span>{getInitials(name)}</span>
+        <span>{initials}</span>
       )}
     </div>
   );

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   User, 
@@ -9,7 +9,6 @@ import {
   Eye, 
   EyeOff,
   LayoutDashboard,
-  BookOpen,
   FileText,
   HardDrive
 } from 'lucide-react';
@@ -17,6 +16,7 @@ import { useAuth } from '../context/AuthContext';
 import { Avatar, Button, Modal, Input, PaperSurface } from './ui';
 import { DropdownPortal } from './ui/Overlay';
 import { clearAllSavedFiles } from '../utils/fileStore';
+import { getDisplayName, getUserHandle } from '../utils/userUtils';
 
 export default function UserMenu({ onToast }) {
   const { 
@@ -33,18 +33,42 @@ export default function UserMenu({ onToast }) {
   const [clearingFiles, setClearingFiles] = useState(false);
   const avatarBtnRef = useRef(null);
 
+  // Profile modal state
+  const [displayName, setDisplayName] = useState('');
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileError, setProfileError] = useState('');
+
+  // Password modal state
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showCurrentPw, setShowCurrentPw] = useState(false);
+  const [showNewPw, setShowNewPw] = useState(false);
+  const [passwordLoading, setPasswordLoading] = useState(false);
+  const [passwordError, setPasswordError] = useState('');
+
+  // Delete modal state
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+
   if (!user) return null;
+
+  const userDisplayName = getDisplayName(user);
+  const userHandle = getUserHandle(user);
 
   const handleOpenModal = (modalName) => {
     setIsOpen(false);
     setActiveModal(modalName);
     if (modalName === 'profile') {
-      setDisplayName(user.display_name || '');
+      setDisplayName(getDisplayName(user, ''));
       setProfileError('');
     } else if (modalName === 'password') {
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
+      setShowCurrentPw(false);
+      setShowNewPw(false);
       setPasswordError('');
     } else if (modalName === 'delete') {
       setDeleteConfirmText('');
@@ -65,7 +89,7 @@ export default function UserMenu({ onToast }) {
     setProfileLoading(true);
     setProfileError('');
     try {
-      await updateProfile({ displayName: displayName.trim() });
+      await updateProfile(displayName.trim());
       if (onToast) onToast('Profile updated successfully!', 'success');
       handleCloseModal();
     } catch (err) {
@@ -131,9 +155,9 @@ export default function UserMenu({ onToast }) {
         onClick={() => setIsOpen((prev) => !prev)}
         aria-expanded={isOpen}
         aria-haspopup="true"
-        aria-label={`${user.name || user.display_name} user menu`}
+        aria-label={`${userDisplayName} user menu`}
       >
-        <Avatar name={user.name || user.display_name} src={user.avatar || user.avatar_url} size={34} />
+        <Avatar name={userDisplayName} src={user?.avatar || user?.avatar_url} size={34} />
       </button>
 
       <DropdownPortal
@@ -146,10 +170,10 @@ export default function UserMenu({ onToast }) {
           <div className="user-dropdown-header">
             <span className="user-dropdown-eyebrow">YOUR ACCOUNT</span>
             <div className="user-dropdown-identity">
-              <Avatar name={user.name || user.display_name} src={user.avatar || user.avatar_url} size={46} className="user-dropdown-avatar" />
+              <Avatar name={userDisplayName} src={user?.avatar || user?.avatar_url} size={46} className="user-dropdown-avatar" />
               <div className="user-dropdown-details">
-                <span className="user-name">{user.name || user.display_name}</span>
-                <span className="user-username">@{user.username}</span>
+                <span className="user-name">{userDisplayName}</span>
+                {userHandle ? <span className="user-username">{userHandle}</span> : null}
               </div>
             </div>
           </div>
@@ -292,7 +316,7 @@ export default function UserMenu({ onToast }) {
             <Input
               label="Username"
               type="text"
-              value={user.username}
+              value={user?.username || ''}
               disabled
               helper="Your username cannot be changed."
             />

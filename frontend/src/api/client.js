@@ -433,10 +433,14 @@ export async function getCurrentUser() {
   return res.json();
 }
 
-export async function updateUserProfile(displayName) {
+export async function updateUserProfile(payload) {
+  const cleanDisplayName = typeof payload === 'string'
+    ? payload.trim()
+    : (payload?.displayName || payload?.display_name || '').trim();
+
   const res = await apiFetch('/auth/me', {
     method: 'PATCH',
-    body: JSON.stringify({ display_name: displayName }),
+    body: JSON.stringify({ display_name: cleanDisplayName }),
   });
 
   const data = await res.json().catch(() => ({}));

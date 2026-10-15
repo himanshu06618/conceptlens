@@ -2,6 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { GraduationCap, BookOpen, Users, BarChart3, ArrowLeft } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { getDisplayName } from '../utils/userUtils';
 import MyNotesCard from '../components/planner/MyNotesCard';
 import '../styles/planner.css';
 
@@ -26,7 +27,7 @@ export default function TeacherDashboard() {
         </h1>
         <div className="planner-status-line">
           <span className="badge">Teacher Dashboard</span>
-          <span>Welcome, Professor {user?.display_name || user?.username}!</span>
+          <span>Welcome, Professor {getDisplayName(user, 'Instructor')}!</span>
         </div>
       </section>
 

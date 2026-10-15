@@ -140,6 +140,7 @@ export default defineConfig({
     port: 5173,
   },
   build: {
+    sourcemap: 'hidden',
     rollupOptions: {
       output: {
         manualChunks(id) {
@@ -155,5 +156,9 @@ export default defineConfig({
         },
       },
     },
+  },
+  test: {
+    environment: 'jsdom',
+    globals: true,
   },
 });
