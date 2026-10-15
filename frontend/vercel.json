@@ -5,6 +5,18 @@
   "outputDirectory": "dist",
   "rewrites": [
     {
+      "source": "/api/(.*)",
+      "destination": "https://conceptlens-5fou.onrender.com/api/$1"
+    },
+    {
+      "source": "/version",
+      "destination": "https://conceptlens-5fou.onrender.com/version"
+    },
+    {
+      "source": "/health",
+      "destination": "https://conceptlens-5fou.onrender.com/health"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
@@ -20,7 +32,7 @@
       ]
     },
     {
-      "source": "/(sw\\.js|registerSW\\.js|manifest\\.webmanifest)",
+      "source": "/(index\\.html|version\\.json|sw\\.js|registerSW\\.js|manifest\\.webmanifest)",
       "headers": [
         {
           "key": "Cache-Control",
