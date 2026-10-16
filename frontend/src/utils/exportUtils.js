@@ -72,19 +72,84 @@ export function getCleanExportFilename(docTitle, ext) {
 }
 
 /**
+ * Compute stable topological sequence number (Key concept 1..N) for export consistency
+ */
+export function computeKeyConceptNumbers(concepts = []) {
+  const seqMap = new Map();
+  const nameMap = new Map();
+  concepts.forEach((c) => {
+    if (c && c.name) {
+      nameMap.set(String(c.name).toLowerCase().trim(), c);
+    }
+  });
+
+  const inDegree = new Map();
+  const adj = new Map();
+  concepts.forEach((c) => {
+    inDegree.set(c.id, 0);
+    adj.set(c.id, []);
+  });
+
+  concepts.forEach((c) => {
+    const prereqs = Array.isArray(c.prerequisites) ? c.prerequisites : [];
+    prereqs.forEach((pName) => {
+      const pObj = nameMap.get(String(pName).toLowerCase().trim());
+      if (pObj && pObj.id !== c.id && inDegree.has(c.id)) {
+        inDegree.set(c.id, inDegree.get(c.id) + 1);
+        adj.get(pObj.id).push(c.id);
+      }
+    });
+  });
+
+  const queue = [];
+  concepts.forEach((c) => {
+    if (inDegree.get(c.id) === 0) queue.push(c);
+  });
+
+  const tieBreakSort = (a, b) => {
+    const pA = a.source_page || a.page || (Array.isArray(a.pages) && a.pages[0]) || 99999;
+    const pB = b.source_page || b.page || (Array.isArray(b.pages) && b.pages[0]) || 99999;
+    if (pA !== pB) return pA - pB;
+    const impA = Number(a.importance) || 1;
+    const impB = Number(b.importance) || 1;
+    if (impB !== impA) return impB - impA;
+    return String(a.name || '').localeCompare(String(b.name || ''));
+  };
+
+  queue.sort(tieBreakSort);
+
+  let seq = 1;
+  const visited = new Set();
+
+  while (queue.length > 0) {
+    queue.sort(tieBreakSort);
+    const curr = queue.shift();
+    if (visited.has(curr.id)) continue;
+    visited.add(curr.id);
+    seqMap.set(curr.id, seq++);
+
+    const neighbors = adj.get(curr.id) || [];
+    neighbors.forEach((nId) => {
+      inDegree.set(nId, inDegree.get(nId) - 1);
+      if (inDegree.get(nId) === 0) {
+        const nObj = concepts.find((c) => c.id === nId);
+        if (nObj && !visited.has(nId)) queue.push(nObj);
+      }
+    });
+  }
+
+  concepts
+    .filter((c) => !visited.has(c.id))
+    .sort(tieBreakSort)
+    .forEach((c) => {
+      seqMap.set(c.id, seq++);
+    });
+
+  return seqMap;
+}
+
+/**
  * 1. Generate Markdown Study Guide
- * Format:
- * # <Document Title>
- * Date, counts
- * ## Chapter / Topic
- * ### Concept Name
- * - [ ] / - [x] Studied
- * - **Definition**: ...
- * - **Importance**: ★★★★☆
- * - **Est. Time**: X mins
- * - **Source Page**: Page X (if known)
- * - **Learn First (Prerequisites)**: ...
- * - **Related**: ...
  */
 export function generateStudyGuideMarkdown(documentData, concepts = [], chapters = []) {
   const docTitle = documentData?.title || documentData?.filename || 'Course Study Guide';
@@ -99,6 +164,7 @@ export function generateStudyGuideMarkdown(documentData, concepts = [], chapters
   const totalConcepts = concepts.length;
   const studiedCount = concepts.filter((c) => c.status === 'studied').length;
   const totalMins = concepts.reduce((acc, c) => acc + (Number(c.estimated_minutes) || 5), 0);
+  const seqMap = computeKeyConceptNumbers(concepts);
 
   let md = `# ${docTitle}\n\n`;
   md += `> **Generated with ConceptLens**  \n`;
@@ -123,8 +189,9 @@ export function generateStudyGuideMarkdown(documentData, concepts = [], chapters
       const checkbox = isStudied ? '- [x]' : '- [ ]';
       const timeStr = c.estimated_minutes ? `${c.estimated_minutes} min` : '5 min';
       const stars = getStars(c.importance);
+      const keySeq = seqMap.get(c.id) || 1;
 
-      md += `### ${checkbox} ${c.name}\n\n`;
+      md += `### ${checkbox} Key concept ${keySeq}: ${c.name}\n\n`;
       md += `**Definition**: ${c.definition || 'No definition available.'}\n\n`;
       md += `- **Priority**: ${stars} (${c.importance || 3}/5)\n`;
       md += `- **Estimated Study Time**: ${timeStr}\n`;
@@ -158,6 +225,7 @@ export function generateStudyGuideMarkdown(documentData, concepts = [], chapters
 export function generateConceptsJson(documentData, concepts = [], chapters = []) {
   const safeStr = (v) => (typeof v === 'string' ? v.trim().toLowerCase() : String(v || '').trim().toLowerCase());
   const relations = [];
+  const seqMap = computeKeyConceptNumbers(concepts);
 
   // Cycle detection for DAG: DFS
   const adj = new Map();
@@ -177,7 +245,6 @@ export function generateConceptsJson(documentData, concepts = [], chapters = [])
           (other) => other && other.id !== c.id && safeStr(other.name) === pStr
         );
         if (target && target.id) {
-          // c depends on target (target is prerequisite of c: target -> c)
           relations.push({
             source: target.id,
             target: c.id,
@@ -225,6 +292,8 @@ export function generateConceptsJson(documentData, concepts = [], chapters = [])
     chapters: Array.isArray(chapters) && chapters.length > 0 ? chapters : Array.from(new Set((concepts || []).map((c) => c?.chapter || c?.topic || 'General'))),
     concepts: (concepts || []).map((c) => ({
       id: c?.id,
+      key_concept_number: seqMap.get(c?.id) || 1,
+      key_concept_label: `Key concept ${seqMap.get(c?.id) || 1}`,
       name: c?.name || 'Untitled',
       definition: c?.definition || '',
       chapter: c?.chapter || c?.topic || 'General Overview',
@@ -246,10 +315,11 @@ export function generateConceptsJson(documentData, concepts = [], chapters = [])
 
 /**
  * 3. Generate CSV Spreadsheet with UTF-8 BOM (\uFEFF)
- * Correctly escapes quotes, commas, and line breaks so Excel and Numbers open it cleanly.
  */
 export function generateConceptsCsv(documentData, concepts = []) {
+  const seqMap = computeKeyConceptNumbers(concepts);
   const headers = [
+    'Key concept #',
     'Chapter',
     'Concept',
     'Definition',
@@ -272,7 +342,9 @@ export function generateConceptsCsv(documentData, concepts = []) {
 
   (concepts || []).forEach((c) => {
     if (!c) return;
+    const keyNum = seqMap.get(c.id) || 1;
     const row = [
+      `Key concept ${keyNum}`,
       c.chapter || c.topic || 'General Overview',
       c.name || '',
       c.definition || '',
@@ -332,6 +404,8 @@ export function printStudyGuide(documentData, concepts = [], chapters = []) {
     chapterGroups.get(chapterName).push(concept);
   });
 
+  const seqMap = computeKeyConceptNumbers(concepts);
+
   let chaptersHtml = '';
   chapterGroups.forEach((items, chapterTitle) => {
     chaptersHtml += `<section class="chapter-block"><h2>${escapeHtml(chapterTitle)}</h2><div class="concepts-grid">`;
@@ -342,11 +416,12 @@ export function printStudyGuide(documentData, concepts = [], chapters = []) {
       const stars = getStars(c.importance);
       const prereqs = Array.isArray(c.prerequisites) && c.prerequisites.length > 0 ? c.prerequisites.filter(Boolean).join(', ') : '';
       const rels = Array.isArray(c.related) && c.related.length > 0 ? c.related.filter(Boolean).join(', ') : '';
+      const keySeq = seqMap.get(c.id) || 1;
 
       chaptersHtml += `
         <div class="concept-card ${isStudied ? 'is-studied' : ''}">
           <div class="concept-card-header">
-            <span class="concept-name">${escapeHtml(c.name || 'Untitled')}</span>
+            <span class="concept-name">Key concept ${keySeq}: ${escapeHtml(c.name || 'Untitled')}</span>
             <span class="concept-status">${checkbox}</span>
           </div>
           <p class="concept-def"><strong>Definition:</strong> ${escapeHtml(c.definition || 'No definition available.')}</p>

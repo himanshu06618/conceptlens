@@ -608,6 +608,26 @@ def init_db() -> None:
                 conn.execute("ALTER TABLE concepts ADD COLUMN IF NOT EXISTS source_page INTEGER;")
                 conn.execute("ALTER TABLE concepts ADD COLUMN IF NOT EXISTS source_quote TEXT DEFAULT '';")
                 conn.execute("ALTER TABLE concepts ADD COLUMN IF NOT EXISTS source_verified BOOLEAN DEFAULT FALSE;")
+                conn.execute("ALTER TABLE concepts ADD COLUMN IF NOT EXISTS pages_json TEXT DEFAULT '[]';")
+
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS page_coverage (
+                        id SERIAL PRIMARY KEY,
+                        document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+                        user_id TEXT,
+                        page INTEGER NOT NULL,
+                        page_type TEXT NOT NULL,
+                        text_chars INTEGER NOT NULL DEFAULT 0,
+                        text_hash TEXT DEFAULT '',
+                        status TEXT NOT NULL DEFAULT 'done',
+                        concepts_count INTEGER NOT NULL DEFAULT 0,
+                        no_concepts_reason TEXT,
+                        error TEXT,
+                        updated_at TEXT NOT NULL
+                    );
+                """)
+                conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_page_coverage_doc_page ON page_coverage(document_id, page);")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_page_coverage_doc_status ON page_coverage(document_id, status);")
 
                 conn.execute("ALTER TABLE relations ADD COLUMN IF NOT EXISTS relation_type TEXT NOT NULL DEFAULT 'related';")
                 conn.execute("ALTER TABLE relations ADD COLUMN IF NOT EXISTS label TEXT NOT NULL DEFAULT '';")
@@ -785,8 +805,29 @@ def init_db() -> None:
                     conn.execute("ALTER TABLE concepts ADD COLUMN source_quote TEXT DEFAULT '';")
                 if "source_verified" not in concept_columns:
                     conn.execute("ALTER TABLE concepts ADD COLUMN source_verified BOOLEAN DEFAULT 0;")
+                if "pages_json" not in concept_columns:
+                    conn.execute("ALTER TABLE concepts ADD COLUMN pages_json TEXT DEFAULT '[]';")
                 if "target_id" not in relation_columns:
                     conn.execute("ALTER TABLE relations ADD COLUMN target_id TEXT DEFAULT '';")
+
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS page_coverage (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+                        user_id TEXT,
+                        page INTEGER NOT NULL,
+                        page_type TEXT NOT NULL,
+                        text_chars INTEGER NOT NULL DEFAULT 0,
+                        text_hash TEXT DEFAULT '',
+                        status TEXT NOT NULL DEFAULT 'done',
+                        concepts_count INTEGER NOT NULL DEFAULT 0,
+                        no_concepts_reason TEXT,
+                        error TEXT,
+                        updated_at TEXT NOT NULL
+                    );
+                """)
+                conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_page_coverage_doc_page ON page_coverage(document_id, page);")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_page_coverage_doc_status ON page_coverage(document_id, status);")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_user_id ON documents(user_id);")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_file_hash ON documents(file_hash);")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_subject_id ON documents(subject_id);")
@@ -1858,14 +1899,17 @@ def save_concepts_and_relations(
                 src_quote = c.get("source_quote") or c.get("source_excerpt", "")
                 src_verified = bool(c.get("source_verified", False))
 
+                pages_list = c.get("pages") or [src_page or c.get("page", 1)]
+                pages_json = json.dumps(sorted(list(set(p for p in pages_list if isinstance(p, int)))))
+
                 cursor = conn.execute(
                     """
                     INSERT INTO concepts (
                         document_id, name, definition, topic, score, importance,
                         source_excerpt, page, flow_order, flow_group,
-                        source_page, source_quote, source_verified
+                        source_page, source_quote, source_verified, pages_json
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         doc_id,
@@ -1880,7 +1924,8 @@ def save_concepts_and_relations(
                         clean_topic_heading(c.get("flow_group") or c.get("topic", "General")),
                         src_page,
                         src_quote,
-                        src_verified
+                        src_verified,
+                        pages_json
                     )
                 )
                 concept_id = cursor.lastrowid
@@ -1914,6 +1959,105 @@ def save_concepts_and_relations(
     finally:
         conn.close()
 
+
+def save_document_page_coverage(doc_id: str, coverage_records: List[Dict[str, Any]]) -> None:
+    """Saves or updates per-page coverage records for a document."""
+    if not coverage_records:
+        return
+    conn = get_connection()
+    now_str = datetime.now(timezone.utc).isoformat()
+    try:
+        with conn:
+            for rec in coverage_records:
+                page = rec.get("page", 1)
+                page_type = rec.get("page_type", "content")
+                text_chars = rec.get("text_chars", 0)
+                text_hash = rec.get("text_hash", "")
+                status = rec.get("status", "done")
+                concepts_count = rec.get("concepts_count", 0)
+                no_concepts_reason = rec.get("no_concepts_reason")
+                error = rec.get("error")
+                user_id = rec.get("user_id")
+
+                if is_postgres():
+                    conn.execute("""
+                        INSERT INTO page_coverage (
+                            document_id, user_id, page, page_type, text_chars, text_hash,
+                            status, concepts_count, no_concepts_reason, error, updated_at
+                        )
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (document_id, page) DO UPDATE SET
+                            page_type = EXCLUDED.page_type,
+                            text_chars = EXCLUDED.text_chars,
+                            text_hash = EXCLUDED.text_hash,
+                            status = EXCLUDED.status,
+                            concepts_count = EXCLUDED.concepts_count,
+                            no_concepts_reason = EXCLUDED.no_concepts_reason,
+                            error = EXCLUDED.error,
+                            updated_at = EXCLUDED.updated_at
+                    """, (doc_id, user_id, page, page_type, text_chars, text_hash, status, concepts_count, no_concepts_reason, error, now_str))
+                else:
+                    conn.execute("""
+                        INSERT INTO page_coverage (
+                            document_id, user_id, page, page_type, text_chars, text_hash,
+                            status, concepts_count, no_concepts_reason, error, updated_at
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ON CONFLICT(document_id, page) DO UPDATE SET
+                            page_type = excluded.page_type,
+                            text_chars = excluded.text_chars,
+                            text_hash = excluded.text_hash,
+                            status = excluded.status,
+                            concepts_count = excluded.concepts_count,
+                            no_concepts_reason = excluded.no_concepts_reason,
+                            error = excluded.error,
+                            updated_at = excluded.updated_at
+                    """, (doc_id, user_id, page, page_type, text_chars, text_hash, status, concepts_count, no_concepts_reason, error, now_str))
+    finally:
+        conn.close()
+
+
+def get_document_page_coverage(doc_id: str) -> List[Dict[str, Any]]:
+    """Fetches all page coverage records for a document ordered by page number."""
+    conn = get_connection()
+    try:
+        cursor = conn.execute("""
+            SELECT page, page_type, text_chars, text_hash, status, concepts_count, no_concepts_reason, error, updated_at
+            FROM page_coverage
+            WHERE document_id = ?
+            ORDER BY page ASC
+        """, (doc_id,))
+        return [dict(row) for row in cursor.fetchall()]
+    finally:
+        conn.close()
+
+
+def get_document_coverage_summary(doc_id: str) -> Dict[str, Any]:
+    """Computes high-level coverage summary for the Coverage UI panel."""
+    pages = get_document_page_coverage(doc_id)
+    total_pages = len(pages)
+    if total_pages == 0:
+        return {
+            "total_pages": 0,
+            "processed_pages": 0,
+            "pages_with_concepts": 0,
+            "pages_skipped": 0,
+            "pages_needing_attention": 0,
+            "pages": []
+        }
+    pages_with_concepts = sum(1 for p in pages if p["concepts_count"] > 0)
+    pages_skipped = sum(1 for p in pages if p["status"] == "empty_ok")
+    pages_needing_attention = sum(1 for p in pages if p["status"] in ("low_text", "failed"))
+    return {
+        "total_pages": total_pages,
+        "processed_pages": total_pages,
+        "pages_with_concepts": pages_with_concepts,
+        "pages_skipped": pages_skipped,
+        "pages_needing_attention": pages_needing_attention,
+        "pages": pages
+    }
+
+
 def get_concepts_by_document(
     doc_id: str,
     q: Optional[str] = None,
@@ -1937,7 +2081,8 @@ def get_concepts_by_document(
                 c.flow_group,
                 c.source_page,
                 c.source_quote,
-                c.source_verified
+                c.source_verified,
+                c.pages_json
             FROM concepts c
             WHERE c.document_id = ?
         """
@@ -1983,6 +2128,13 @@ def get_concepts_by_document(
 
             for c in concepts:
                 c["related_concepts"] = relations_by_id.get(c["id"], [])
+                if c.get("pages_json"):
+                    try:
+                        c["pages"] = json.loads(c["pages_json"])
+                    except Exception:
+                        c["pages"] = [c.get("source_page") or c.get("page", 1)]
+                else:
+                    c["pages"] = [c.get("source_page") or c.get("page", 1)]
         
         return concepts
     finally:

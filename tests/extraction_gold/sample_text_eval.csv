@@ -1,0 +1,138 @@
+page,name,definition,source_quote,source_verified,is_correct (1/0),is_junk (1/0),is_duplicate (1/0),missing_concepts_for_page,notes
+1,Database Systems: Relational Model,no definition in notes,"Database Systems: Relational Model
+
+The relational database model organizes data into one or more tables (or relations) of columns and
+rows, with a unique key identifying each row.",YES,,,,,
+1,Database Systems,no definition in notes,"Database Systems: Relational Model
+
+The relational database model organizes data into one or more tables (or relations) of columns and
+rows, with a unique key identifying each row.",YES,,,,,
+1,Model Organizes Data,no definition in notes,"Database Systems: Relational Model
+
+The relational database model organizes data into one or more tables (or relations) of columns and
+rows, with a unique key identifying each row.",YES,,,,,
+1,Database Model Organizes,no definition in notes,"Database Systems: Relational Model
+
+The relational database model organizes data into one or more tables (or relations) of columns and
+rows, with a unique key identifying each row.",YES,,,,,
+1,Relational Database Model,no definition in notes,"Database Systems: Relational Model
+
+The relational database model organizes data into one or more tables (or relations) of columns and
+rows, with a unique key identifying each row.",YES,,,,,
+1,Model Organizes,no definition in notes,"Database Systems: Relational Model
+
+The relational database model organizes data into one or more tables (or relations) of columns and
+rows, with a unique key identifying each row.",YES,,,,,
+1,Unique Key Identifying,no definition in notes,"Database Systems: Relational Model
+
+The relational database model organizes data into one or more tables (or relations) of columns and
+rows, with a unique key identifying each row.",YES,,,,,
+1,Database Model,no definition in notes,"Database Systems: Relational Model
+
+The relational database model organizes data into one or more tables (or relations) of columns and
+rows, with a unique key identifying each row.",YES,,,,,
+2,Transactions And Acid Properties,no definition in notes,"Transactions and ACID Properties
+
+A database transaction symbolizes a unit of work performed within a database management system.",YES,,,,,
+2,Acid Properties,no definition in notes,"Transactions and ACID Properties
+
+A database transaction symbolizes a unit of work performed within a database management system.",YES,,,,,
+2,Database Management System,no definition in notes,"Transactions and ACID Properties
+
+A database transaction symbolizes a unit of work performed within a database management system.",YES,,,,,
+2,Database Transaction Symbolizes,no definition in notes,"Transactions and ACID Properties
+
+A database transaction symbolizes a unit of work performed within a database management system.",YES,,,,,
+2,Management System,no definition in notes,"Transactions and ACID Properties
+
+A database transaction symbolizes a unit of work performed within a database management system.",YES,,,,,
+2,Database Management,no definition in notes,"Transactions and ACID Properties
+
+A database transaction symbolizes a unit of work performed within a database management system.",YES,,,,,
+2,Symbolizes A Unit,no definition in notes,"Transactions and ACID Properties
+
+A database transaction symbolizes a unit of work performed within a database management system.",YES,,,,,
+2,Unit Of Work,no definition in notes,"Transactions and ACID Properties
+
+A database transaction symbolizes a unit of work performed within a database management system.",YES,,,,,
+3,Indexing And B-Trees,"Indexing and B-Trees
+
+A database index is a data structure that improves the speed of data retrieval operations on a
+database table.","Indexing and B-Trees
+
+A database index is a data structure that improves the speed of data retrieval operations on a
+database table.",YES,,,,,
+3,And B-Trees A Database Index,no definition in notes,"Indexing and B-Trees
+
+A database index is a data structure that improves the speed of data retrieval operations on a
+dat",YES,,,,,
+3,Data Retrieval Operations,"Indexing and B-Trees
+
+A database index is a data structure that improves the speed of data retrieval operations on a
+database table.","Indexing and B-Trees
+
+A database index is a data structure that improves the speed of data retrieval operations on a
+database table.",YES,,,,,
+3,Performance Considerations Study,no definition in notes,"Indexing and B-Trees
+
+A database index is a data structure that improves the speed of data retrieval operations on a
+dat",YES,,,,,
+3,Structure That Improves,"Indexing and B-Trees
+
+A database index is a data structure that improves the speed of data retrieval operations on a
+database table.","Indexing and B-Trees
+
+A database index is a data structure that improves the speed of data retrieval operations on a
+database table.",YES,,,,,
+3,Improves The Speed,"Indexing and B-Trees
+
+A database index is a data structure that improves the speed of data retrieval operations on a
+database table.","Indexing and B-Trees
+
+A database index is a data structure that improves the speed of data retrieval operations on a
+database table.",YES,,,,,
+3,Retrieval Operations,"Indexing and B-Trees
+
+A database index is a data structure that improves the speed of data retrieval operations on a
+database table.","Indexing and B-Trees
+
+A database index is a data structure that improves the speed of data retrieval operations on a
+database table.",YES,,,,,
+3,Considerations Study Notes,no definition in notes,"Indexing and B-Trees
+
+A database index is a data structure that improves the speed of data retrieval operations on a
+dat",YES,,,,,
+4,Concurrency Control: Two-Phase Locking,"Concurrency Control: Two-Phase Locking
+
+Two-Phase Locking (2PL) is a concurrency control method that guarantees serializability.","Concurrency Control: Two-Phase Locking
+
+Two-Phase Locking (2PL) is a concurrency control method that guarantees serializability.",YES,,,,,
+4,Concurrency Control,"Concurrency Control: Two-Phase Locking
+
+Two-Phase Locking (2PL) is a concurrency control method that guarantees serializability.","Concurrency Control: Two-Phase Locking
+
+Two-Phase Locking (2PL) is a concurrency control method that guarantees serializability.",YES,,,,,
+4,Locking Two-Phase Locking,no definition in notes,"Concurrency Control: Two-Phase Locking
+
+Two-Phase Locking (2PL) is a concurrency control method that guarantees serializ",YES,,,,,
+4,Two-Phase Locking Two-Phase,no definition in notes,"Concurrency Control: Two-Phase Locking
+
+Two-Phase Locking (2PL) is a concurrency control method that guarantees serializ",YES,,,,,
+4,Concurrency Control Method,"Concurrency Control: Two-Phase Locking
+
+Two-Phase Locking (2PL) is a concurrency control method that guarantees serializability.","Concurrency Control: Two-Phase Locking
+
+Two-Phase Locking (2PL) is a concurrency control method that guarantees serializability.",YES,,,,,
+4,Two-Phase Locking,"Concurrency Control: Two-Phase Locking
+
+Two-Phase Locking (2PL) is a concurrency control method that guarantees serializability.","Concurrency Control: Two-Phase Locking
+
+Two-Phase Locking (2PL) is a concurrency control method that guarantees serializability.",YES,,,,,
+4,Locking Two-Phase,no definition in notes,"Concurrency Control: Two-Phase Locking
+
+Two-Phase Locking (2PL) is a concurrency control method that guarantees serializ",YES,,,,,
+4,Control Method,"Concurrency Control: Two-Phase Locking
+
+Two-Phase Locking (2PL) is a concurrency control method that guarantees serializability.","Concurrency Control: Two-Phase Locking
+
+Two-Phase Locking (2PL) is a concurrency control method that guarantees serializability.",YES,,,,,

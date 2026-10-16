@@ -33,7 +33,84 @@ export default function StudyRoadmapView({
     return map;
   }, [concepts]);
 
-  // Group concepts by chapter in topological chapter order
+  // Topological sort to establish stable global sequence 1..N
+  const { conceptSeqMap, sortedGlobalConcepts } = useMemo(() => {
+    const seqMap = new Map();
+    const nameMap = new Map();
+    concepts.forEach(c => {
+      if (c && c.name) {
+        nameMap.set(String(c.name).toLowerCase().trim(), c);
+      }
+    });
+
+    const inDegree = new Map();
+    const adj = new Map();
+    concepts.forEach(c => {
+      inDegree.set(c.id, 0);
+      adj.set(c.id, []);
+    });
+
+    concepts.forEach(c => {
+      const prereqs = Array.isArray(c.prerequisites) ? c.prerequisites : [];
+      prereqs.forEach(pName => {
+        const pObj = nameMap.get(String(pName).toLowerCase().trim());
+        if (pObj && pObj.id !== c.id && inDegree.has(c.id)) {
+          inDegree.set(c.id, inDegree.get(c.id) + 1);
+          adj.get(pObj.id).push(c.id);
+        }
+      });
+    });
+
+    const queue = [];
+    concepts.forEach(c => {
+      if (inDegree.get(c.id) === 0) queue.push(c);
+    });
+
+    const tieBreakSort = (a, b) => {
+      const pA = a.source_page || a.page || (Array.isArray(a.pages) && a.pages[0]) || 99999;
+      const pB = b.source_page || b.page || (Array.isArray(b.pages) && b.pages[0]) || 99999;
+      if (pA !== pB) return pA - pB;
+      const impA = Number(a.importance) || 1;
+      const impB = Number(b.importance) || 1;
+      if (impB !== impA) return impB - impA;
+      return String(a.name || '').localeCompare(String(b.name || ''));
+    };
+
+    queue.sort(tieBreakSort);
+
+    const ordered = [];
+    let seq = 1;
+    const visited = new Set();
+
+    while (queue.length > 0) {
+      queue.sort(tieBreakSort);
+      const curr = queue.shift();
+      if (visited.has(curr.id)) continue;
+      visited.add(curr.id);
+      seqMap.set(curr.id, seq++);
+      ordered.push(curr);
+
+      const neighbors = adj.get(curr.id) || [];
+      neighbors.forEach(nId => {
+        inDegree.set(nId, inDegree.get(nId) - 1);
+        if (inDegree.get(nId) === 0) {
+          const nObj = concepts.find(c => c.id === nId);
+          if (nObj && !visited.has(nId)) queue.push(nObj);
+        }
+      });
+    }
+
+    // Append unvisited (cycles or disconnected)
+    const remaining = concepts.filter(c => !visited.has(c.id)).sort(tieBreakSort);
+    remaining.forEach(c => {
+      seqMap.set(c.id, seq++);
+      ordered.push(c);
+    });
+
+    return { conceptSeqMap: seqMap, sortedGlobalConcepts: ordered };
+  }, [concepts]);
+
+  // Group concepts by chapter in topological chapter order, keeping global sequence
   const stages = useMemo(() => {
     const groups = new Map();
     concepts.forEach(c => {
@@ -56,8 +133,6 @@ export default function StudyRoadmapView({
       concepts.filter(c => c.status === 'studied').map(c => String(c.id))
     );
 
-    let nextUpFound = false;
-
     sortedStages.forEach((stage, sIdx) => {
       stage.stageIndex = sIdx + 1;
       let stageMinutes = 0;
@@ -67,32 +142,39 @@ export default function StudyRoadmapView({
         const estMin = Math.max(1, Number(c.estimated_minutes) || 5);
         stageMinutes += estMin;
 
+        // Attach stable global sequence number
+        const seq = conceptSeqMap.get(c.id) || 1;
+        c.keySeq = seq;
+        c.keyConceptLabel = `Key concept ${seq}`;
+
         if (c.status === 'studied') {
           stageDone += 1;
           c.roadmapStatus = 'studied';
         } else {
           // Check if all prerequisites are studied
-          const prereqs = c.prerequisites || [];
-          let allPrereqsStudied = true;
+          const prereqs = Array.isArray(c.prerequisites) ? c.prerequisites : [];
+          const unstudiedPrereqObjs = [];
 
           for (const p of prereqs) {
             const pObj = conceptMap.get(String(p).toLowerCase().trim());
             if (pObj && !studiedSet.has(String(pObj.id))) {
-              allPrereqsStudied = false;
-              break;
+              unstudiedPrereqObjs.push(pObj);
             }
           }
 
-          if (allPrereqsStudied && !nextUpFound) {
-            c.roadmapStatus = 'next_up';
-            nextUpFound = true;
-          } else if (allPrereqsStudied) {
+          if (unstudiedPrereqObjs.length === 0) {
             c.roadmapStatus = 'available';
           } else {
             c.roadmapStatus = 'locked';
+            unstudiedPrereqObjs.sort((a, b) => (conceptSeqMap.get(a.id) || 0) - (conceptSeqMap.get(b.id) || 0));
+            const seqList = unstudiedPrereqObjs.map(p => conceptSeqMap.get(p.id) || '?');
+            c.lockedReason = `Needs key concept ${seqList.join(' and ')}`;
           }
         }
       });
+
+      // Sort concepts within stage by global keySeq so sequence flows cleanly
+      stage.concepts.sort((a, b) => (a.keySeq || 0) - (b.keySeq || 0));
 
       stage.totalMinutes = stageMinutes;
       stage.doneCount = stageDone;
@@ -101,25 +183,29 @@ export default function StudyRoadmapView({
     });
 
     return sortedStages;
-  }, [concepts, conceptMap]);
+  }, [concepts, conceptMap, conceptSeqMap]);
 
-  // Find first stage that is not complete (current stage)
-  const currentStage = useMemo(() => {
-    return stages.find(s => !s.isComplete) || stages[0];
-  }, [stages]);
-
-  // Find the "next up" concept across the whole document
+  // Find the "next up" concept: lowest-numbered unstudied concept whose prerequisites are done
   const nextUpConcept = useMemo(() => {
-    for (const stage of stages) {
-      const found = stage.concepts.find(c => c.roadmapStatus === 'next_up');
-      if (found) return found;
+    // Search sortedGlobalConcepts in topological sequence order
+    for (const c of sortedGlobalConcepts) {
+      if (c.status !== 'studied' && c.roadmapStatus !== 'locked') {
+        c.roadmapStatus = 'next_up';
+        return c;
+      }
     }
-    // If none found with 'next_up', take first unstudied concept
-    for (const stage of stages) {
-      const found = stage.concepts.find(c => c.status !== 'studied');
-      if (found) return found;
+    // Fallback: lowest-numbered unstudied concept
+    for (const c of sortedGlobalConcepts) {
+      if (c.status !== 'studied') {
+        return c;
+      }
     }
     return null;
+  }, [sortedGlobalConcepts]);
+
+  // Find current stage (first incomplete stage)
+  const currentStage = useMemo(() => {
+    return stages.find(s => !s.isComplete) || stages[0];
   }, [stages]);
 
   // Overall progress stats
@@ -169,7 +255,9 @@ export default function StudyRoadmapView({
           <div className="roadmap-continue-banner">
             <div className="banner-left">
               <span className="banner-badge">NEXT UP</span>
-              <span className="banner-concept-name">{nextUpConcept.name}</span>
+              <span className="banner-concept-name">
+                Key concept {nextUpConcept.keySeq}: {nextUpConcept.name}
+              </span>
               <span className="banner-concept-chapter">
                 ({nextUpConcept.chapter || nextUpConcept.topic || 'General'})
               </span>
@@ -178,7 +266,7 @@ export default function StudyRoadmapView({
               type="button"
               className="roadmap-continue-btn"
               onClick={() => onSelectConcept && onSelectConcept(nextUpConcept)}
-              aria-label={`Continue with next concept: ${nextUpConcept.name}`}
+              aria-label={`Continue with next concept: Key concept ${nextUpConcept.keySeq}: ${nextUpConcept.name}`}
             >
               <span>Continue</span>
               <ArrowRight size={15} />
@@ -223,7 +311,7 @@ export default function StudyRoadmapView({
                 {stage.concepts.map((concept) => {
                   const isSelected = selectedConcept && String(selectedConcept.id) === String(concept.id);
                   const isStudied = concept.status === 'studied';
-                  const isNextUp = concept.roadmapStatus === 'next_up';
+                  const isNextUp = nextUpConcept && String(nextUpConcept.id) === String(concept.id);
                   const isLocked = concept.roadmapStatus === 'locked';
 
                   return (
@@ -233,7 +321,7 @@ export default function StudyRoadmapView({
                       onClick={() => onSelectConcept && onSelectConcept(concept)}
                       role="button"
                       tabIndex={0}
-                      aria-label={`${concept.name}, status: ${concept.roadmapStatus || 'available'}`}
+                      aria-label={`Key concept ${concept.keySeq}: ${concept.name}, status: ${isNextUp ? 'next_up' : concept.roadmapStatus || 'available'}`}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' || e.key === ' ') {
                           e.preventDefault();
@@ -272,10 +360,10 @@ export default function StudyRoadmapView({
                         ) : isLocked ? (
                           <div 
                             className="status-toggle-btn locked"
-                            title="Prerequisites not yet studied (soft lock)"
-                            aria-label="Locked concept, click to view"
+                            title={concept.lockedReason || "Prerequisites not yet studied"}
+                            aria-label={concept.lockedReason || "Locked concept"}
                           >
-                            <Minus size={16} />
+                            <Lock size={14} />
                           </div>
                         ) : (
                           <button
@@ -293,8 +381,17 @@ export default function StudyRoadmapView({
                         )}
                       </div>
 
+                      {/* Numbered Key Concept and Name */}
                       <div className="concept-name-slot">
-                        <span className="c-row-name" title={concept.name}>{concept.name}</span>
+                        <div className="c-row-title-wrap">
+                          <span className="c-row-seq-tag">Key concept {concept.keySeq}</span>
+                          <span className="c-row-name" title={concept.name}>{concept.name}</span>
+                        </div>
+                        {isLocked && concept.lockedReason && (
+                          <span className="c-row-locked-note">
+                            {concept.lockedReason}
+                          </span>
+                        )}
                       </div>
 
                       {(concept.source_page || concept.page) && (
@@ -326,16 +423,16 @@ export default function StudyRoadmapView({
                 })}
               </div>
 
-              {/* Stage Footer: Continue Button if current */}
+              {/* Stage Footer: Continue Button if current stage has next-up */}
               {isCurrent && nextUpConcept && (
                 <div className="stage-card-footer">
                   <button
                     type="button"
                     className="stage-continue-action-btn"
                     onClick={() => onSelectConcept && onSelectConcept(nextUpConcept)}
-                    aria-label={`Continue next concept in this stage: ${nextUpConcept.name}`}
+                    aria-label={`Continue next concept: Key concept ${nextUpConcept.keySeq}: ${nextUpConcept.name}`}
                   >
-                    <span>Continue: {nextUpConcept.name}</span>
+                    <span>Continue: Key concept {nextUpConcept.keySeq}</span>
                     <ArrowRight size={14} />
                   </button>
                 </div>

@@ -7,253 +7,544 @@ import {
   Minimize2,
   RotateCcw,
   List,
-  GitFork,
   BookOpen,
-  ArrowRight,
-  CheckCircle2,
-  HelpCircle,
-  ExternalLink,
-  ChevronRight,
-  Filter,
   Sparkles,
   Layers,
-  AlertCircle,
-  Split,
-  Check,
-  X
+  X,
+  ExternalLink,
+  Compass,
+  Cpu,
+  Brain,
+  Database,
+  Sliders,
+  Code2,
+  Workflow
 } from 'lucide-react';
 import {
   fetchKnowledgeGraph,
   fetchEntityDetail,
-  fetchMergeSuggestions,
-  acceptMergeSuggestion,
-  rejectMergeSuggestion,
-  unmergeEntity
+  fetchMergeSuggestions
 } from '../../api/client';
 import BookshelfLoader from '../ui/BookshelfLoader';
 
-// Curated lecture palette (distinct fill per lecture + text tag)
-const LECTURE_COLORS = [
-  { fill: 'rgba(154, 230, 46, 0.22)', border: '#6FC21A', text: '#2E5E04' },
-  { fill: 'rgba(56, 189, 248, 0.22)', border: '#0284C7', text: '#0369A1' },
-  { fill: 'rgba(244, 114, 182, 0.22)', border: '#DB2777', text: '#BE185D' },
-  { fill: 'rgba(251, 191, 36, 0.22)', border: '#D97706', text: '#B45309' },
-  { fill: 'rgba(167, 139, 250, 0.22)', border: '#7C3AED', text: '#6D28D9' },
-  { fill: 'rgba(52, 211, 153, 0.22)', border: '#059669', text: '#047857' },
-];
+// Dynamic concept icons based on name/topic keywords
+function getConceptIcon(name = '', type = 'concept') {
+  const n = (name || '').toLowerCase();
+  if (type === 'root') return BookOpen;
+  if (type === 'topic') return Layers;
+  if (n.includes('model') || n.includes('train') || n.includes('learn')) return Cpu;
+  if (n.includes('data') || n.includes('dataset') || n.includes('corpus')) return Database;
+  if (n.includes('algorithm') || n.includes('code') || n.includes('function')) return Code2;
+  if (n.includes('parameter') || n.includes('weight') || n.includes('eval')) return Sliders;
+  if (n.includes('process') || n.includes('pipeline') || n.includes('flow')) return Workflow;
+  return Brain;
+}
+
+// Generate deterministic relationship label for leaf connector
+function getRelationshipLabel(conceptName = '', topicName = '', index = 0) {
+  const n = (conceptName || '').toLowerCase();
+  if (n.includes('type') || n.includes('supervised') || n.includes('unsupervised')) return 'type-of';
+  if (n.includes('train') || n.includes('process') || n.includes('build')) return 'built-with';
+  if (n.includes('eval') || n.includes('loss') || n.includes('metric')) return 'measures';
+  if (n.includes('prereq') || n.includes('foundat') || n.includes('require')) return 'requires';
+  if (n.includes('use') || n.includes('data') || n.includes('vector')) return 'uses';
+  if (n.includes('is a') || n.includes('class')) return 'is-a';
+  const defaults = ['part-of', 'uses', 'built-with', 'type-of', 'requires'];
+  return defaults[index % defaults.length];
+}
 
 export default function KnowledgeGraphView({
   documentId = null,
+  documentTitle = 'Course Notes',
   initialSelectedId = null,
+  concepts = [],
   onSelectConcept = () => {},
   onOpenViewer = null,
   onAskAboutConcept = () => {},
   isAuthenticated = true
 }) {
-  const [graphData, setGraphData] = useState({ nodes: [], edges: [], total_nodes: 0, total_edges: 0, truncated: false, merge_suggestions_count: 0 });
+  // Graph API data
+  const [graphData, setGraphData] = useState({
+    nodes: [],
+    edges: [],
+    total_nodes: 0,
+    total_edges: 0,
+    truncated: false,
+    merge_suggestions_count: 0
+  });
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
 
-  // Filters
-  const [linkFilter, setLinkFilter] = useState('all'); // 'all' | 'notes' | 'suggested'
-  const [selectedLecture, setSelectedLecture] = useState('all');
-  const [searchQuery, setSearchQuery] = useState('');
+  // Link edge toggles
+  const [showNotesLinks, setShowNotesLinks] = useState(false);
+  const [showSuggestedLinks, setShowSuggestedLinks] = useState(false);
+  const [showCrossTopicLinks, setShowCrossTopicLinks] = useState(false);
+
+  // Layout & View modes
   const [viewMode, setViewMode] = useState('canvas'); // 'canvas' | 'list'
+  const [isOverviewMode, setIsOverviewMode] = useState(false); // topics only
+  const [expandedTopics, setExpandedTopics] = useState(new Set());
+  const [isIndexOpen, setIsIndexOpen] = useState(false); // "All topics" sliding panel
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
-  // Focus & Selection State
-  const [selectedEntityId, setSelectedEntityId] = useState(initialSelectedId);
+  // Focus & Selection
+  const [selectedNodeId, setSelectedNodeId] = useState(initialSelectedId);
   const [entityDetail, setEntityDetail] = useState(null);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
-  const [mergeSuggestions, setMergeSuggestions] = useState([]);
-  const [isMergeModalOpen, setIsMergeModalOpen] = useState(false);
-  const [actionMessage, setActionMessage] = useState('');
 
-  // Mobile breadcrumb navigation
-  const [focusHistory, setFocusHistory] = useState([]);
-
-  // Canvas pan & zoom state
-  const [transform, setTransform] = useState({ x: 0, y: 0, k: 1 });
+  // Canvas pan & zoom
+  const [transform, setTransform] = useState({ x: 0, y: 0, k: 0.95 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
-  const [isFullscreen, setIsFullscreen] = useState(false);
   const svgRef = useRef(null);
+  const canvasContainerRef = useRef(null);
+  const touchStartRef = useRef(null);
 
-  // Load knowledge graph data
+  // 1. Fetch graph data from backend
   const loadGraph = useCallback(async () => {
     try {
       setIsLoading(true);
-      setError(null);
       const data = await fetchKnowledgeGraph({
         scope: documentId ? 'document' : 'all',
         documentId: documentId,
-        origin: linkFilter,
-        search: searchQuery,
-        limit: 80
+        origin: 'all',
+        limit: 120
       });
       setGraphData(data);
     } catch (err) {
-      setError(err.message || 'Failed to load knowledge graph.');
+      console.warn('KnowledgeGraphView: fetchKnowledgeGraph failed, falling back to local concepts:', err);
     } finally {
       setIsLoading(false);
     }
-  }, [documentId, linkFilter, searchQuery]);
+  }, [documentId]);
 
   useEffect(() => {
     loadGraph();
   }, [loadGraph]);
 
-  // Load merge suggestions count
+  // Load merge suggestions if authenticated
   useEffect(() => {
     if (isAuthenticated) {
-      fetchMergeSuggestions()
-        .then(setMergeSuggestions)
-        .catch(() => {});
+      fetchMergeSuggestions().catch(() => {});
     }
   }, [isAuthenticated]);
 
-  // Load detailed entity info on selection
+  // 2. Harmonize data into Topics and Concepts
+  const { allTopicList, allConceptNodes, rootNode } = useMemo(() => {
+    // If backend nodes exist, create a lookup map
+    const backendNodeMap = new Map();
+    (graphData.nodes || []).forEach(n => backendNodeMap.set(n.id, n));
+
+    // Consolidate concepts from displayConcepts prop + backend nodes
+    const conceptPool = new Map();
+
+    // From displayConcepts prop
+    (concepts || []).forEach((c, idx) => {
+      const id = c.id || `c-${idx}`;
+      conceptPool.set(id, {
+        id,
+        name: c.name,
+        definition: c.definition || '',
+        page: c.page || 1,
+        pages: c.pages || (c.page ? [c.page] : [1]),
+        chapter: c.chapter || 'Core Concepts',
+        importance: c.importance || 2,
+        studied: !!c.studied,
+        quote: c.source_quote || c.quote || '',
+        prerequisites: c.prerequisites || [],
+        related: c.related || []
+      });
+    });
+
+    // Augment with backend graph nodes if present
+    (graphData.nodes || []).forEach(n => {
+      const existing = conceptPool.get(n.id);
+      const primaryDoc = n.documents && n.documents[0];
+      const page = primaryDoc?.page || 1;
+      const pages = n.documents ? [...new Set(n.documents.map(d => d.page))].filter(Boolean) : [page];
+      const chapter = (n.lecture_tags && n.lecture_tags[0]) || n.lecture_tag || 'Core Concepts';
+
+      if (existing) {
+        if (!existing.definition && n.definition) existing.definition = n.definition;
+        if (n.studied) existing.studied = true;
+        if (pages.length > existing.pages.length) existing.pages = pages;
+      } else {
+        conceptPool.set(n.id, {
+          id: n.id,
+          name: n.name,
+          definition: n.definition || '',
+          page: page,
+          pages: pages.length ? pages : [1],
+          chapter: chapter,
+          importance: 2,
+          studied: !!n.studied,
+          quote: primaryDoc?.quote || '',
+          prerequisites: [],
+          related: []
+        });
+      }
+    });
+
+    // Group into Topics
+    const groups = new Map();
+    conceptPool.forEach(c => {
+      const topicKey = c.chapter || 'Core Concepts';
+      if (!groups.has(topicKey)) {
+        groups.set(topicKey, []);
+      }
+      groups.get(topicKey).push(c);
+    });
+
+    // Build topics array
+    const topics = Array.from(groups.entries()).map(([topicName, cList], idx) => {
+      const topicId = `topic-${idx}-${topicName.replace(/[^a-zA-Z0-9]/g, '_')}`;
+      // Sort concepts stably by page then importance
+      const sortedConcepts = [...cList].sort((a, b) => {
+        if (a.page !== b.page) return a.page - b.page;
+        return (b.importance || 2) - (a.importance || 2);
+      });
+      return {
+        id: topicId,
+        name: topicName,
+        concepts: sortedConcepts,
+        count: sortedConcepts.length
+      };
+    });
+
+    // If no topics exist, create a fallback
+    if (topics.length === 0) {
+      topics.push({
+        id: 'topic-default',
+        name: 'General Concepts',
+        concepts: [],
+        count: 0
+      });
+    }
+
+    const cleanTitle = documentTitle ? documentTitle.replace(/\.pdf$/i, '') : 'Course Notes';
+    const root = {
+      id: '__doc_root__',
+      name: cleanTitle,
+      type: 'root'
+    };
+
+    return {
+      topicMap: groups,
+      allTopicList: topics,
+      allConceptNodes: Array.from(conceptPool.values()),
+      rootNode: root
+    };
+  }, [concepts, graphData.nodes, documentTitle]);
+
+  // Initial topic expansion: expand all topics if total concepts <= 80, else top 3
   useEffect(() => {
-    if (!selectedEntityId) {
+    if (allTopicList.length > 0 && expandedTopics.size === 0) {
+      const initial = new Set();
+      if (allConceptNodes.length <= 80) {
+        allTopicList.forEach(t => initial.add(t.id));
+      } else {
+        allTopicList.slice(0, 3).forEach(t => initial.add(t.id));
+      }
+      setExpandedTopics(initial);
+    }
+  }, [allTopicList, allConceptNodes.length]);
+
+  // Toggle individual topic expansion
+  const toggleTopicExpand = (topicId) => {
+    setExpandedTopics(prev => {
+      const next = new Set(prev);
+      if (next.has(topicId)) {
+        next.delete(topicId);
+      } else {
+        next.add(topicId);
+      }
+      return next;
+    });
+  };
+
+  const handleExpandAll = () => {
+    const next = new Set(allTopicList.map(t => t.id));
+    setExpandedTopics(next);
+    setIsOverviewMode(false);
+  };
+
+  const handleCollapseAll = () => {
+    setExpandedTopics(new Set());
+    setIsOverviewMode(true);
+  };
+
+  // 3. Compute Deterministic Layout Coordinates (Stable, 0 collisions, Math-based)
+  const layout = useMemo(() => {
+    const nodes = {};
+    const structuralEdges = [];
+    const N_topics = allTopicList.length;
+
+    // Center root node at (0, 0)
+    nodes[rootNode.id] = {
+      id: rootNode.id,
+      name: rootNode.name,
+      type: 'root',
+      x: 0,
+      y: 0,
+      width: 220,
+      height: 64
+    };
+
+    if (N_topics === 0) {
+      return { nodes, structuralEdges, minX: -200, maxX: 200, minY: -100, maxY: 100 };
+    }
+
+    // Radial distance for topic nodes from center: scales smoothly with topic count
+    const R_topic = Math.max(280, 52 * N_topics);
+
+    allTopicList.forEach((topic, tIdx) => {
+      // Symmetrical angles starting from -PI/2 (top)
+      const angle = (2 * Math.PI * tIdx) / N_topics - Math.PI / 2;
+      const tx = Math.round(R_topic * Math.cos(angle));
+      const ty = Math.round(R_topic * Math.sin(angle));
+
+      const isExpanded = !isOverviewMode && expandedTopics.has(topic.id);
+
+      nodes[topic.id] = {
+        id: topic.id,
+        name: topic.name,
+        type: 'topic',
+        x: tx,
+        y: ty,
+        width: 190,
+        height: 52,
+        count: topic.count,
+        isExpanded,
+        angle
+      };
+
+      // Root -> Topic structural branch
+      structuralEdges.push({
+        id: `branch-root-${topic.id}`,
+        source: rootNode.id,
+        target: topic.id,
+        label: 'part-of',
+        sx: 0,
+        sy: 0,
+        tx,
+        ty
+      });
+
+      // If topic is expanded, position concept leaves branching outward
+      if (isExpanded && topic.concepts.length > 0) {
+        const K = topic.concepts.length;
+        // Directional fan parameters
+        const fanSpan = Math.min(1.4, 0.22 * K);
+
+        topic.concepts.forEach((concept, cIdx) => {
+          let leafAngle = angle;
+          if (K > 1) {
+            leafAngle = angle - fanSpan / 2 + (cIdx / (K - 1)) * fanSpan;
+          }
+
+          // Stagger distance alternately to prevent label overlap
+          const R_leaf = R_topic + 210 + (cIdx % 2 === 0 ? 0 : 90);
+          const cx = Math.round(R_leaf * Math.cos(leafAngle));
+          const cy = Math.round(R_leaf * Math.sin(leafAngle));
+
+          nodes[concept.id] = {
+            id: concept.id,
+            name: concept.name,
+            definition: concept.definition,
+            page: concept.page,
+            pages: concept.pages,
+            chapter: concept.chapter,
+            importance: concept.importance,
+            studied: concept.studied,
+            quote: concept.quote,
+            type: 'concept',
+            topicId: topic.id,
+            x: cx,
+            y: cy,
+            width: 175,
+            height: 46
+          };
+
+          const relLabel = getRelationshipLabel(concept.name, topic.name, cIdx);
+
+          structuralEdges.push({
+            id: `branch-${topic.id}-${concept.id}`,
+            source: topic.id,
+            target: concept.id,
+            label: relLabel,
+            sx: tx,
+            sy: ty,
+            tx: cx,
+            ty: cy
+          });
+        });
+      }
+    });
+
+    // Compute bounding box for fitToView
+    let minX = -300, maxX = 300, minY = -200, maxY = 200;
+    Object.values(nodes).forEach(n => {
+      minX = Math.min(minX, n.x - n.width / 2 - 40);
+      maxX = Math.max(maxX, n.x + n.width / 2 + 40);
+      minY = Math.min(minY, n.y - n.height / 2 - 40);
+      maxY = Math.max(maxY, n.y + n.height / 2 + 40);
+    });
+
+    return { nodes, structuralEdges, minX, maxX, minY, maxY };
+  }, [allTopicList, rootNode, expandedTopics, isOverviewMode]);
+
+  // 4. Prerequisite & Cross-topic edges
+  const prerequisiteEdges = useMemo(() => {
+    const list = [];
+    const nodeMap = layout.nodes;
+
+    // Backend edges
+    (graphData.edges || []).forEach(e => {
+      const sNode = nodeMap[e.source];
+      const tNode = nodeMap[e.target];
+      if (sNode && tNode) {
+        const isCrossTopic = sNode.topicId && tNode.topicId && sNode.topicId !== tNode.topicId;
+        list.push({
+          id: e.id,
+          source: e.source,
+          target: e.target,
+          origin: e.origin,
+          type: e.type,
+          isCrossTopic,
+          sx: sNode.x,
+          sy: sNode.y,
+          tx: tNode.x,
+          ty: tNode.y
+        });
+      }
+    });
+
+    // Complement with local concept prerequisites if backend edges not yet available
+    if (list.length === 0) {
+      const nameToId = new Map();
+      allConceptNodes.forEach(c => nameToId.set(c.name.toLowerCase().trim(), c.id));
+
+      allConceptNodes.forEach(c => {
+        (c.prerequisites || []).forEach((pName, pIdx) => {
+          const targetId = nameToId.get(pName.toLowerCase().trim());
+          if (targetId && targetId !== c.id) {
+            const sNode = nodeMap[c.id];
+            const tNode = nodeMap[targetId];
+            if (sNode && tNode) {
+              const isCrossTopic = sNode.topicId && tNode.topicId && sNode.topicId !== tNode.topicId;
+              list.push({
+                id: `prereq-${c.id}-${targetId}-${pIdx}`,
+                source: c.id,
+                target: targetId,
+                origin: 'notes',
+                type: 'prerequisite',
+                isCrossTopic,
+                sx: sNode.x,
+                sy: sNode.y,
+                tx: tNode.x,
+                ty: tNode.y
+              });
+            }
+          }
+        });
+      });
+    }
+
+    return list;
+  }, [graphData.edges, layout.nodes, allConceptNodes]);
+
+  // Edges to display: structural branches + toggled prerequisite links + active selection links
+  const visiblePrereqEdges = useMemo(() => {
+    return prerequisiteEdges.filter(e => {
+      // If connected to currently selected node, always visible!
+      if (selectedNodeId && (e.source === selectedNodeId || e.target === selectedNodeId)) {
+        return true;
+      }
+      if (e.isCrossTopic && showCrossTopicLinks) return true;
+      if (e.origin === 'notes' && showNotesLinks) return true;
+      if (e.origin === 'suggested' && showSuggestedLinks) return true;
+      return false;
+    });
+  }, [prerequisiteEdges, selectedNodeId, showNotesLinks, showSuggestedLinks, showCrossTopicLinks]);
+
+  // Load detailed entity info when a node is selected
+  useEffect(() => {
+    if (!selectedNodeId || selectedNodeId === rootNode.id) {
       setEntityDetail(null);
       return;
     }
+
+    const localConcept = allConceptNodes.find(c => c.id === selectedNodeId);
     let isCurrent = true;
     setIsDetailLoading(true);
-    fetchEntityDetail(selectedEntityId)
-      .then((detail) => {
+
+    fetchEntityDetail(selectedNodeId)
+      .then(detail => {
         if (isCurrent) setEntityDetail(detail);
       })
       .catch(() => {
-        if (isCurrent) setEntityDetail(null);
+        if (isCurrent && localConcept) {
+          // Synthetic detail from local concept
+          setEntityDetail({
+            id: localConcept.id,
+            name: localConcept.name,
+            definition: localConcept.definition,
+            chapter: localConcept.chapter,
+            studied: localConcept.studied,
+            mentions: (localConcept.pages || [localConcept.page]).map(p => ({
+              document_id: documentId,
+              filename: documentTitle,
+              page: p,
+              quote: localConcept.quote
+            })),
+            depends_on: (localConcept.prerequisites || []).map(p => ({
+              name: p,
+              origin: 'notes'
+            })),
+            needed_for: []
+          });
+        }
       })
       .finally(() => {
         if (isCurrent) setIsDetailLoading(false);
       });
+
     return () => { isCurrent = false; };
-  }, [selectedEntityId]);
+  }, [selectedNodeId, rootNode.id, allConceptNodes, documentId, documentTitle]);
 
-  // Available lecture tags for filter
-  const lectureOptions = useMemo(() => {
-    const set = new Set();
-    graphData.nodes.forEach(n => {
-      (n.lecture_tags || []).forEach(t => set.add(t));
+  // Fit to view smoothly
+  const handleFitToView = useCallback(() => {
+    if (!canvasContainerRef.current) return;
+    const rect = canvasContainerRef.current.getBoundingClientRect();
+    const w = rect.width || 800;
+    const h = rect.height || 600;
+
+    const spanX = layout.maxX - layout.minX;
+    const spanY = layout.maxY - layout.minY;
+    const scale = Math.max(0.3, Math.min(1.2, Math.min((w - 100) / spanX, (h - 100) / spanY)));
+    const midX = (layout.minX + layout.maxX) / 2;
+    const midY = (layout.minY + layout.maxY) / 2;
+
+    setTransform({
+      x: w / 2 - midX * scale,
+      y: h / 2 - midY * scale,
+      k: scale
     });
-    return Array.from(set).sort();
-  }, [graphData.nodes]);
+  }, [layout]);
 
-  // Color mapping per lecture
-  const lectureColorMap = useMemo(() => {
-    const map = {};
-    lectureOptions.forEach((lec, idx) => {
-      map[lec] = LECTURE_COLORS[idx % LECTURE_COLORS.length];
-    });
-    return map;
-  }, [lectureOptions]);
+  // Auto-fit on initial render once topics are ready
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      handleFitToView();
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [handleFitToView]);
 
-  // Filtered nodes & edges
-  const filteredNodes = useMemo(() => {
-    return graphData.nodes.filter(n => {
-      if (selectedLecture !== 'all') {
-        const tags = n.lecture_tags || [];
-        if (!tags.includes(selectedLecture)) return false;
-      }
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
-        return n.name.toLowerCase().includes(q) || (n.definition || '').toLowerCase().includes(q);
-      }
-      return true;
-    });
-  }, [graphData.nodes, selectedLecture, searchQuery]);
+  // Zoom controls
+  const handleZoomIn = () => setTransform(t => ({ ...t, k: Math.min(2.5, t.k * 1.25) }));
+  const handleZoomOut = () => setTransform(t => ({ ...t, k: Math.max(0.25, t.k * 0.8) }));
 
-  const filteredEdges = useMemo(() => {
-    const validNodeIds = new Set(filteredNodes.map(n => n.id));
-    return graphData.edges.filter(e => {
-      if (!validNodeIds.has(e.source) || !validNodeIds.has(e.target)) return false;
-      if (linkFilter === 'notes' && e.origin !== 'notes') return false;
-      if (linkFilter === 'suggested' && e.origin !== 'suggested') return false;
-      return true;
-    });
-  }, [graphData.edges, filteredNodes, linkFilter]);
-
-  // Focus mode neighborhood calculation (1-hop & 2-hop connected nodes)
-  const neighborhood = useMemo(() => {
-    if (!selectedEntityId) return null;
-    const directNeighbors = new Set();
-    const twoHopNeighbors = new Set();
-    const connectedEdges = new Set();
-
-    filteredEdges.forEach(e => {
-      if (e.source === selectedEntityId) {
-        directNeighbors.add(e.target);
-        connectedEdges.add(e.id);
-      }
-      if (e.target === selectedEntityId) {
-        directNeighbors.add(e.source);
-        connectedEdges.add(e.id);
-      }
-    });
-
-    filteredEdges.forEach(e => {
-      if (directNeighbors.has(e.source) && !twoHopNeighbors.has(e.target)) {
-        twoHopNeighbors.add(e.target);
-        connectedEdges.add(e.id);
-      }
-      if (directNeighbors.has(e.target) && !twoHopNeighbors.has(e.source)) {
-        twoHopNeighbors.add(e.source);
-        connectedEdges.add(e.id);
-      }
-    });
-
-    return {
-      selectedId: selectedEntityId,
-      direct: directNeighbors,
-      twoHop: twoHopNeighbors,
-      edges: connectedEdges
-    };
-  }, [selectedEntityId, filteredEdges]);
-
-  // Layout node coordinates (grid / radial stage layout)
-  const nodePositions = useMemo(() => {
-    const pos = {};
-    const count = filteredNodes.length;
-    if (count === 0) return pos;
-
-    // Group nodes by stage_index or lecture
-    const stages = {};
-    filteredNodes.forEach(n => {
-      const s = n.stage_index || 0;
-      if (!stages[s]) stages[s] = [];
-      stages[s].push(n);
-    });
-
-    const stageKeys = Object.keys(stages).map(Number).sort((a, b) => a - b);
-    const colWidth = 260;
-    const rowHeight = 110;
-
-    stageKeys.forEach((sKey, colIdx) => {
-      const colNodes = stages[sKey];
-      const startY = -(colNodes.length * rowHeight) / 2 + 100;
-      colNodes.forEach((node, rowIdx) => {
-        pos[node.id] = {
-          x: colIdx * colWidth + 120,
-          y: startY + rowIdx * rowHeight + 120
-        };
-      });
-    });
-
-    return pos;
-  }, [filteredNodes]);
-
-  // Handle Pan & Zoom
-  const handleWheel = (e) => {
-    e.preventDefault();
-    const zoomFactor = e.deltaY < 0 ? 1.12 : 0.88;
-    setTransform(prev => ({
-      ...prev,
-      k: Math.max(0.35, Math.min(2.8, prev.k * zoomFactor))
-    }));
-  };
-
+  // Mouse pan handlers
   const handleMouseDown = (e) => {
     if (e.button !== 0) return;
     setIsDragging(true);
@@ -271,183 +562,239 @@ export default function KnowledgeGraphView({
 
   const handleMouseUp = () => setIsDragging(false);
 
-  // Zoom controls
-  const handleZoomIn = () => setTransform(t => ({ ...t, k: Math.min(2.8, t.k * 1.25) }));
-  const handleZoomOut = () => setTransform(t => ({ ...t, k: Math.max(0.35, t.k * 0.8) }));
-  const handleResetZoom = () => setTransform({ x: 0, y: 0, k: 1 });
+  // Wheel zoom
+  const handleWheel = (e) => {
+    e.preventDefault();
+    const zoomFactor = e.deltaY < 0 ? 1.12 : 0.88;
+    setTransform(prev => ({
+      ...prev,
+      k: Math.max(0.25, Math.min(2.5, prev.k * zoomFactor))
+    }));
+  };
 
-  // Node selection handler
+  // Two-finger touch handlers for mobile to prevent scroll-trapping!
+  const handleTouchStart = (e) => {
+    if (e.touches.length === 2) {
+      // 2 fingers: pinch or pan graph
+      const t1 = e.touches[0];
+      const t2 = e.touches[1];
+      const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+      const midX = (t1.clientX + t2.clientX) / 2;
+      const midY = (t1.clientY + t2.clientY) / 2;
+      touchStartRef.current = { dist, midX, midY, transform: { ...transform } };
+    } else if (e.touches.length === 1) {
+      // 1 finger: allow normal page scroll, show brief hint if dragged inside canvas
+      touchStartRef.current = null;
+    }
+  };
+
+  const handleTouchMove = (e) => {
+    if (e.touches.length === 2 && touchStartRef.current) {
+      e.preventDefault(); // Only prevent default when 2 fingers are touching!
+      const t1 = e.touches[0];
+      const t2 = e.touches[1];
+      const currentDist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+      const currentMidX = (t1.clientX + t2.clientX) / 2;
+      const currentMidY = (t1.clientY + t2.clientY) / 2;
+
+      const scaleChange = currentDist / touchStartRef.current.dist;
+      const newK = Math.max(0.25, Math.min(2.5, touchStartRef.current.transform.k * scaleChange));
+      const dx = currentMidX - touchStartRef.current.midX;
+      const dy = currentMidY - touchStartRef.current.midY;
+
+      setTransform({
+        x: touchStartRef.current.transform.x + dx,
+        y: touchStartRef.current.transform.y + dy,
+        k: newK
+      });
+    }
+  };
+
+  const handleTouchEnd = () => {
+    touchStartRef.current = null;
+  };
+
+  // Select node handler
   const handleSelectNode = (nodeId) => {
-    if (selectedEntityId && selectedEntityId !== nodeId) {
-      setFocusHistory(prev => [...prev, selectedEntityId]);
+    if (nodeId === rootNode.id) {
+      setSelectedNodeId(null);
+      return;
     }
-    setSelectedEntityId(nodeId);
-    onSelectConcept({ id: nodeId, name: graphData.nodes.find(n => n.id === nodeId)?.name });
-  };
-
-  const handleBackBreadcrumb = () => {
-    if (focusHistory.length === 0) return;
-    const prevId = focusHistory[focusHistory.length - 1];
-    setFocusHistory(h => h.slice(0, -1));
-    setSelectedEntityId(prevId);
-  };
-
-  // Keyboard navigation between connected nodes
-  const handleKeyDown = (e) => {
-    if (!selectedEntityId || !neighborhood) return;
-    const directList = Array.from(neighborhood.direct);
-    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-      if (directList.length > 0) handleSelectNode(directList[0]);
-    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-      if (focusHistory.length > 0) handleBackBreadcrumb();
-    } else if (e.key === 'Escape') {
-      setSelectedEntityId(null);
+    setSelectedNodeId(nodeId);
+    const nodeObj = layout.nodes[nodeId];
+    if (nodeObj && nodeObj.type === 'concept') {
+      onSelectConcept({ id: nodeId, name: nodeObj.name });
     }
   };
 
-  // Merge suggestions actions
-  const handleAcceptMerge = async (suggId) => {
-    try {
-      await acceptMergeSuggestion(suggId);
-      setActionMessage('Merge accepted! Entities consolidated.');
-      loadGraph();
-      const updated = await fetchMergeSuggestions();
-      setMergeSuggestions(updated);
-    } catch (err) {
-      setActionMessage(`Could not merge: ${err.message}`);
+  // Focus and center on a specific topic from index
+  const handleFocusTopic = (topicId) => {
+    const topicNode = layout.nodes[topicId];
+    if (!topicNode) return;
+
+    // Ensure expanded
+    setExpandedTopics(prev => new Set(prev).add(topicId));
+    setIsOverviewMode(false);
+    setSelectedNodeId(topicId);
+
+    if (canvasContainerRef.current) {
+      const rect = canvasContainerRef.current.getBoundingClientRect();
+      const targetScale = Math.max(0.85, transform.k);
+      setTransform({
+        x: (rect.width || 800) / 2 - topicNode.x * targetScale,
+        y: (rect.height || 600) / 2 - topicNode.y * targetScale,
+        k: targetScale
+      });
     }
   };
 
-  const handleRejectMerge = async (suggId) => {
-    try {
-      await rejectMergeSuggestion(suggId);
-      setActionMessage('Suggestion marked as not the same.');
-      const updated = await fetchMergeSuggestions();
-      setMergeSuggestions(updated);
-    } catch (err) {
-      setActionMessage(`Error: ${err.message}`);
-    }
+  // Search filter
+  const isSearchMatch = (node) => {
+    if (!searchQuery.trim()) return false;
+    const q = searchQuery.toLowerCase().trim();
+    return (node.name || '').toLowerCase().includes(q) ||
+           (node.definition || '').toLowerCase().includes(q);
   };
 
-  const handleUnmerge = async (entId) => {
-    try {
-      await unmergeEntity(entId);
-      setActionMessage('Entity unmerged into separate concepts.');
-      loadGraph();
-      setSelectedEntityId(null);
-    } catch (err) {
-      setActionMessage(`Could not unmerge: ${err.message}`);
-    }
-  };
-
-  if (isLoading && graphData.nodes.length === 0) {
+  if (isLoading && allConceptNodes.length === 0) {
     return (
       <div className="kg-loader-wrap" style={{ minHeight: 480, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <BookshelfLoader message="Synthesizing per-student concept graph..." />
+        <BookshelfLoader message="Synthesizing topic map and concept hierarchy..." />
       </div>
     );
   }
 
+  // Count relationships breakdown for selected concept
+  const selectedRelationsCount = useMemo(() => {
+    if (!selectedNodeId) return null;
+    const incoming = prerequisiteEdges.filter(e => e.target === selectedNodeId);
+    const outgoing = prerequisiteEdges.filter(e => e.source === selectedNodeId);
+    const total = incoming.length + outgoing.length;
+
+    const breakdown = {
+      'part-of': 1,
+      'requires': incoming.length,
+      'unlocks': outgoing.length,
+      'cross-topic': incoming.filter(e => e.isCrossTopic).length + outgoing.filter(e => e.isCrossTopic).length
+    };
+    return { total, breakdown, incoming, outgoing };
+  }, [selectedNodeId, prerequisiteEdges]);
+
   return (
-    <div className={`kg-container ${isFullscreen ? 'is-fullscreen' : ''}`} onKeyDown={handleKeyDown} tabIndex={0}>
-      {/* 1. Toolbar */}
-      <div className="kg-toolbar" role="toolbar" aria-label="Knowledge Graph Controls">
+    <div
+      className={`kg-container ${isFullscreen ? 'is-fullscreen' : ''}`}
+      tabIndex={0}
+      role="region"
+      aria-label="ConceptLens Interactive Topic Map"
+    >
+      {/* 1. Header Toolbar */}
+      <div className="kg-toolbar" role="toolbar" aria-label="Topic map controls">
         <div className="kg-toolbar-left">
-          {/* Link origin filters */}
-          <div className="kg-filter-group" role="radiogroup" aria-label="Edge origin filter">
-            <button
-              type="button"
-              className={`kg-pill-btn ${linkFilter === 'all' ? 'active' : ''}`}
-              onClick={() => setLinkFilter('all')}
-            >
-              All links
-            </button>
-            <button
-              type="button"
-              className={`kg-pill-btn ${linkFilter === 'notes' ? 'active' : ''}`}
-              onClick={() => setLinkFilter('notes')}
-              title="Only links with direct citations found on PDF pages"
-            >
-              From your notes
-            </button>
-            <button
-              type="button"
-              className={`kg-pill-btn ${linkFilter === 'suggested' ? 'active' : ''}`}
-              onClick={() => setLinkFilter('suggested')}
-              title="Algorithmic prerequisite suggestions"
-            >
-              Suggested
-            </button>
-          </div>
+          {/* Index Toggle */}
+          <button
+            type="button"
+            className={`kg-pill-btn ${isIndexOpen ? 'active' : ''}`}
+            onClick={() => setIsIndexOpen(o => !o)}
+            title="Open index of all chapters and topics"
+            aria-label="All topics index"
+          >
+            <Layers size={14} />
+            <span>All topics ({allTopicList.length})</span>
+          </button>
 
-          {/* Lecture dropdown */}
-          {lectureOptions.length > 0 && (
-            <div className="kg-lecture-select-wrap">
-              <Filter size={13} className="kg-select-icon" />
-              <select
-                value={selectedLecture}
-                onChange={(e) => setSelectedLecture(e.target.value)}
-                className="kg-lecture-select"
-                aria-label="Filter graph by lecture"
-              >
-                <option value="all">All Lectures ({lectureOptions.length})</option>
-                {lectureOptions.map(lec => (
-                  <option key={lec} value={lec}>{lec}</option>
-                ))}
-              </select>
-            </div>
-          )}
+          {/* Overview Mode Toggle */}
+          <button
+            type="button"
+            className={`kg-pill-btn ${isOverviewMode ? 'active' : ''}`}
+            onClick={() => {
+              if (isOverviewMode) {
+                handleExpandAll();
+              } else {
+                handleCollapseAll();
+              }
+            }}
+            title="Toggle topics overview mode"
+            aria-label="Toggle overview mode"
+          >
+            <Compass size={14} />
+            <span>{isOverviewMode ? 'Expand all' : 'Overview (Topics only)'}</span>
+          </button>
 
-          {/* Search */}
+          {/* Search bar */}
           <div className="kg-search-wrap">
             <Search size={13} className="kg-search-icon" />
             <input
               type="text"
-              placeholder="Search concepts..."
+              placeholder="Search concepts or topics..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="kg-search-input"
-              aria-label="Search concepts in knowledge graph"
+              aria-label="Search concepts in topic map"
             />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="kg-search-clear"
+                aria-label="Clear search"
+              >
+                <X size={12} />
+              </button>
+            )}
           </div>
         </div>
 
         <div className="kg-toolbar-right">
-          {/* Merge suggestions badge */}
-          {mergeSuggestions.length > 0 && (
+          {/* Edge Toggles */}
+          <div className="kg-edge-toggles" role="group" aria-label="Link visibility toggles">
             <button
               type="button"
-              className="kg-merge-badge-btn"
-              onClick={() => setIsMergeModalOpen(true)}
-              aria-label={`Review ${mergeSuggestions.length} concept merge suggestions`}
+              className={`kg-filter-chip ${showNotesLinks ? 'active' : ''}`}
+              onClick={() => setShowNotesLinks(v => !v)}
+              title="Toggle prerequisite links cited in your notes"
             >
-              <Split size={14} />
-              <span>Merge suggestions: {mergeSuggestions.length}</span>
+              Notes links
             </button>
-          )}
+            <button
+              type="button"
+              className={`kg-filter-chip ${showSuggestedLinks ? 'active' : ''}`}
+              onClick={() => setShowSuggestedLinks(v => !v)}
+              title="Toggle suggested prerequisite links"
+            >
+              Suggested
+            </button>
+            <button
+              type="button"
+              className={`kg-filter-chip ${showCrossTopicLinks ? 'active' : ''}`}
+              onClick={() => setShowCrossTopicLinks(v => !v)}
+              title="Toggle links that connect across different topics"
+            >
+              Cross-topic
+            </button>
+          </div>
 
-          {/* List View Toggle */}
+          {/* View as list button */}
           <button
             type="button"
             className={`kg-action-btn ${viewMode === 'list' ? 'active' : ''}`}
             onClick={() => setViewMode(m => m === 'canvas' ? 'list' : 'canvas')}
-            title="Toggle between graphical canvas and accessible list view"
+            title="Toggle accessible list view"
             aria-label="View as list"
           >
             <List size={14} />
-            <span className="hide-on-mobile">{viewMode === 'list' ? 'Graph View' : 'View as list'}</span>
+            <span className="hide-on-mobile">{viewMode === 'list' ? 'Topic Map' : 'View as list'}</span>
           </button>
 
-          {/* Zoom controls */}
+          {/* Zoom controls & Fit to view */}
           <div className="kg-zoom-group">
+            <button type="button" onClick={handleFitToView} className="kg-zoom-btn" title="Fit to view" aria-label="Fit to view">
+              <RotateCcw size={13} />
+            </button>
             <button type="button" onClick={handleZoomIn} className="kg-zoom-btn" title="Zoom in" aria-label="Zoom in">
               <ZoomIn size={14} />
             </button>
             <button type="button" onClick={handleZoomOut} className="kg-zoom-btn" title="Zoom out" aria-label="Zoom out">
               <ZoomOut size={14} />
-            </button>
-            <button type="button" onClick={handleResetZoom} className="kg-zoom-btn" title="Reset view" aria-label="Reset view">
-              <RotateCcw size={13} />
             </button>
           </div>
 
@@ -464,454 +811,559 @@ export default function KnowledgeGraphView({
         </div>
       </div>
 
-      {/* Action Notification Toast Banner */}
-      {actionMessage && (
-        <div className="kg-action-banner" role="status">
-          <span>{actionMessage}</span>
-          <button type="button" onClick={() => setActionMessage('')} aria-label="Dismiss message">
-            <X size={14} />
-          </button>
-        </div>
-      )}
-
-      {/* Main Workspace Layout (Canvas or List View + Side Panel) */}
+      {/* Main Workspace Layout */}
       <div className="kg-workspace">
+        {/* A. "All Topics" Index Sliding Panel */}
+        {isIndexOpen && (
+          <aside className="kg-all-topics-index-panel" aria-label="All topics index">
+            <div className="index-panel-header">
+              <div className="index-panel-title">
+                <Layers size={15} className="index-panel-icon" />
+                <span>All Topics</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsIndexOpen(false)}
+                className="index-close-btn"
+                aria-label="Close index"
+              >
+                <X size={15} />
+              </button>
+            </div>
+            <div className="index-topics-list">
+              {allTopicList.map((t, idx) => (
+                <div
+                  key={t.id}
+                  className={`index-topic-row ${selectedNodeId === t.id ? 'is-active' : ''}`}
+                  onClick={() => handleFocusTopic(t.id)}
+                >
+                  <div className="index-topic-info">
+                    <span className="index-topic-number">{idx + 1}</span>
+                    <span className="index-topic-name">{t.name}</span>
+                  </div>
+                  <span className="index-topic-count">{t.count}</span>
+                </div>
+              ))}
+            </div>
+          </aside>
+        )}
+
+        {/* B. Canvas Viewport or Accessible List */}
         {viewMode === 'canvas' ? (
           <div
+            ref={canvasContainerRef}
             className="kg-canvas-viewport"
             onWheel={handleWheel}
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
             style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
           >
-            {/* Mobile Focus Breadcrumb Trail */}
-            {focusHistory.length > 0 && (
-              <div className="kg-mobile-breadcrumb">
-                <button type="button" onClick={handleBackBreadcrumb} className="kg-breadcrumb-back-btn">
-                  &larr; Back
-                </button>
-                <span className="kg-breadcrumb-text">Focus mode active</span>
-              </div>
-            )}
-
             <svg
               ref={svgRef}
               className="kg-svg-stage"
               width="100%"
               height="100%"
-              aria-label="Concept Knowledge Graph Interactive Canvas"
+              aria-label="Interactive Topic Map Canvas"
             >
               <defs>
-                {/* Arrow markers for edges */}
-                <marker id="arrow-solid" viewBox="0 0 10 10" refX="24" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-                  <path d="M 0 1 L 10 5 L 0 9 z" fill="#6FC21A" />
+                {/* Arrow markers for prerequisite paths */}
+                <marker
+                  id="arrow-lime"
+                  viewBox="0 0 10 10"
+                  refX="22"
+                  refY="5"
+                  markerWidth="7"
+                  markerHeight="7"
+                  orient="auto-start-reverse"
+                >
+                  <path d="M 0 1.5 L 9 5 L 0 8.5 z" fill="#9AE62E" />
                 </marker>
-                <marker id="arrow-dashed" viewBox="0 0 10 10" refX="24" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-                  <path d="M 0 1 L 10 5 L 0 9 z" fill="#D97706" />
+                <marker
+                  id="arrow-amber"
+                  viewBox="0 0 10 10"
+                  refX="22"
+                  refY="5"
+                  markerWidth="7"
+                  markerHeight="7"
+                  orient="auto-start-reverse"
+                >
+                  <path d="M 0 1.5 L 9 5 L 0 8.5 z" fill="#F59E0B" />
                 </marker>
+                {/* Filter glow for active/selected nodes */}
+                <filter id="lime-glow" x="-20%" y="-20%" width="140%" height="140%">
+                  <feGaussianBlur stdDeviation="6" result="blur" />
+                  <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                </filter>
               </defs>
 
               <g transform={`translate(${transform.x}, ${transform.y}) scale(${transform.k})`}>
-                {/* Edges */}
-                {filteredEdges.map(edge => {
-                  const sPos = nodePositions[edge.source];
-                  const tPos = nodePositions[edge.target];
-                  if (!sPos || !tPos) return null;
+                {/* 1. Structural Curved Branch Lines (Doc -> Topic, Topic -> Concept) */}
+                {layout.structuralEdges.map(edge => {
+                  const sNode = layout.nodes[edge.source];
+                  const tNode = layout.nodes[edge.target];
+                  if (!sNode || !tNode) return null;
 
-                  const isEmphasized = neighborhood ? neighborhood.edges.has(edge.id) : true;
-                  const isDimmed = neighborhood && !isEmphasized;
+                  // Smooth cubic Bézier control points
+                  const midX = (edge.sx + edge.tx) / 2;
+                  const midY = (edge.sy + edge.ty) / 2;
+                  const cp1x = edge.sx + (edge.tx - edge.sx) * 0.45;
+                  const cp1y = edge.sy + (edge.ty - edge.sy) * 0.1;
+                  const cp2x = edge.sx + (edge.tx - edge.sx) * 0.55;
+                  const cp2y = edge.ty - (edge.ty - edge.sy) * 0.1;
 
-                  let strokeStyle = '#6FC21A';
-                  let strokeDash = 'none';
-                  let markerEnd = 'url(#arrow-solid)';
-
-                  if (edge.origin === 'suggested') {
-                    strokeStyle = '#D97706';
-                    strokeDash = '5,4';
-                    markerEnd = 'url(#arrow-dashed)';
-                  } else if (edge.type === 'related') {
-                    strokeStyle = '#94A3B8';
-                    strokeDash = '2,3';
-                    markerEnd = 'none';
-                  }
-
-                  // Curve control point
-                  const midX = (sPos.x + tPos.x) / 2;
-                  const midY = (sPos.y + tPos.y) / 2 - 20;
+                  const isEdgeActive = selectedNodeId === edge.target || selectedNodeId === edge.source;
 
                   return (
-                    <path
-                      key={edge.id}
-                      d={`M ${sPos.x} ${sPos.y} Q ${midX} ${midY} ${tPos.x} ${tPos.y}`}
-                      fill="none"
-                      stroke={strokeStyle}
-                      strokeWidth={isEmphasized && selectedEntityId ? 2.5 : 1.5}
-                      strokeDasharray={strokeDash}
-                      markerEnd={markerEnd}
-                      opacity={isDimmed ? 0.15 : 0.85}
-                      style={{ transition: 'opacity 0.2s ease' }}
-                    />
+                    <g key={edge.id} className="kg-structural-branch">
+                      <path
+                        d={`M ${edge.sx} ${edge.sy} C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${edge.tx} ${edge.ty}`}
+                        fill="none"
+                        stroke={isEdgeActive ? '#9AE62E' : 'rgba(154, 230, 46, 0.45)'}
+                        strokeWidth={isEdgeActive ? 2.5 : 1.6}
+                        strokeLinecap="round"
+                      />
+                      {/* Relationship Pill Badge along the curved branch */}
+                      {edge.label && (
+                        <g transform={`translate(${midX}, ${midY})`}>
+                          <rect
+                            x="-32"
+                            y="-10"
+                            width="64"
+                            height="20"
+                            rx="10"
+                            fill="#0E170C"
+                            stroke={isEdgeActive ? '#9AE62E' : 'rgba(154, 230, 46, 0.35)'}
+                            strokeWidth="1"
+                          />
+                          <text
+                            x="0"
+                            y="3"
+                            textAnchor="middle"
+                            fill="#9AE62E"
+                            fontSize="9"
+                            fontWeight="800"
+                            letterSpacing="0.04em"
+                          >
+                            {edge.label}
+                          </text>
+                        </g>
+                      )}
+                    </g>
                   );
                 })}
 
-                {/* Nodes */}
-                {filteredNodes.map(node => {
-                  const pos = nodePositions[node.id];
-                  if (!pos) return null;
+                {/* 2. Prerequisite & Cross-topic Links */}
+                {visiblePrereqEdges.map(edge => {
+                  const sNode = layout.nodes[edge.source];
+                  const tNode = layout.nodes[edge.target];
+                  if (!sNode || !tNode) return null;
 
-                  const isSelected = selectedEntityId === node.id;
-                  const isDirect = neighborhood?.direct.has(node.id);
-                  const isTwoHop = neighborhood?.twoHop.has(node.id);
-                  const isDimmed = neighborhood && !isSelected && !isDirect && !isTwoHop;
+                  const isIncomingToSelected = selectedNodeId === edge.target;
+                  const isOutgoingFromSelected = selectedNodeId === edge.source;
+                  const isDirectlySelected = isIncomingToSelected || isOutgoingFromSelected;
 
-                  const primaryLecture = (node.lecture_tags && node.lecture_tags[0]) || 'General';
-                  const colorScheme = lectureColorMap[primaryLecture] || LECTURE_COLORS[0];
+                  const midX = (sNode.x + tNode.x) / 2;
+                  const midY = (sNode.y + tNode.y) / 2 - 30;
 
+                  let stroke = isIncomingToSelected ? '#F59E0B' : (isOutgoingFromSelected ? '#9AE62E' : 'rgba(154, 230, 46, 0.35)');
+                  let marker = isIncomingToSelected ? 'url(#arrow-amber)' : 'url(#arrow-lime)';
+
+                  return (
+                    <g key={edge.id} className="kg-prereq-link">
+                      <path
+                        d={`M ${sNode.x} ${sNode.y} Q ${midX} ${midY} ${tNode.x} ${tNode.y}`}
+                        fill="none"
+                        stroke={stroke}
+                        strokeWidth={isDirectlySelected ? 2.8 : 1.4}
+                        strokeDasharray={edge.origin === 'suggested' ? '5,4' : 'none'}
+                        markerEnd={marker}
+                        opacity={isDirectlySelected ? 1 : 0.65}
+                      />
+                      {isDirectlySelected && (
+                        <g transform={`translate(${midX}, ${midY})`}>
+                          <rect
+                            x="-38"
+                            y="-9"
+                            width="76"
+                            height="18"
+                            rx="9"
+                            fill="#0E170C"
+                            stroke={stroke}
+                            strokeWidth="1"
+                          />
+                          <text
+                            x="0"
+                            y="3.5"
+                            textAnchor="middle"
+                            fill={stroke}
+                            fontSize="9"
+                            fontWeight="800"
+                          >
+                            {isIncomingToSelected ? 'depends on' : 'needed for'}
+                          </text>
+                        </g>
+                      )}
+                    </g>
+                  );
+                })}
+
+                {/* 3. Render Nodes (Document Root, Topics, Concepts) */}
+                {Object.values(layout.nodes).map(node => {
+                  const isSelected = selectedNodeId === node.id;
+                  const isSearched = isSearchMatch(node);
+                  const isDimmed = searchQuery.trim() && !isSearched;
+                  const IconComponent = getConceptIcon(node.name, node.type);
+
+                  // A. Central Root Node
+                  if (node.type === 'root') {
+                    return (
+                      <g
+                        key={node.id}
+                        transform={`translate(${node.x}, ${node.y})`}
+                        onClick={() => handleSelectNode(node.id)}
+                        style={{ cursor: 'pointer', transition: 'all 0.2s ease' }}
+                        role="button"
+                        aria-label={`Document: ${node.name}`}
+                      >
+                        <rect
+                          x={-node.width / 2}
+                          y={-node.height / 2}
+                          width={node.width}
+                          height={node.height}
+                          rx="18"
+                          fill="#101B0D"
+                          stroke="#9AE62E"
+                          strokeWidth="2.5"
+                          filter="url(#lime-glow)"
+                        />
+                        {/* Book Icon circle */}
+                        <circle cx={-node.width / 2 + 28} cy="0" r="16" fill="rgba(154, 230, 46, 0.18)" stroke="#9AE62E" strokeWidth="1.2" />
+                        <BookOpen x={-node.width / 2 + 20} y={-8} size={16} color="#9AE62E" />
+                        {/* Document Title */}
+                        <text
+                          x={-node.width / 2 + 52}
+                          y="5"
+                          fill="#FFFFFF"
+                          fontSize="14"
+                          fontWeight="800"
+                          letterSpacing="0.02em"
+                        >
+                          {node.name.length > 18 ? `${node.name.slice(0, 16)}…` : node.name}
+                        </text>
+                      </g>
+                    );
+                  }
+
+                  // B. Topic Branch Nodes
+                  if (node.type === 'topic') {
+                    return (
+                      <g
+                        key={node.id}
+                        transform={`translate(${node.x}, ${node.y})`}
+                        onClick={() => handleSelectNode(node.id)}
+                        style={{
+                          cursor: 'pointer',
+                          opacity: isDimmed ? 0.25 : 1,
+                          transition: 'all 0.2s ease'
+                        }}
+                        role="button"
+                        aria-label={`Topic: ${node.name}, ${node.count} concepts`}
+                      >
+                        <rect
+                          x={-node.width / 2}
+                          y={-node.height / 2}
+                          width={node.width}
+                          height={node.height}
+                          rx="14"
+                          fill="#121F0F"
+                          stroke={isSelected || isSearched ? '#9AE62E' : 'rgba(154, 230, 46, 0.45)'}
+                          strokeWidth={isSelected ? 2.5 : 1.5}
+                          filter={isSelected || isSearched ? 'url(#lime-glow)' : 'drop-shadow(0 4px 12px rgba(0,0,0,0.5))'}
+                        />
+                        {/* Topic Icon */}
+                        <Layers x={-node.width / 2 + 14} y={-8} size={16} color="#9AE62E" />
+                        {/* Topic Name */}
+                        <text
+                          x={-node.width / 2 + 36}
+                          y="4"
+                          fill="#FFFFFF"
+                          fontSize="13"
+                          fontWeight="700"
+                        >
+                          {node.name.length > 14 ? `${node.name.slice(0, 13)}…` : node.name}
+                        </text>
+                        {/* Expand/Collapse count pill */}
+                        <g
+                          transform={`translate(${node.width / 2 - 24}, 0)`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleTopicExpand(node.id);
+                          }}
+                        >
+                          <circle cx="0" cy="0" r="11" fill="rgba(154, 230, 46, 0.2)" stroke="#9AE62E" strokeWidth="1" />
+                          <text x="0" y="3.5" textAnchor="middle" fill="#9AE62E" fontSize="10" fontWeight="800">
+                            {node.isExpanded ? '-' : `+${node.count}`}
+                          </text>
+                        </g>
+                      </g>
+                    );
+                  }
+
+                  // C. Concept Leaf Nodes
                   return (
                     <g
                       key={node.id}
-                      transform={`translate(${pos.x}, ${pos.y})`}
+                      transform={`translate(${node.x}, ${node.y})`}
                       onClick={() => handleSelectNode(node.id)}
-                      style={{ cursor: 'pointer', opacity: isDimmed ? 0.18 : 1, transition: 'all 0.2s ease' }}
+                      style={{
+                        cursor: 'pointer',
+                        opacity: isDimmed ? 0.2 : 1,
+                        transition: 'all 0.2s ease'
+                      }}
                       role="button"
-                      tabIndex={0}
-                      aria-pressed={isSelected}
-                      aria-label={`${node.name}, ${node.lecture_tag}, ${node.studied ? 'studied' : 'not studied'}`}
+                      aria-label={`Concept: ${node.name}, page ${node.page}`}
                     >
-                      {/* Node Capsule Pill */}
                       <rect
-                        x="-100"
-                        y="-30"
-                        width="200"
-                        height="60"
-                        rx="16"
-                        fill={isSelected ? '#9AE62E' : colorScheme.fill}
-                        stroke={isSelected ? '#10140C' : colorScheme.border}
-                        strokeWidth={isSelected ? 3 : 1.5}
-                        className="kg-node-rect"
-                        filter="drop-shadow(0 4px 12px rgba(16, 20, 12, 0.08))"
+                        x={-node.width / 2}
+                        y={-node.height / 2}
+                        width={node.width}
+                        height={node.height}
+                        rx="12"
+                        fill="#10190D"
+                        stroke={isSelected || isSearched ? '#9AE62E' : 'rgba(154, 230, 46, 0.3)'}
+                        strokeWidth={isSelected ? 2.4 : 1.2}
+                        filter={isSelected || isSearched ? 'url(#lime-glow)' : 'drop-shadow(0 2px 8px rgba(0,0,0,0.4))'}
                       />
-
-                      {/* Studied badge */}
-                      {node.studied && (
-                        <circle cx="85" cy="-20" r="8" fill="#6FC21A" />
-                      )}
-
-                      {/* Text Tag: Lecture Badge (color is never the only cue) */}
-                      <text
-                        x="-90"
-                        y="-12"
-                        fontSize="10"
-                        fontWeight="700"
-                        fill={isSelected ? '#10140C' : colorScheme.text}
-                        letterSpacing="0.04em"
-                      >
-                        {node.lecture_tag.toUpperCase()}
-                      </text>
-
+                      {/* Dynamic Icon */}
+                      <IconComponent x={-node.width / 2 + 12} y={-7} size={15} color="#9AE62E" />
                       {/* Concept Name */}
                       <text
-                        x="-90"
-                        y="12"
+                        x={-node.width / 2 + 34}
+                        y="4"
+                        fill="#FFFFFF"
                         fontSize="13"
-                        fontWeight="700"
-                        fill="#10140C"
-                        clipPath="inset(0 0 0 0)"
+                        fontWeight="600"
                       >
-                        {node.name.length > 20 ? `${node.name.slice(0, 18)}…` : node.name}
+                        {node.name.length > 15 ? `${node.name.slice(0, 14)}…` : node.name}
                       </text>
+                      {/* Studied mark */}
+                      {node.studied && (
+                        <circle cx={node.width / 2 - 12} cy="-10" r="5" fill="#6FC21A" />
+                      )}
                     </g>
                   );
                 })}
               </g>
             </svg>
 
-            {/* Truncation warning if dataset > 80 nodes */}
-            {graphData.truncated && (
-              <div className="kg-truncation-pill">
-                Showing top 80 of {graphData.total_nodes} concepts. Use search or lecture filter to drill down.
-              </div>
-            )}
+            {/* Minimap preview in corner */}
+            <div className="kg-minimap-card" aria-hidden="true">
+              <svg width="110" height="75" viewBox={`${layout.minX} ${layout.minY} ${layout.maxX - layout.minX} ${layout.maxY - layout.minY}`}>
+                <rect x={layout.minX} y={layout.minY} width={layout.maxX - layout.minX} height={layout.maxY - layout.minY} fill="#090E08" />
+                {Object.values(layout.nodes).map(n => (
+                  <circle
+                    key={n.id}
+                    cx={n.x}
+                    cy={n.y}
+                    r={n.type === 'root' ? 12 : (n.type === 'topic' ? 8 : 4)}
+                    fill={n.type === 'root' ? '#9AE62E' : (n.type === 'topic' ? '#6FC21A' : 'rgba(154, 230, 46, 0.6)')}
+                  />
+                ))}
+              </svg>
+            </div>
 
-            {/* Canvas Legend */}
-            <div className="kg-legend-card" role="region" aria-label="Graph edge legend">
-              <div className="kg-legend-title">LEGEND</div>
+            {/* Topic Map Legend */}
+            <div className="kg-legend-card" role="region" aria-label="Topic map legend">
+              <div className="kg-legend-title">TOPIC MAP LEGEND</div>
+              <div className="kg-legend-item">
+                <span className="kg-legend-dot root" />
+                <span>Document Core</span>
+              </div>
+              <div className="kg-legend-item">
+                <span className="kg-legend-dot topic" />
+                <span>Topic Branch</span>
+              </div>
+              <div className="kg-legend-item">
+                <span className="kg-legend-dot concept" />
+                <span>Concept Leaf</span>
+              </div>
               <div className="kg-legend-item">
                 <span className="kg-legend-line solid" />
                 <span>Prerequisite (from notes)</span>
               </div>
-              <div className="kg-legend-item">
-                <span className="kg-legend-line dashed" />
-                <span>Prerequisite (suggested)</span>
-              </div>
-              <div className="kg-legend-item">
-                <span className="kg-legend-line dotted" />
-                <span>Related across lectures</span>
-              </div>
             </div>
           </div>
         ) : (
-          /* Accessible Semantic List View */
-          <div className="kg-list-view" role="region" aria-label="Concepts and Knowledge Links Table">
-            <table className="kg-table">
-              <thead>
-                <tr>
-                  <th>Concept Name</th>
-                  <th>Appears In</th>
-                  <th>Prerequisites (Depends On)</th>
-                  <th>Required For</th>
-                  <th>Status</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredNodes.map(node => (
-                  <tr key={node.id} className={selectedEntityId === node.id ? 'is-selected-row' : ''}>
-                    <td>
-                      <strong>{node.name}</strong>
-                      {node.definition && <p className="kg-table-def">{node.definition}</p>}
-                    </td>
-                    <td>
-                      <span className="kg-lecture-tag">{node.lecture_tag}</span>
-                    </td>
-                    <td>
-                      {filteredEdges.filter(e => e.source === node.id).map(e => (
-                        <span key={e.id} className={`kg-edge-pill ${e.origin}`}>
-                          {graphData.nodes.find(n => n.id === e.target)?.name || 'Concept'}
-                        </span>
-                      ))}
-                    </td>
-                    <td>
-                      {filteredEdges.filter(e => e.target === node.id).map(e => (
-                        <span key={e.id} className={`kg-edge-pill ${e.origin}`}>
-                          {graphData.nodes.find(n => n.id === e.source)?.name || 'Concept'}
-                        </span>
-                      ))}
-                    </td>
-                    <td>
-                      <span className={`kg-status-chip ${node.studied ? 'studied' : 'unstudied'}`}>
-                        {node.studied ? 'Studied' : 'Pending'}
-                      </span>
-                    </td>
-                    <td>
-                      <button
-                        type="button"
-                        onClick={() => handleSelectNode(node.id)}
-                        className="kg-inspect-btn"
-                        aria-label={`Inspect ${node.name}`}
-                      >
-                        Inspect
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          /* Accessible Semantic List Alternative */
+          <div className="kg-list-view" role="region" aria-label="Topic hierarchy list">
+            <div className="kg-list-header">
+              <h2>Topic & Concept Hierarchy</h2>
+              <p>Explore course concepts organized by chapter and prerequisite sequence.</p>
+            </div>
+            {allTopicList.map((topic, tIdx) => (
+              <div key={topic.id} className="kg-topic-section">
+                <div className="kg-topic-section-header">
+                  <span className="kg-topic-badge">Chapter {tIdx + 1}</span>
+                  <h3>{topic.name}</h3>
+                  <span className="kg-topic-leaf-count">{topic.count} concepts</span>
+                </div>
+                <div className="kg-topic-cards-grid">
+                  {topic.concepts.map(c => (
+                    <div
+                      key={c.id}
+                      className={`kg-concept-row-card ${selectedNodeId === c.id ? 'is-selected' : ''}`}
+                      onClick={() => handleSelectNode(c.id)}
+                    >
+                      <div className="kg-row-top">
+                        <strong>{c.name}</strong>
+                        <span className="kg-row-page">p. {c.page}</span>
+                      </div>
+                      {c.definition && <p className="kg-row-def">{c.definition}</p>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
         )}
 
-        {/* 2. Side Panel / Bottom Sheet */}
-        {selectedEntityId && (
-          <aside className="kg-side-panel" aria-label="Selected Concept Knowledge Detail">
+        {/* C. Right-Side Node Details Panel (Matching Reference Screenshot) */}
+        {selectedNodeId && entityDetail && (
+          <aside className="kg-side-panel" aria-label="Selected node details">
+            {/* Header */}
             <div className="kg-panel-header">
               <div className="kg-panel-title-wrap">
-                <span className="kg-panel-eyebrow">SELECTED CONCEPT</span>
-                <h3 className="kg-panel-title">{entityDetail?.name || 'Loading concept…'}</h3>
+                <div className="kg-panel-icon-circle">
+                  <Brain size={18} color="#9AE62E" />
+                </div>
+                <h3 className="kg-panel-title">{entityDetail.name}</h3>
               </div>
               <button
                 type="button"
-                onClick={() => setSelectedEntityId(null)}
+                onClick={() => setSelectedNodeId(null)}
                 className="kg-close-btn"
-                aria-label="Close concept details"
+                aria-label="Close details"
               >
                 <X size={16} />
               </button>
             </div>
 
+            {/* Definition / Description paragraph */}
             {isDetailLoading ? (
-              <div className="kg-panel-loading">
-                <BookshelfLoader message="Fetching citations & connections…" />
-              </div>
-            ) : entityDetail ? (
-              <div className="kg-panel-body">
-                {/* Definition */}
-                {entityDetail.definition && (
-                  <div className="kg-panel-section">
-                    <label className="kg-section-label">DEFINITION</label>
-                    <p className="kg-definition-text">{entityDetail.definition}</p>
-                  </div>
-                )}
+              <p className="kg-detail-summary">Fetching citations & details…</p>
+            ) : entityDetail.definition ? (
+              <p className="kg-detail-summary">{entityDetail.definition}</p>
+            ) : (
+              <p className="kg-detail-summary is-empty">No definition recorded in notes for this concept.</p>
+            )}
 
-                {/* Where it appears (Lecture & Page chips that open PDF Viewer) */}
-                <div className="kg-panel-section">
-                  <label className="kg-section-label">APPEARS IN YOUR NOTES</label>
-                  <div className="kg-mentions-list">
-                    {entityDetail.mentions?.map((m, idx) => (
-                      <div key={idx} className="kg-mention-card">
-                        <div className="kg-mention-top">
-                          <BookOpen size={13} className="kg-doc-icon" />
-                          <span className="kg-doc-filename" title={m.filename}>{m.filename}</span>
-                          <span className="kg-page-badge">p. {m.page}</span>
-                        </div>
-                        {m.quote && <blockquote className="kg-mention-quote">"{m.quote}"</blockquote>}
-                        {onOpenViewer && (
-                          <button
-                            type="button"
-                            className="kg-open-pdf-btn"
-                            onClick={() => onOpenViewer(m.document_id, m.page, m.quote)}
-                            aria-label={`Open ${m.filename} at page ${m.page}`}
-                          >
-                            <ExternalLink size={12} />
-                            <span>Open in PDF viewer (p. {m.page})</span>
-                          </button>
-                        )}
+            <div className="kg-panel-body">
+              {/* Node Details Section */}
+              <div className="kg-details-section">
+                <h4 className="kg-details-section-title">Node details</h4>
+                <div className="kg-details-grid">
+                  <div className="kg-detail-row">
+                    <span className="kg-detail-key">Type</span>
+                    <span className="kg-type-badge">Concept</span>
+                  </div>
+                  <div className="kg-detail-row">
+                    <span className="kg-detail-key">Domain</span>
+                    <span className="kg-detail-value">{entityDetail.chapter || 'Core Concepts'}</span>
+                  </div>
+                  <div className="kg-detail-row">
+                    <span className="kg-detail-key">Connections</span>
+                    <span className="kg-detail-value">{selectedRelationsCount?.total || 0}</span>
+                  </div>
+                  <div className="kg-detail-row">
+                    <span className="kg-detail-key">Page</span>
+                    <span className="kg-detail-value">
+                      {entityDetail.mentions?.map((m, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          className="kg-page-chip"
+                          onClick={() => onOpenViewer && onOpenViewer(m.document_id, m.page, m.quote)}
+                        >
+                          p. {m.page}
+                        </button>
+                      ))}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Relationship Types Breakdown (Matching Reference Image) */}
+              <div className="kg-details-section">
+                <h4 className="kg-details-section-title">Relationship types</h4>
+                <div className="kg-rel-types-list">
+                  <div className="rel-type-row">
+                    <span className="rel-dot part-of" />
+                    <span className="rel-name">part-of</span>
+                    <span className="rel-count">{selectedRelationsCount?.breakdown['part-of'] || 1}</span>
+                  </div>
+                  <div className="rel-type-row">
+                    <span className="rel-dot requires" />
+                    <span className="rel-name">requires</span>
+                    <span className="rel-count">{selectedRelationsCount?.breakdown['requires'] || 0}</span>
+                  </div>
+                  <div className="rel-type-row">
+                    <span className="rel-dot unlocks" />
+                    <span className="rel-name">unlocks</span>
+                    <span className="rel-count">{selectedRelationsCount?.breakdown['unlocks'] || 0}</span>
+                  </div>
+                  <div className="rel-type-row">
+                    <span className="rel-dot cross" />
+                    <span className="rel-name">cross-topic</span>
+                    <span className="rel-count">{selectedRelationsCount?.breakdown['cross-topic'] || 0}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Citations & Quotes from student notes */}
+              {entityDetail.mentions && entityDetail.mentions.length > 0 && (
+                <div className="kg-details-section">
+                  <h4 className="kg-details-section-title">Source in your notes</h4>
+                  {entityDetail.mentions.map((m, idx) => (
+                    <div key={idx} className="kg-citation-box">
+                      <div className="kg-citation-top">
+                        <BookOpen size={12} />
+                        <span>Page {m.page}</span>
                       </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Depends on (Prerequisites with evidence badges) */}
-                <div className="kg-panel-section">
-                  <label className="kg-section-label">DEPENDS ON (PREREQUISITES)</label>
-                  {entityDetail.depends_on?.length > 0 ? (
-                    <div className="kg-relations-list">
-                      {entityDetail.depends_on.map((dep, idx) => (
-                        <div key={idx} className="kg-relation-item">
-                          <button
-                            type="button"
-                            className="kg-rel-name-btn"
-                            onClick={() => handleSelectNode(dep.entity_id)}
-                          >
-                            {dep.name}
-                          </button>
-                          <span className={`kg-evidence-badge ${dep.origin}`}>
-                            {dep.origin === 'notes' ? 'From your notes' : 'Suggested link'}
-                          </span>
-                        </div>
-                      ))}
+                      {m.quote && <blockquote>"{m.quote}"</blockquote>}
+                      {onOpenViewer && (
+                        <button
+                          type="button"
+                          className="kg-citation-view-btn"
+                          onClick={() => onOpenViewer(m.document_id, m.page, m.quote)}
+                        >
+                          <ExternalLink size={12} />
+                          <span>Open in PDF viewer (p. {m.page})</span>
+                        </button>
+                      )}
                     </div>
-                  ) : (
-                    <p className="kg-empty-note">Foundational concept with no prior prerequisites.</p>
-                  )}
+                  ))}
                 </div>
+              )}
 
-                {/* Needed for (Dependents) */}
-                <div className="kg-panel-section">
-                  <label className="kg-section-label">NEEDED FOR (UNLOCKS)</label>
-                  {entityDetail.needed_for?.length > 0 ? (
-                    <div className="kg-relations-list">
-                      {entityDetail.needed_for.map((dep, idx) => (
-                        <div key={idx} className="kg-relation-item">
-                          <button
-                            type="button"
-                            className="kg-rel-name-btn"
-                            onClick={() => handleSelectNode(dep.entity_id)}
-                          >
-                            {dep.name}
-                          </button>
-                          <span className={`kg-evidence-badge ${dep.origin}`}>
-                            {dep.origin === 'notes' ? 'From your notes' : 'Suggested link'}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="kg-empty-note">Advanced concept or endpoint of current path.</p>
-                  )}
-                </div>
-
-                {/* Ask about concept action */}
-                <div className="kg-panel-actions">
-                  <button
-                    type="button"
-                    className="kg-ask-btn"
-                    onClick={() => onAskAboutConcept(entityDetail.name)}
-                    aria-label={`Ask your notes about ${entityDetail.name}`}
-                  >
-                    <Sparkles size={14} />
-                    <span>Ask your notes about {entityDetail.name}</span>
-                  </button>
-
-                  {/* Unmerge button if concept has multiple mentions */}
-                  {entityDetail.mentions?.length > 1 && (
-                    <button
-                      type="button"
-                      className="kg-unmerge-btn"
-                      onClick={() => handleUnmerge(entityDetail.id)}
-                      title="Split this entity back into distinct concepts per lecture"
-                      aria-label="Unmerge concept"
-                    >
-                      <Split size={14} />
-                      <span>Unmerge into separate concepts</span>
-                    </button>
-                  )}
-                </div>
+              {/* Action Buttons */}
+              <div className="kg-panel-actions">
+                <button
+                  type="button"
+                  className="kg-ask-btn"
+                  onClick={() => onAskAboutConcept(entityDetail.name)}
+                >
+                  <Sparkles size={14} />
+                  <span>Ask about {entityDetail.name}</span>
+                </button>
               </div>
-            ) : null}
+            </div>
           </aside>
         )}
       </div>
-
-      {/* 3. Concept Links to Review Modal */}
-      {isMergeModalOpen && (
-        <div className="kg-modal-scrim" onClick={() => setIsMergeModalOpen(false)}>
-          <div className="kg-merge-modal" onClick={e => e.stopPropagation()} role="dialog" aria-label="Review Concept Merge Suggestions">
-            <div className="kg-modal-header">
-              <div className="kg-modal-title-group">
-                <Split size={18} className="kg-brand-icon" />
-                <h3>Concept Links to Review</h3>
-              </div>
-              <button type="button" onClick={() => setIsMergeModalOpen(false)} aria-label="Close review dialog">
-                <X size={16} />
-              </button>
-            </div>
-            <p className="kg-modal-desc">
-              ConceptLens detected similar concepts across your uploaded lectures. Confirm whether they represent the same academic idea or distinct topics.
-            </p>
-            <div className="kg-suggestions-list">
-              {mergeSuggestions.map(s => (
-                <div key={s.id} className="kg-sugg-card">
-                  <div className="kg-sugg-comparison">
-                    <div className="kg-sugg-side">
-                      <span className="kg-sugg-tag">CONCEPT A</span>
-                      <strong>{s.entity_a.name}</strong>
-                      <p>{s.entity_a.definition || 'No definition recorded'}</p>
-                    </div>
-                    <div className="kg-sugg-vs">
-                      <ArrowRight size={16} />
-                      <span className="kg-score-badge">{(s.score * 100).toFixed(0)}% match</span>
-                    </div>
-                    <div className="kg-sugg-side">
-                      <span className="kg-sugg-tag">CONCEPT B</span>
-                      <strong>{s.entity_b.name}</strong>
-                      <p>{s.entity_b.definition || 'No definition recorded'}</p>
-                    </div>
-                  </div>
-                  <div className="kg-sugg-actions">
-                    <button
-                      type="button"
-                      className="kg-btn-accept"
-                      onClick={() => handleAcceptMerge(s.id)}
-                    >
-                      <Check size={14} />
-                      <span>Merge as same concept</span>
-                    </button>
-                    <button
-                      type="button"
-                      className="kg-btn-reject"
-                      onClick={() => handleRejectMerge(s.id)}
-                    >
-                      <X size={14} />
-                      <span>Not the same</span>
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

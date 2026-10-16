@@ -5,6 +5,8 @@ export default function ResultsView({
   documentData,
   concepts = [],
   topics = [],
+  documents = [],
+  onSelectDoc,
   isLoading = false,
   isAuthenticated = false,
   onRefresh,
@@ -18,6 +20,8 @@ export default function ResultsView({
         documentData={documentData}
         concepts={concepts}
         topics={topics}
+        documents={documents}
+        onSelectDoc={onSelectDoc}
         isLoading={isLoading}
         isAuthenticated={isAuthenticated}
         onDeleteDocument={onDeleteDoc}

@@ -64,7 +64,10 @@ try:
         set_concept_progress,
         bulk_set_concept_progress,
         get_concept_progress_for_document,
-        get_user_concept_progress_map
+        get_user_concept_progress_map,
+        save_document_page_coverage,
+        get_document_page_coverage,
+        get_document_coverage_summary
     )
     from backend.services.normalizer import normalize_extracted_concepts, SCHEMA_VERSION
     from backend.models import (
@@ -108,6 +111,8 @@ try:
     )
     from backend.services.tree_builder import build_document_tree
     from backend.services.flowchart_builder import build_document_flowchart, select_flowchart_view
+    from backend.services.extraction_v2 import ExtractionV2Pipeline
+    from backend.services.layout_extractor import LayoutExtractor
     from backend.services.cloud_extraction import (
         extract_document_with_gemini,
         check_gemini_key_valid,
@@ -145,7 +150,10 @@ except ImportError:
         set_concept_progress,
         bulk_set_concept_progress,
         get_concept_progress_for_document,
-        get_user_concept_progress_map
+        get_user_concept_progress_map,
+        save_document_page_coverage,
+        get_document_page_coverage,
+        get_document_coverage_summary
     )
     from services.normalizer import normalize_extracted_concepts, SCHEMA_VERSION
     from models import (
@@ -189,6 +197,8 @@ except ImportError:
     )
     from services.tree_builder import build_document_tree
     from services.flowchart_builder import build_document_flowchart, select_flowchart_view
+    from services.extraction_v2 import ExtractionV2Pipeline
+    from services.layout_extractor import LayoutExtractor
     from services.cloud_extraction import (
         extract_document_with_gemini,
         check_gemini_key_valid,
@@ -416,52 +426,37 @@ def process_document_background(
                 stage_message="Extracting educational concepts & definitions with Gemini AI..."
             )
 
-            def on_progress_update(pct, msg):
-                update_document_stage(
+            # 2. Extract concepts via Pipeline v2 with full layout awareness & coverage guarantee
+            update_document_stage(
+                doc_id,
+                stage="extracting",
+                status="processing",
+                progress=30,
+                stage_message="Extracting educational concepts with Pipeline v2 (page-batched)..."
+            )
+
+            pipeline_v2 = ExtractionV2Pipeline()
+            v2_result = pipeline_v2.extract_document(
+                file_path=file_path,
+                doc_id=doc_id,
+                user_id=user_id,
+                on_progress=lambda msg, pct: update_document_stage(
                     doc_id,
                     stage="extracting",
                     status="processing",
                     progress=pct,
                     stage_message=msg
                 )
+            )
 
-            concepts = []
-            provider_used = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
-            gemini_key_set = bool(os.getenv("GEMINI_API_KEY", "").strip())
+            concepts = v2_result.get("concepts", [])
+            relations = v2_result.get("relations", [])
+            provider_used = v2_result.get("provider_used", "Pipeline-v2")
+            page_coverage_records = v2_result.get("page_coverage", [])
 
-            if prefer_cloud and gemini_key_set:
-                try:
-                    concepts = extract_document_with_gemini(
-                        file_path=file_path,
-                        on_progress=on_progress_update
-                    )
-                    provider_used = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
-                except GeminiQuotaError:
-                    logger.warning(f"Document {doc_id}: Gemini quota exceeded.")
-                    if has_usable_text:
-                        logger.info(f"Document {doc_id}: Falling back to lightweight PyMuPDF + YAKE...")
-                        concepts = extract_fallback_concepts(full_text=full_text)
-                        provider_used = "lightweight-fallback"
-                    else:
-                        mark_document_failed(doc_id, "Daily free limit reached, try again later")
-                        return
-                except Exception as ex_gemini:
-                    logger.warning(f"Document {doc_id}: Gemini extraction error: {ex_gemini}")
-                    if has_usable_text:
-                        logger.info(f"Document {doc_id}: Falling back to lightweight PyMuPDF + YAKE...")
-                        concepts = extract_fallback_concepts(full_text=full_text)
-                        provider_used = "lightweight-fallback"
-                    else:
-                        mark_document_failed(doc_id, "Gemini AI is temporarily unavailable and this scanned document requires AI vision. Please try again later.")
-                        return
-            else:
-                # User chose local mode or no Gemini key configured
-                if has_usable_text:
-                    concepts = extract_fallback_concepts(full_text=full_text)
-                    provider_used = "lightweight-fallback"
-                else:
-                    mark_document_failed(doc_id, "Gemini API key is not configured and this document has no digital text layer.")
-                    return
+            # Save page coverage tracking
+            if page_coverage_records:
+                save_document_page_coverage(doc_id, page_coverage_records)
 
             if not concepts:
                 mark_document_failed(doc_id, "No key educational concepts could be extracted from this document.")
@@ -471,16 +466,6 @@ def process_document_background(
             if not document_exists(doc_id):
                 logger.info(f"Document {doc_id} was deleted during processing; aborting.")
                 return
-
-            # Ensure concepts have verified physical source pages & quotes
-            try:
-                try:
-                    from backend.services.source_locator import locate_concepts_in_document
-                except ImportError:
-                    from services.source_locator import locate_concepts_in_document
-                concepts = locate_concepts_in_document(file_path, file_path.name, concepts)
-            except Exception as e_loc:
-                logger.warning(f"Could not locate source pages in {file_path.name}: {e_loc}")
 
             # 3. Background Prebuild: Concept Tree & Flowchart
             update_document_stage(
@@ -1381,9 +1366,9 @@ async def reanalyze_document_endpoint(
     actor: Dict[str, Any] = Depends(get_current_user_or_guest)
 ):
     """
-    Optional Re-analyse action per document:
-    Bypasses the cache once and re-runs extraction with the improved prompt.
-    Respects rate limits and Gemini quota with a friendly message when exhausted.
+    Re-analyse action per document:
+    Bypasses the cache and re-runs extraction with Pipeline v2.
+    Respects rate limits and Gemini quota with friendly code-only fallback if exhausted.
     """
     doc = get_document_by_id(user_id=actor["id"], doc_id=doc_id)
     if not doc:
@@ -1399,25 +1384,34 @@ async def reanalyze_document_endpoint(
         else:
             raise HTTPException(status_code=404, detail="Source document file not found on server for re-analysis.")
 
-    gemini_key_set = bool(os.getenv("GEMINI_API_KEY", "").strip())
-    if not gemini_key_set:
-        raise HTTPException(status_code=503, detail="Gemini API is not configured on this server.")
-
-    update_document_stage(doc_id, stage="extracting", status="processing", progress=30, stage_message="Re-analysing notes with improved Gemini extraction...")
+    update_document_stage(doc_id, stage="extracting", status="processing", progress=20, stage_message="Re-analysing notes with Pipeline v2 (page-batched)...")
     try:
-        raw_concepts = extract_document_with_gemini(file_path=file_path)
-    except GeminiQuotaError:
-        update_document_stage(doc_id, stage="completed", status="completed", progress=100, stage_message="Re-analysis quota exhausted; existing concepts preserved.")
-        raise HTTPException(status_code=429, detail="Daily AI extraction limit reached. Please try again later.")
+        pipeline_v2 = ExtractionV2Pipeline()
+        v2_res = pipeline_v2.extract_document(
+            file_path=file_path,
+            doc_id=doc_id,
+            user_id=actor["id"],
+            on_progress=lambda msg, pct: update_document_stage(
+                doc_id, stage="extracting", status="processing", progress=pct, stage_message=msg
+            )
+        )
     except Exception as ex_gem:
         update_document_stage(doc_id, stage="completed", status="completed", progress=100, stage_message="Re-analysis failed; existing concepts preserved.")
         raise HTTPException(status_code=503, detail=f"Re-analysis failed: {str(ex_gem)}")
 
-    if not raw_concepts:
+    concepts = v2_res.get("concepts", [])
+    if not concepts:
         raise HTTPException(status_code=500, detail="No concepts extracted during re-analysis.")
 
-    cleaned_concepts = normalize_extracted_concepts(raw_concepts)
-    save_concepts_and_relations(doc_id, cleaned_concepts)
+    page_coverage_records = v2_res.get("page_coverage", [])
+    if page_coverage_records:
+        save_document_page_coverage(doc_id, page_coverage_records)
+
+    save_concepts_and_relations(doc_id, concepts)
+    tree_data = build_document_tree(doc_id, filename, concepts)
+    save_document_tree(doc_id, tree_data)
+
+    update_document_stage(doc_id, stage="completed", status="completed", progress=100, stage_message="Re-analysis complete!")
 
     if actor.get("is_authenticated"):
         try:
@@ -1427,9 +1421,91 @@ async def reanalyze_document_endpoint(
 
     return {
         "success": True,
-        "message": f"Successfully re-analysed document with {len(cleaned_concepts)} concepts.",
-        "concept_count": len(cleaned_concepts)
+        "message": f"Successfully re-analysed document with {len(concepts)} concepts.",
+        "concept_count": len(concepts),
+        "coverage_summary": v2_res.get("coverage_summary")
     }
+
+@app.get("/api/documents/{doc_id}/coverage")
+@app.get("/documents/{doc_id}/coverage")
+async def get_document_coverage_endpoint(
+    doc_id: str,
+    actor: Dict[str, Any] = Depends(get_current_user_or_guest)
+):
+    """Returns the page coverage summary and list of all pages for this document."""
+    doc = get_document_by_id(user_id=actor["id"], doc_id=doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found.")
+    summary = get_document_coverage_summary(doc_id)
+    return summary
+
+@app.post("/api/documents/{doc_id}/pages/{page_num}/rerun")
+@app.post("/documents/{doc_id}/pages/{page_num}/rerun")
+async def rerun_document_page_endpoint(
+    doc_id: str,
+    page_num: int,
+    actor: Dict[str, Any] = Depends(get_current_user_or_guest)
+):
+    """Re-runs extraction specifically for one page and updates page_coverage."""
+    doc = get_document_by_id(user_id=actor["id"], doc_id=doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found.")
+
+    filename = doc["filename"]
+    actor_dir = UPLOAD_DIR / actor["id"]
+    file_path = actor_dir / f"{doc_id}_{filename}"
+    if not file_path.exists():
+        fallback = UPLOAD_DIR / f"{doc_id}_{filename}"
+        if fallback.exists():
+            file_path = fallback
+        else:
+            raise HTTPException(status_code=404, detail="Source file not found on server.")
+
+    layout_ext = LayoutExtractor(file_path)
+    pages, _ = layout_ext.extract_document_pages()
+    target_page = next((p for p in pages if p.page_num == page_num), None)
+    if not target_page:
+        raise HTTPException(status_code=404, detail=f"Page {page_num} not found in document.")
+
+    pipeline = ExtractionV2Pipeline()
+    cands = pipeline._find_page_candidates(target_page)
+    new_concepts = pipeline._run_repair_pass(target_page, cands[:6], filename)
+    if not new_concepts:
+        p_data = pipeline._extract_page_code_only(target_page)
+        new_concepts = p_data.get("concepts", [])
+
+    status = "repaired" if new_concepts else "done"
+    rec = [{
+        "page": page_num,
+        "page_type": target_page.page_type,
+        "text_chars": target_page.char_count,
+        "text_hash": target_page.text_hash,
+        "status": status,
+        "concepts_count": len(new_concepts),
+        "no_concepts_reason": None if new_concepts else "No concepts extracted on re-run",
+        "error": None,
+        "user_id": actor["id"]
+    }]
+    save_document_page_coverage(doc_id, rec)
+
+    if new_concepts:
+        existing = get_concepts_by_document(doc_id)
+        for nc in new_concepts:
+            nc["source_page"] = page_num
+            nc["page"] = page_num
+            nc["pages"] = [page_num]
+            nc["topic"] = target_page.title or "General"
+            existing.append(nc)
+        save_concepts_and_relations(doc_id, existing)
+
+    return {
+        "success": True,
+        "page": page_num,
+        "status": status,
+        "new_concepts_count": len(new_concepts),
+        "coverage_summary": get_document_coverage_summary(doc_id)
+    }
+
 
 @app.delete("/api/documents/{doc_id}")
 @app.delete("/documents/{doc_id}")

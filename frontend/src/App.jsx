@@ -623,6 +623,8 @@ export default function App() {
               documentData={activeDocData}
               concepts={activeConcepts}
               topics={activeTopics}
+              documents={documents}
+              onSelectDoc={handleSelectDoc}
               isLoading={isConceptsLoading}
               isAuthenticated={Boolean(user)}
               onRefresh={() => loadDocConcepts(activeDocId)}

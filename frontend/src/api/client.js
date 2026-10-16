@@ -925,4 +925,25 @@ export async function fetchAskHistory() {
   return res.json();
 }
 
+export async function getDocumentCoverage(documentId) {
+  const res = await apiFetch(`/documents/${documentId}/coverage`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Failed to load page coverage');
+  }
+  return res.json();
+}
+
+export async function rerunDocumentPage(documentId, pageNum) {
+  const res = await apiFetch(`/documents/${documentId}/pages/${pageNum}/rerun`, {
+    method: 'POST'
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to rerun page ${pageNum}`);
+  }
+  return res.json();
+}
+
+
 
