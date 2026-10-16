@@ -15,8 +15,7 @@ import {
   RotateCw,
   X,
   BookOpen,
-  Sparkles,
-  Layers
+  Sparkles
 } from 'lucide-react';
 import { 
   getExportUrl, 
@@ -42,11 +41,10 @@ const ConceptListView = lazy(() => import('./ConceptListView'));
 const ConceptDetailPanel = lazy(() => import('./ConceptDetailPanel'));
 const ConceptTreeView = lazy(() => import('./ConceptTreeView'));
 const StudyRoadmapView = lazy(() => import('./StudyRoadmapView'));
-const PrerequisiteFlowView = lazy(() => import('./PrerequisiteFlowView'));
 const KnowledgeGraphView = lazy(() => import('./KnowledgeGraphView'));
 const AskAnswerCard = lazy(() => import('./AskAnswerCard'));
 
-const VALID_TABS = ['concepts', 'tree', 'roadmap', 'flow', 'graph'];
+const VALID_TABS = ['concepts', 'tree', 'roadmap', 'graph'];
 
 function resolveInitialTab() {
   try {
@@ -56,7 +54,7 @@ function resolveInitialTab() {
       const urlView = (params.get('view') || params.get('tab') || '').toLowerCase().trim();
       if (urlView) {
         if (VALID_TABS.includes(urlView)) return urlView;
-        if (urlView === 'flowchart') return 'flow';
+        if (urlView === 'flowchart' || urlView === 'flow') return 'tree';
         if (urlView === 'mindmap' || urlView === 'mind-map') return 'tree';
       }
 
@@ -64,7 +62,7 @@ function resolveInitialTab() {
       const hash = (window.location.hash || '').replace('#', '').toLowerCase().trim();
       if (hash) {
         if (VALID_TABS.includes(hash)) return hash;
-        if (hash === 'flowchart') return 'flow';
+        if (hash === 'flowchart' || hash === 'flow') return 'tree';
         if (hash === 'mindmap' || hash === 'mind-map') return 'tree';
       }
 
@@ -72,7 +70,7 @@ function resolveInitialTab() {
       const stored = (localStorage.getItem('conceptlens_last_view') || sessionStorage.getItem('conceptlens_last_view') || '').toLowerCase().trim();
       if (stored) {
         if (VALID_TABS.includes(stored)) return stored;
-        if (stored === 'flowchart') return 'flow';
+        if (stored === 'flowchart' || stored === 'flow') return 'tree';
         if (stored === 'mindmap' || stored === 'mind-map') return 'tree';
       }
     }
@@ -584,19 +582,7 @@ export default function UnifiedResultsPanel({
               <span>Roadmap</span>
             </button>
 
-            {/* Tab 4: Flow (Prerequisite Flowchart) */}
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeTab === 'flow'}
-              className={`panel-tab-btn ${activeTab === 'flow' ? 'active' : ''}`}
-              onClick={() => handleTabChange('flow')}
-            >
-              <Layers size={15} />
-              <span>Flow</span>
-            </button>
-
-            {/* Tab 5: Graph (Knowledge Graph) */}
+            {/* Tab 4: Graph (Knowledge Graph) */}
             <button
               type="button"
               role="tab"
@@ -675,17 +661,6 @@ export default function UnifiedResultsPanel({
                   </ViewErrorBoundary>
                 )}
 
-                {activeTab === 'flow' && (
-                  <ViewErrorBoundary viewName="Prerequisite Flow">
-                    <PrerequisiteFlowView
-                      documentId={documentData?.id}
-                      initialTargetConcept={selectedConcept?.name}
-                      onSelectConcept={setSelectedConcept}
-                      onToggleStudied={handleToggleStudied}
-                      isAuthenticated={isAuthenticated}
-                    />
-                  </ViewErrorBoundary>
-                )}
 
                 {activeTab === 'graph' && (
                   <ViewErrorBoundary viewName="Knowledge Graph">
