@@ -9,8 +9,6 @@ import {
   Split,
   Check,
   X,
-  Layers,
-  HelpCircle,
   Clock,
   ShieldCheck,
   AlertTriangle,
@@ -32,10 +30,17 @@ export default function AskAnswerCard({
   isAuthenticated = true
 }) {
   const [question, setQuestion] = useState(initialQuestion);
-  const [scope, setScope] = useState('document'); // 'document' | 'all'
+  const [scope, setScope] = useState(documentId ? 'document' : 'all'); // 'document' | 'all'
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [answerData, setAnswerData] = useState(null);
+
+  // If documentId is not provided, guarantee scope stays 'all'
+  useEffect(() => {
+    if (!documentId && scope === 'document') {
+      setScope('all');
+    }
+  }, [documentId]);
 
   // Collapsible metadata
   const [isHowBuiltOpen, setIsHowBuiltOpen] = useState(false);
@@ -57,9 +62,11 @@ export default function AskAnswerCard({
     try {
       setIsLoading(true);
       setError(null);
+      const activeScope = documentId ? scope : 'all';
+      const effectiveDocId = activeScope === 'document' ? documentId : null;
       const res = await askNotes(query, {
-        documentId: scope === 'document' ? documentId : null,
-        scope: scope
+        documentId: effectiveDocId,
+        scope: activeScope
       });
       setAnswerData(res);
 
@@ -119,15 +126,19 @@ export default function AskAnswerCard({
           <div className="ask-scope-toggle" role="radiogroup" aria-label="Query scope selector">
             <button
               type="button"
-              className={`ask-scope-btn ${scope === 'document' ? 'active' : ''}`}
-              onClick={() => setScope('document')}
+              className={`ask-scope-btn ${documentId && scope === 'document' ? 'active' : ''}`}
+              onClick={() => { if (documentId) setScope('document'); }}
+              disabled={!documentId}
+              title={!documentId ? 'Open a specific note to scope query to a single document' : 'Search only within this document'}
+              style={!documentId ? { opacity: 0.55, cursor: 'not-allowed' } : {}}
             >
               This document
             </button>
             <button
               type="button"
-              className={`ask-scope-btn ${scope === 'all' ? 'active' : ''}`}
+              className={`ask-scope-btn ${!documentId || scope === 'all' ? 'active' : ''}`}
               onClick={() => setScope('all')}
+              title="Search across all uploaded notes and knowledge graph"
             >
               All my notes
             </button>

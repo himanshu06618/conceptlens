@@ -33,6 +33,7 @@ try:
         GRAPH_RAG_ENABLED,
         normalize_entity_name,
         cosine_similarity,
+        compute_token_overlap,
         get_flow_data,
         get_mastery_map_data
     )
@@ -42,6 +43,7 @@ except ImportError:
         GRAPH_RAG_ENABLED,
         normalize_entity_name,
         cosine_similarity,
+        compute_token_overlap,
         get_flow_data,
         get_mastery_map_data
     )
@@ -320,7 +322,44 @@ def retrieve_top_chunks(
 
         rows = conn.execute(sql, params).fetchall()
         if not rows:
-            return []
+            # Fallback for documents uploaded before chunking:
+            # Retrieve concepts definitions, source_quotes, and topic names as chunks
+            fallback_sql = """
+                SELECT c.id, c.document_id, c.source_page AS page,
+                       c.name || ': ' || COALESCE(c.definition, '') || ' ' || COALESCE(c.source_quote, '') AS content,
+                       d.filename
+                FROM concepts c
+                JOIN documents d ON c.document_id = d.id
+                WHERE d.user_id = ?
+            """
+            fallback_params: List[Any] = [user_id]
+            if document_id:
+                fallback_sql += " AND c.document_id = ?"
+                fallback_params.append(document_id)
+            fallback_sql += " LIMIT 150"
+            c_rows = conn.execute(fallback_sql, fallback_params).fetchall()
+            if not c_rows:
+                return []
+
+            scored_concepts = []
+            q_lower = query.lower()
+            q_words = [w for w in q_lower.split() if len(w) > 3]
+            for cr in c_rows:
+                content_text = cr["content"] or ""
+                overlap = compute_token_overlap(content_text, query)
+                match_count = sum(1 for w in q_words if w in content_text.lower())
+                score = overlap + (0.25 * match_count)
+                if score > 0.05:
+                    scored_concepts.append({
+                        "chunk_id": cr["id"],
+                        "document_id": cr["document_id"],
+                        "filename": cr["filename"],
+                        "page": cr["page"] or 1,
+                        "content": content_text,
+                        "similarity": score
+                    })
+            scored_concepts.sort(key=lambda x: x["similarity"], reverse=True)
+            return scored_concepts[:k]
 
         scored_chunks = []
         for r in rows:
@@ -438,6 +477,78 @@ def retrieve_graph_facts(
 
         matched_ids = [m["id"] for m in matched_entities]
         if not matched_ids:
+            # Fallback to direct concepts and relations tables (e.g. before entity resolution)
+            c_sql = """
+                SELECT c.id, c.name, c.definition, c.source_page, c.source_quote, d.filename
+                FROM concepts c
+                JOIN documents d ON c.document_id = d.id
+                WHERE d.user_id = ?
+            """
+            c_params: List[Any] = [user_id]
+            if document_id:
+                c_sql += " AND c.document_id = ?"
+                c_params.append(document_id)
+            c_sql += " LIMIT 100"
+            direct_concepts = conn.execute(c_sql, c_params).fetchall()
+
+            matched_c = []
+            for dc in direct_concepts:
+                cn = normalize_entity_name(dc["name"])
+                if cn and (cn in norm_q or norm_q in cn or compute_token_overlap(dc["name"], question) > 0.25):
+                    matched_c.append(dc)
+            if not matched_c and direct_concepts:
+                scored = [(dc, compute_token_overlap(dc["name"], question)) for dc in direct_concepts]
+                scored.sort(key=lambda x: x[1], reverse=True)
+                matched_c = [s[0] for s in scored[:3] if s[1] > 0.05]
+
+            if matched_c:
+                c_ids = [mc["id"] for mc in matched_c]
+                names = [mc["name"].lower() for mc in matched_c]
+                pl_c = ",".join(["?"] * len(c_ids))
+                pl_n = ",".join(["?"] * len(names))
+                r_sql = f"""
+                    SELECT r.id, r.concept_id, r.related_name, r.relation_type,
+                           c.name AS source_name, c.source_page, c.source_quote, d.filename, d.id as document_id
+                    FROM relations r
+                    JOIN concepts c ON r.concept_id = c.id
+                    JOIN documents d ON r.document_id = d.id
+                    WHERE d.user_id = ? AND (r.concept_id IN ({pl_c}) OR lower(r.related_name) IN ({pl_n}))
+                """
+                r_rows = conn.execute(r_sql, [user_id] + c_ids + names).fetchall()
+                direct_facts = []
+                direct_path = []
+                for rr in r_rows:
+                    src = rr["source_name"]
+                    tgt = rr["related_name"]
+                    rel_type = rr["relation_type"]
+                    f_id = f"rel_{rr['id']}"
+                    fact_str = f"EDGE_ID:{f_id} | {src} requires prerequisite {tgt} [Origin: notes]" if rel_type == "prerequisite" else f"EDGE_ID:{f_id} | {src} is related to {tgt} [Origin: notes]"
+                    if tgt not in direct_path:
+                        direct_path.append(tgt)
+                    if src not in direct_path:
+                        direct_path.append(src)
+                    direct_facts.append({
+                        "edge_id": f_id,
+                        "text": fact_str,
+                        "source": src,
+                        "target": tgt,
+                        "type": rel_type,
+                        "origin": "notes",
+                        "evidence": [{
+                            "document_id": rr["document_id"],
+                            "filename": rr["filename"],
+                            "page": rr["source_page"] or 1,
+                            "quote": rr["source_quote"] or f"{src} -> {tgt}"
+                        }]
+                    })
+                if direct_facts:
+                    return {
+                        "facts": direct_facts,
+                        "edges": [],
+                        "matched_entities": [{"canonical_name": mc["name"], "id": str(mc["id"])} for mc in matched_c],
+                        "dependency_path": direct_path
+                    }
+
             return {"facts": [], "edges": [], "matched_entities": [], "dependency_path": []}
 
         # Fetch prerequisite and related edges involving matched entities
@@ -522,9 +633,13 @@ def retrieve_graph_facts(
 # Question Answering Engine (Grounded, Verified Citations, Server Validation)
 # ---------------------------------------------------------------------------
 
+class CitationItem(BaseModel):
+    chunk_id: Optional[int] = Field(None, description="The integer chunk_id cited")
+    edge_id: Optional[str] = Field(None, description="The string edge_id cited")
+
 class AskAnswerResponse(BaseModel):
     answer: str = Field(description="Direct, grounded academic answer in markdown")
-    citations: List[Dict[str, Any]] = Field(default_factory=list, description="Citations to chunk IDs or edge IDs")
+    citations: List[CitationItem] = Field(default_factory=list, description="Citations to chunk IDs or edge IDs")
     concepts_used: List[str] = Field(default_factory=list, description="Educational concepts covered in the answer")
     dependency_path: List[str] = Field(default_factory=list, description="Ordered concept names showing prerequisite sequence")
     not_found: bool = Field(default=False, description="True if notes do not contain sufficient evidence to answer")
@@ -550,6 +665,12 @@ def answer_user_question(
     if conn is None:
         conn = get_connection()
         should_close = True
+
+    # Coerce scope: if document_id is missing, force scope to "all"
+    if not document_id:
+        scope = "all"
+    target_doc_id = document_id if scope == "document" else None
+
     try:
         # 1. Daily rate limit check
         today_iso = date.today().isoformat()
@@ -573,16 +694,28 @@ def answer_user_question(
             }
 
         # 2. Check cache for exact duplicate question for this user and scope
-        cache_row = conn.execute(
-            """
-            SELECT answer, route, citations_json FROM qa_history
-            WHERE user_id = ? AND lower(trim(question)) = lower(trim(?))
-              AND (document_id = ? OR (document_id IS NULL AND ? IS NULL))
-              AND created_at >= ?
-            ORDER BY created_at DESC LIMIT 1
-            """,
-            (user_id, question, document_id if scope == "document" else None, document_id if scope == "document" else None, today_iso)
-        ).fetchone()
+        if target_doc_id:
+            cache_row = conn.execute(
+                """
+                SELECT answer, route, citations_json FROM qa_history
+                WHERE user_id = ? AND lower(trim(question)) = lower(trim(?))
+                  AND document_id = ?
+                  AND created_at >= ?
+                ORDER BY created_at DESC LIMIT 1
+                """,
+                (user_id, question, target_doc_id, today_iso)
+            ).fetchone()
+        else:
+            cache_row = conn.execute(
+                """
+                SELECT answer, route, citations_json FROM qa_history
+                WHERE user_id = ? AND lower(trim(question)) = lower(trim(?))
+                  AND document_id IS NULL
+                  AND created_at >= ?
+                ORDER BY created_at DESC LIMIT 1
+                """,
+                (user_id, question, today_iso)
+            ).fetchone()
 
         if cache_row:
             try:
@@ -609,13 +742,11 @@ def answer_user_question(
         graph_facts_data = {"facts": [], "edges": [], "matched_entities": [], "dependency_path": []}
 
         if route in ("vector", "hybrid", "study_recommendation"):
-            doc_filter = document_id if scope == "document" else None
-            retrieved_chunks = retrieve_top_chunks(question, user_id, doc_filter, k=5, conn=conn)
+            retrieved_chunks = retrieve_top_chunks(question, user_id, target_doc_id, k=5, conn=conn)
 
         if route in ("graph", "hybrid"):
-            doc_filter = document_id if scope == "document" else None
             try:
-                graph_facts_data = retrieve_graph_facts(question, user_id, doc_filter, conn=conn)
+                graph_facts_data = retrieve_graph_facts(question, user_id, target_doc_id, conn=conn)
             except Exception as e_graph:
                 logger.warning(f"Graph retrieval failed (falling back to vector): {e_graph}")
 
@@ -656,23 +787,32 @@ def answer_user_question(
                 "Provide a clear, educational, well-structured answer in markdown with valid citations."
             )
 
-            try:
-                from google.genai import types
-                resp = client.models.generate_content(
-                    model=GEMINI_MODEL,
-                    contents=user_prompt,
-                    config=types.GenerateContentConfig(
-                        system_instruction=system_prompt,
-                        response_mime_type="application/json",
-                        response_schema=AskAnswerResponse,
-                        temperature=0.1
+            models_to_try = [GEMINI_MODEL, "gemini-2.5-flash", "gemini-1.5-flash"]
+            seen_m = set()
+            candidate_models = []
+            for m in models_to_try:
+                if m and m not in seen_m:
+                    candidate_models.append(m)
+                    seen_m.add(m)
+
+            for m in candidate_models:
+                try:
+                    from google.genai import types
+                    resp = client.models.generate_content(
+                        model=m,
+                        contents=user_prompt,
+                        config=types.GenerateContentConfig(
+                            system_instruction=system_prompt,
+                            response_mime_type="application/json",
+                            response_schema=AskAnswerResponse,
+                            temperature=0.1
+                        )
                     )
-                )
-                if resp and resp.text:
-                    parsed = json.loads(resp.text)
-                    gemini_answer = parsed
-            except Exception as e_gen:
-                logger.warning(f"Gemini Ask generation error: {e_gen}")
+                    if resp and resp.text:
+                        gemini_answer = json.loads(resp.text)
+                        break
+                except Exception as e_gen:
+                    logger.warning(f"Gemini Ask generation with model {m} failed: {e_gen}")
 
         # Deterministic fallback answer if Gemini unavailable or failed
         if not gemini_answer:
@@ -738,27 +878,30 @@ def answer_user_question(
                     "origin": edge["origin"]
                 })
 
-        # Save to qa_history
+        # Save to qa_history (safely guarded)
         now_iso = datetime.now(timezone.utc).isoformat()
         qa_id = f"qa_{uuid.uuid4().hex[:12]}"
-        with conn:
-            conn.execute(
-                """
-                INSERT INTO qa_history (
-                    id, user_id, document_id, question, answer, route, citations_json, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    qa_id,
-                    user_id,
-                    document_id if scope == "document" else None,
-                    question,
-                    gemini_answer.get("answer", ""),
-                    route,
-                    json.dumps(verified_citations),
-                    now_iso
+        try:
+            with conn:
+                conn.execute(
+                    """
+                    INSERT INTO qa_history (
+                        id, user_id, document_id, question, answer, route, citations_json, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        qa_id,
+                        user_id,
+                        target_doc_id,
+                        question,
+                        gemini_answer.get("answer", ""),
+                        route,
+                        json.dumps(verified_citations),
+                        now_iso
+                    )
                 )
-            )
+        except Exception as e_hist:
+            logger.warning(f"Could not save question to qa_history: {e_hist}")
 
         t_elapsed = (time.perf_counter() - t0) * 1000.0
         logger.info(f"Answered Ask question in {t_elapsed:.1f}ms (route: {route}, verified citations: {len(verified_citations)})")

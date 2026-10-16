@@ -4,9 +4,12 @@ FastAPI router for Graph RAG, Knowledge Graph visualisations, Flow, Mastery Map,
 Strictly scoped to the verified user.
 """
 
+import logging
 from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, Request, Response, HTTPException, Depends, Query, Path
 from pydantic import BaseModel, Field
+
+logger = logging.getLogger("conceptlens.graph")
 
 try:
     from backend.auth import get_current_user, get_current_user_or_guest
@@ -232,13 +235,14 @@ async def unmerge_entity_endpoint(
 async def ask_question_endpoint(
     request: Request,
     payload: AskRequest,
-    current_user: Dict[str, Any] = Depends(get_current_user)
+    user_or_guest: Dict[str, Any] = Depends(get_current_user_or_guest)
 ):
     """
     Answers dependency, relationship, and factual questions from the student's concept graph & chunks.
     Verifies every citation on the server; drops unsupported claims; returns document, page, and quote.
+    Supports both registered students and guest scholar sessions.
     """
-    user_id = current_user["id"]
+    user_id = user_or_guest.get("id") or "guest"
     try:
         result = answer_user_question(
             question=payload.question,
@@ -263,7 +267,8 @@ async def ask_question_endpoint(
 @router.get("/ask/history", tags=["ask"])
 async def get_ask_history_endpoint(
     limit: int = Query(20, ge=1, le=50),
-    current_user: Dict[str, Any] = Depends(get_current_user)
+    user_or_guest: Dict[str, Any] = Depends(get_current_user_or_guest)
 ):
     """Returns the user's recent Ask Q&A history."""
-    return get_user_qa_history(user_id=current_user["id"], limit=limit)
+    user_id = user_or_guest.get("id") or "guest"
+    return get_user_qa_history(user_id=user_id, limit=limit)

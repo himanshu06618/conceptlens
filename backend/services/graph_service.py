@@ -85,23 +85,29 @@ def init_graph_db(conn=None) -> None:
     try:
         with conn:
             if is_postgres():
-                # Guarded pgvector extension
+                # Guarded pgvector extension check
                 has_vector = False
                 try:
-                    conn.execute("CREATE EXTENSION IF NOT EXISTS vector;")
-                    has_vector = True
-                    logger.info("init_graph_db: Postgres pgvector extension verified.")
-                except Exception as e_vec:
-                    logger.warning(f"init_graph_db: pgvector extension not available: {e_vec}. Using TEXT.")
+                    ext_row = conn.execute("SELECT 1 FROM pg_extension WHERE extname = 'vector'").fetchone()
+                    if ext_row:
+                        has_vector = True
+                    else:
+                        try:
+                            conn.execute("CREATE EXTENSION IF NOT EXISTS vector;")
+                            has_vector = True
+                            logger.info("init_graph_db: Postgres pgvector extension verified.")
+                        except Exception as e_vec:
+                            logger.warning(f"init_graph_db: pgvector extension not available: {e_vec}. Using TEXT.")
+                except Exception:
+                    pass
 
                 embed_col_type = "vector(768)" if has_vector else "TEXT"
-
-                # 1. document_chunks
+                # 1. document_chunks (user_id not constrained to users(id) to support guest sessions)
                 conn.execute(f"""
                     CREATE TABLE IF NOT EXISTS document_chunks (
                         id SERIAL PRIMARY KEY,
                         document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
-                        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        user_id TEXT NOT NULL,
                         page INTEGER DEFAULT 1,
                         chunk_index INTEGER DEFAULT 0,
                         content TEXT NOT NULL,
@@ -128,7 +134,7 @@ def init_graph_db(conn=None) -> None:
                 conn.execute(f"""
                     CREATE TABLE IF NOT EXISTS concept_entities (
                         id TEXT PRIMARY KEY,
-                        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        user_id TEXT NOT NULL,
                         canonical_name TEXT NOT NULL,
                         normalized_name TEXT NOT NULL,
                         aliases TEXT DEFAULT '[]',
@@ -162,7 +168,7 @@ def init_graph_db(conn=None) -> None:
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS concept_edges (
                         id TEXT PRIMARY KEY,
-                        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        user_id TEXT NOT NULL,
                         source_entity_id TEXT NOT NULL REFERENCES concept_entities(id) ON DELETE CASCADE,
                         target_entity_id TEXT NOT NULL REFERENCES concept_entities(id) ON DELETE CASCADE,
                         type TEXT NOT NULL CHECK(type IN ('prerequisite', 'related')),
@@ -197,7 +203,7 @@ def init_graph_db(conn=None) -> None:
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS merge_suggestions (
                         id TEXT PRIMARY KEY,
-                        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        user_id TEXT NOT NULL,
                         entity_a TEXT NOT NULL REFERENCES concept_entities(id) ON DELETE CASCADE,
                         entity_b TEXT NOT NULL REFERENCES concept_entities(id) ON DELETE CASCADE,
                         score REAL NOT NULL,
@@ -213,7 +219,7 @@ def init_graph_db(conn=None) -> None:
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS qa_history (
                         id TEXT PRIMARY KEY,
-                        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        user_id TEXT NOT NULL,
                         document_id TEXT,
                         question TEXT NOT NULL,
                         answer TEXT NOT NULL,
@@ -224,13 +230,21 @@ def init_graph_db(conn=None) -> None:
                 """)
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_qa_history_user ON qa_history(user_id, created_at);")
 
+                # Drop obsolete foreign keys on user_id if present to support guest scholar sessions
+                conn.execute("ALTER TABLE qa_history DROP CONSTRAINT IF EXISTS qa_history_user_id_fkey;")
+                conn.execute("ALTER TABLE document_chunks DROP CONSTRAINT IF EXISTS document_chunks_user_id_fkey;")
+                conn.execute("ALTER TABLE concept_entities DROP CONSTRAINT IF EXISTS concept_entities_user_id_fkey;")
+                conn.execute("ALTER TABLE concept_edges DROP CONSTRAINT IF EXISTS concept_edges_user_id_fkey;")
+                conn.execute("ALTER TABLE merge_suggestions DROP CONSTRAINT IF EXISTS merge_suggestions_user_id_fkey;")
+
+
             else:
                 # SQLite DDL
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS document_chunks (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
-                        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        user_id TEXT NOT NULL,
                         page INTEGER DEFAULT 1,
                         chunk_index INTEGER DEFAULT 0,
                         content TEXT NOT NULL,
@@ -255,7 +269,7 @@ def init_graph_db(conn=None) -> None:
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS concept_entities (
                         id TEXT PRIMARY KEY,
-                        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        user_id TEXT NOT NULL,
                         canonical_name TEXT NOT NULL,
                         normalized_name TEXT NOT NULL,
                         aliases TEXT DEFAULT '[]',
@@ -286,7 +300,7 @@ def init_graph_db(conn=None) -> None:
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS concept_edges (
                         id TEXT PRIMARY KEY,
-                        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        user_id TEXT NOT NULL,
                         source_entity_id TEXT NOT NULL REFERENCES concept_entities(id) ON DELETE CASCADE,
                         target_entity_id TEXT NOT NULL REFERENCES concept_entities(id) ON DELETE CASCADE,
                         type TEXT NOT NULL CHECK(type IN ('prerequisite', 'related')),
@@ -319,7 +333,7 @@ def init_graph_db(conn=None) -> None:
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS merge_suggestions (
                         id TEXT PRIMARY KEY,
-                        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        user_id TEXT NOT NULL,
                         entity_a TEXT NOT NULL REFERENCES concept_entities(id) ON DELETE CASCADE,
                         entity_b TEXT NOT NULL REFERENCES concept_entities(id) ON DELETE CASCADE,
                         score REAL NOT NULL,
@@ -334,7 +348,7 @@ def init_graph_db(conn=None) -> None:
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS qa_history (
                         id TEXT PRIMARY KEY,
-                        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        user_id TEXT NOT NULL,
                         document_id TEXT,
                         question TEXT NOT NULL,
                         answer TEXT NOT NULL,
@@ -344,6 +358,7 @@ def init_graph_db(conn=None) -> None:
                     );
                 """)
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_qa_history_user ON qa_history(user_id, created_at);")
+
 
         logger.info("init_graph_db: Graph & RAG tables verified successfully.")
     finally:

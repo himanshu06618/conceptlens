@@ -359,3 +359,84 @@ def test_progress_updates_flow_and_mastery():
         assert mastery["overall_percentage"] == 50
     finally:
         conn.close()
+
+# ---------------------------------------------------------------------------
+# Test 7: Ask Notes Fallback When Chunks Missing & Null Document ID Coercion
+# ---------------------------------------------------------------------------
+
+def test_ask_notes_fallback_when_chunks_empty():
+    conn = get_connection()
+    try:
+        u_fallback = "user_ask_fallback"
+        create_test_user(conn, u_fallback, "student_fb")
+        d_fb = "doc_ask_fallback"
+        create_test_document(conn, d_fb, u_fallback, "Pre_Graph_Notes.pdf")
+
+        # Document has concepts and relations but zero rows in document_chunks
+        create_test_concept(conn, 601, d_fb, "Dynamic Programming", "Memoization and optimal substructure", stage_index=0)
+        create_test_concept(conn, 602, d_fb, "Bellman-Ford", "Shortest path algorithm using dynamic programming", stage_index=1)
+        create_test_relation(conn, 950, d_fb, 602, "Dynamic Programming", rel_type="prerequisite")
+        conn.commit()
+
+        # 1. Ask with document_id=None and scope="document" (must coerce to all without error)
+        res_null_doc = answer_user_question(
+            question="What is dynamic programming?",
+            user_id=u_fallback,
+            document_id=None,
+            scope="document",
+            conn=conn
+        )
+        assert res_null_doc is not None
+        assert "answer" in res_null_doc
+        assert res_null_doc["not_found"] is False
+
+        # 2. Ask with specific document_id that has no document_chunks
+        res_doc = answer_user_question(
+            question="What are the prerequisites for Bellman-Ford?",
+            user_id=u_fallback,
+            document_id=d_fb,
+            scope="document",
+            conn=conn
+        )
+        assert res_doc is not None
+        assert "answer" in res_doc
+        assert res_doc["not_found"] is False
+    finally:
+        conn.close()
+
+def test_ask_endpoint_authenticated_and_guest():
+    from fastapi.testclient import TestClient
+    from backend.main import app
+    from backend.auth import create_access_token
+
+    client = TestClient(app)
+    u_test = "user_test_endpoint_ask"
+    conn = get_connection()
+    try:
+        create_test_user(conn, u_test, "endpoint_student")
+        conn.commit()
+    finally:
+        conn.close()
+
+    token = create_access_token(u_test, "endpoint_student")
+
+    # 1. Authenticated POST /api/ask
+    resp_auth = client.post(
+        "/api/ask",
+        json={"question": "What should I study next?", "document_id": None, "scope": "all"},
+        headers={"Authorization": f"Bearer {token}"}
+    )
+    assert resp_auth.status_code == 200
+    data_auth = resp_auth.json()
+    assert "answer" in data_auth
+    assert "citations" in data_auth
+
+    # 2. Guest POST /api/ask
+    resp_guest = client.post(
+        "/api/ask",
+        json={"question": "What are the prerequisites?", "document_id": None, "scope": "document"}
+    )
+    assert resp_guest.status_code == 200
+    data_guest = resp_guest.json()
+    assert "answer" in data_guest
+    assert "citations" in data_guest

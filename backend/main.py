@@ -230,6 +230,15 @@ async def lifespan(app: FastAPI):
         logger.warning(f"Notes DB initialization warning: {e}")
 
     try:
+        try:
+            from backend.services.graph_service import init_graph_db
+        except ImportError:
+            from services.graph_service import init_graph_db
+        init_graph_db()
+    except Exception as e:
+        logger.warning(f"Graph DB initialization warning in lifespan: {e}")
+
+    try:
         init_planner_db()
         conn = get_connection()
         try:
