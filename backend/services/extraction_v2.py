@@ -220,7 +220,7 @@ class ExtractionV2Pipeline:
         # If quota was exhausted or no Gemini key, use code-only candidate extractor for missing pages
         for p in pages:
             if p.page_num not in extracted_pages_data:
-                code_data = self._extract_page_code_only(p)
+                code_data = self._extract_page_code_only(p, total_pages=total_pages)
                 extracted_pages_data[p.page_num] = code_data
 
         # 2. Quote verification & normalization
@@ -232,11 +232,12 @@ class ExtractionV2Pipeline:
             raw_concepts = p_data.get("concepts", [])
             for c in raw_concepts:
                 name = c.get("name", "").strip()
-                if is_junk_concept(name):
+                if not name or is_junk_concept(name):
                     continue
 
                 quote = c.get("quote", "").strip()
-                defn = c.get("definition_from_text", "").strip()
+                defn = c.get("definition") or c.get("definition_from_text") or ""
+                defn = defn.strip()
                 if not defn or "educational concept relating to" in defn.lower():
                     defn = "no definition in notes"
 
@@ -273,12 +274,17 @@ class ExtractionV2Pipeline:
             for p in pages:
                 if repair_count >= self.repair_budget:
                     break
+
+                # Leave extraction of pages without definitions or topic-related text (especially closing/last pages)
+                if not self._has_usable_topic_content(p, total_pages=total_pages):
+                    continue
+
                 # Check if page has substantial text but 0 or suspiciously few concepts
                 existing_for_p = verified_concepts_by_page.get(p.page_num, [])
-                candidates = self._find_page_candidates(p)
+                candidates = self._find_page_candidates(p, total_pages=total_pages)
                 uncovered = [
                     cand for cand in candidates
-                    if not any(normalize_concept_name(cand) in normalize_concept_name(ex["name"]) for ex in existing_for_p)
+                    if not any(normalize_concept_name(cand) in normalize_concept_name(ex.get("name", "")) for ex in existing_for_p)
                 ]
 
                 # If page has substantial text (> 120 chars) and either 0 concepts or strong uncovered candidates
@@ -289,54 +295,75 @@ class ExtractionV2Pipeline:
                     repair_count += 1
                     if repaired_concepts:
                         for rc in repaired_concepts:
-                            if not is_junk_concept(rc["name"]):
-                                rc["source_page"] = p.page_num
-                                rc["page"] = p.page_num
-                                rc["source_verified"] = verify_quote_on_page(rc.get("quote", ""), p.cleaned_text)
-                                verified_concepts_by_page[p.page_num].append(rc)
+                            rc_name = rc.get("name", "").strip()
+                            if not rc_name or is_junk_concept(rc_name):
+                                continue
+                            rc_defn = rc.get("definition") or rc.get("definition_from_text") or "no definition in notes"
+                            rc_quote = rc.get("quote", "").strip()
+                            rc_imp = int(rc.get("importance", 2))
+                            is_ver = verify_quote_on_page(rc_quote, p.cleaned_text)
+                            verified_concepts_by_page[p.page_num].append({
+                                "name": rc_name,
+                                "definition": rc_defn,
+                                "quote": rc_quote,
+                                "importance": rc_imp,
+                                "source_verified": is_ver,
+                                "source_page": p.page_num,
+                                "page": p.page_num,
+                                "repaired": True
+                            })
 
         # 4. Global deduplication across all pages (tracking first_page & pages list)
         deduped_concepts_map: Dict[str, Dict[str, Any]] = {}
         for p_num in sorted(verified_concepts_by_page.keys()):
             for c in verified_concepts_by_page[p_num]:
-                norm_key = normalize_concept_name(c["name"])
+                c_name = c.get("name", "").strip()
+                if not c_name or is_junk_concept(c_name):
+                    continue
+                norm_key = normalize_concept_name(c_name)
                 if not norm_key:
                     continue
 
+                c_defn = c.get("definition") or c.get("definition_from_text") or "no definition in notes"
+                c_imp = int(c.get("importance", 2))
+                c_quote = c.get("quote") or c.get("source_excerpt", "")
+                c_src_page = c.get("source_page", p_num)
+                c_verified = bool(c.get("source_verified", False))
+
                 if norm_key not in deduped_concepts_map:
                     deduped_concepts_map[norm_key] = {
-                        "name": c["name"].title(),
-                        "definition": c["definition"],
-                        "importance": c["importance"],
-                        "source_excerpt": c["quote"],
-                        "source_quote": c["quote"],
-                        "source_page": c["source_page"],
-                        "page": c["source_page"],
-                        "pages": [c["source_page"]],
-                        "source_verified": c["source_verified"],
+                        "name": c_name.title(),
+                        "definition": c_defn,
+                        "importance": c_imp,
+                        "source_excerpt": c_quote,
+                        "source_quote": c_quote,
+                        "source_page": c_src_page,
+                        "page": c_src_page,
+                        "pages": [c_src_page],
+                        "source_verified": c_verified,
                         "topic": "General"
                     }
                 else:
                     existing = deduped_concepts_map[norm_key]
-                    if c["source_page"] not in existing["pages"]:
-                        existing["pages"].append(c["source_page"])
+                    if c_src_page not in existing.get("pages", []):
+                        existing.setdefault("pages", []).append(c_src_page)
                         existing["pages"].sort()
                     # Upgrade definition if previous had none
-                    if existing["definition"] == "no definition in notes" and c["definition"] != "no definition in notes":
-                        existing["definition"] = c["definition"]
-                        existing["source_quote"] = c["quote"]
-                        existing["source_excerpt"] = c["quote"]
+                    if existing.get("definition") == "no definition in notes" and c_defn != "no definition in notes":
+                        existing["definition"] = c_defn
+                        existing["source_quote"] = c_quote
+                        existing["source_excerpt"] = c_quote
                     # Retain highest importance
-                    if c["importance"] > existing["importance"]:
-                        existing["importance"] = c["importance"]
-                    if c["source_verified"]:
+                    if c_imp > existing.get("importance", 1):
+                        existing["importance"] = c_imp
+                    if c_verified:
                         existing["source_verified"] = True
 
         final_concepts: List[Dict[str, Any]] = []
         for idx, (k, c_obj) in enumerate(deduped_concepts_map.items()):
             c_obj["id"] = f"c_{idx + 1}"
             c_obj["flow_order"] = idx
-            c_obj["score"] = round(0.5 + (c_obj["importance"] * 0.15), 2)
+            c_obj["score"] = round(0.5 + (c_obj.get("importance", 2) * 0.15), 2)
             final_concepts.append(c_obj)
 
         # 5. Chapter Consolidation (Item 5.F)
@@ -578,6 +605,51 @@ class ExtractionV2Pipeline:
 
         return None, False
 
+    def _has_usable_topic_content(self, page: LayoutAwarePage, total_pages: int = 1) -> bool:
+        """
+        Determines whether a page contains educational topic content and definitions.
+        Pages like title slides, agendas, bibliographies, references, Q&A, thank you,
+        or closing slides without definitions are excluded.
+        """
+        if not getattr(page, "is_content_eligible", lambda: True)():
+            return False
+
+        if page.page_type in ("title", "agenda", "references", "blank", "low_text", "exercise"):
+            return False
+
+        if page.char_count < 80:
+            return False
+
+        text_lower = page.cleaned_text.lower()
+        title_lower = (page.title or "").lower()
+
+        closing_markers = (
+            "references", "bibliography", "further reading", "sources",
+            "works cited", "suggested reading", "acknowledgements", "credits",
+            "appendix", "index", "glossary", "citations", "thank you", "thanks",
+            "questions?", "questions", "any questions", "q&a", "q & a", "the end",
+            "conclusion", "conclusions", "author biography", "published by", "disclaimer"
+        )
+        if any(kw in title_lower for kw in closing_markers):
+            return False
+
+        is_end_of_doc = (page.page_num >= total_pages - 1) if total_pages > 2 else (page.page_num == total_pages and total_pages > 1)
+        if is_end_of_doc:
+            if any(kw in text_lower[:400] for kw in closing_markers):
+                return False
+            # Check citation density
+            citation_count = len(re.findall(r"(?:\[\d{1,3}\]|\(\d{4}\)|et al\.|doi:\s*10\.|isbn|https?:\/\/)", text_lower))
+            if citation_count >= 3:
+                return False
+            # On the last page, check if there are any definitions or educational topic terms
+            has_def = any(pat.search(page.cleaned_text) for pat in DEFINITION_PATTERNS)
+            educational_keywords = ("is a ", "is defined as", "refers to", "means", "consists of", "concept", "theory", "algorithm", "formula", "principle")
+            has_edu = any(ek in text_lower for ek in educational_keywords)
+            if not has_def and not has_edu and len(page.headings) <= 1:
+                return False
+
+        return True
+
     def _run_repair_pass(
         self,
         page: LayoutAwarePage,
@@ -598,7 +670,7 @@ class ExtractionV2Pipeline:
             "If yes, extract its definition from the page text and provide an exact quote. "
             "Respond strictly in JSON format:\n"
             "[\n"
-            '  {"name": "<name>", "definition_from_text": "<definition_or_empty>", "quote": "<exact_quote>", "importance": 1|2|3}\n'
+            '  {"name": "<name>", "definition": "<definition_or_empty>", "quote": "<exact_quote>", "importance": 1|2|3}\n'
             "]"
         )
         try:
@@ -612,27 +684,40 @@ class ExtractionV2Pipeline:
                 config=config
             )
             items = json.loads(response.text.strip())
+            repaired: List[Dict[str, Any]] = []
             for item in items:
-                item["repaired"] = True
-            return items
+                name = item.get("name", "").strip()
+                if not name or is_junk_concept(name):
+                    continue
+                defn = item.get("definition") or item.get("definition_from_text") or "no definition in notes"
+                quote = item.get("quote", "").strip()
+                repaired.append({
+                    "name": name,
+                    "definition": defn,
+                    "definition_from_text": defn,
+                    "quote": quote,
+                    "importance": int(item.get("importance", 2)),
+                    "repaired": True
+                })
+            return repaired
         except Exception as e:
             logger.warning(f"Repair pass error on page {page.page_num}: {e}")
             return []
 
-    def _extract_page_code_only(self, page: LayoutAwarePage) -> Dict[str, Any]:
+    def _extract_page_code_only(self, page: LayoutAwarePage, total_pages: int = 1) -> Dict[str, Any]:
         """
         Fast, zero-API code fallback extractor that extracts genuine candidates
         per page with real definitions and quotes (NO fake placeholders!).
         """
-        if page.char_count < 20 or page.page_type in ("title", "agenda", "blank", "references"):
+        if not self._has_usable_topic_content(page, total_pages=total_pages):
             return {
                 "page": page.page_num,
                 "page_type": page.page_type,
                 "concepts": [],
-                "no_concepts_reason": f"Classified as {page.page_type}"
+                "no_concepts_reason": f"Classified as {page.page_type} (no definitions or educational topic text)"
             }
 
-        candidates = self._find_page_candidates(page)
+        candidates = self._find_page_candidates(page, total_pages=total_pages)
         concepts: List[Dict[str, Any]] = []
 
         for cand in candidates[:8]:
@@ -641,9 +726,11 @@ class ExtractionV2Pipeline:
                 continue
             # Detect definition sentence on this page
             defn, quote = self._find_definition_in_text(clean_cand, page.cleaned_text)
+            c_def = defn if defn else "no definition in notes"
             concepts.append({
                 "name": clean_cand.title(),
-                "definition_from_text": defn if defn else "no definition in notes",
+                "definition": c_def,
+                "definition_from_text": c_def,
                 "quote": quote if quote else (page.cleaned_text[:120] if page.cleaned_text else clean_cand),
                 "importance": 3 if clean_cand in page.headings else 2
             })
@@ -655,8 +742,11 @@ class ExtractionV2Pipeline:
             "no_concepts_reason": None if concepts else "No prominent concepts on page"
         }
 
-    def _find_page_candidates(self, page: LayoutAwarePage) -> List[str]:
+    def _find_page_candidates(self, page: LayoutAwarePage, total_pages: int = 1) -> List[str]:
         """Finds candidate educational terms on a page using headings and YAKE."""
+        if not self._has_usable_topic_content(page, total_pages=total_pages):
+            return []
+
         candidates: List[str] = []
         # 1. Page headings & titles
         for h in page.headings:

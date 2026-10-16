@@ -117,3 +117,40 @@ def test_extraction_v2_code_fallback():
     for c in concepts:
         assert "educational concept relating to" not in c["definition_from_text"].lower()
         assert c["quote"] != ""
+
+def test_extraction_v2_skip_last_page_without_definitions_and_no_definition_keyerror():
+    from backend.services.layout_extractor import LayoutAwarePage
+    pipeline = ExtractionV2Pipeline(api_key=None)
+
+    # Content page
+    page1 = LayoutAwarePage(
+        page_num=1,
+        raw_text="Linear Regression is a statistical method for modeling linear relationships between variables.",
+        cleaned_text="Linear Regression is a statistical method for modeling linear relationships between variables.",
+        title="Chapter 1: Regression",
+        page_type="content",
+        headings=["Linear Regression"],
+        text_hash="hash1",
+        char_count=98
+    )
+
+    # Last page with closing remarks / no definitions
+    page2 = LayoutAwarePage(
+        page_num=2,
+        raw_text="Thank you for listening! Any questions? References: [1] Goodfellow et al. Deep Learning, MIT Press, 2016.",
+        cleaned_text="Thank you for listening! Any questions? References: [1] Goodfellow et al. Deep Learning, MIT Press, 2016.",
+        title="Questions & References",
+        page_type="references",
+        headings=["Questions"],
+        text_hash="hash2",
+        char_count=107
+    )
+
+    assert not pipeline._has_usable_topic_content(page2, total_pages=2)
+    assert pipeline._find_page_candidates(page2, total_pages=2) == []
+
+    # Verify code extraction on non-content page produces no concepts without error
+    res_p2 = pipeline._extract_page_code_only(page2, total_pages=2)
+    assert len(res_p2["concepts"]) == 0
+    assert "no definitions" in res_p2["no_concepts_reason"]
+

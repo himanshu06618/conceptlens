@@ -474,7 +474,7 @@ def normalize_extracted_concepts(raw_concepts: List[Dict[str, Any]]) -> List[Dic
         c_id = c["id"]
         c["stage_index"] = stage_index_map.get(c_id, 0)
         c["chapter_order"] = chapter_order_map.get(c["chapter"], 1)
-        c["estimated_minutes"] = derive_estimated_minutes(c["importance"], c["definition"], c.get("estimated_minutes"))
+        c["estimated_minutes"] = derive_estimated_minutes(c.get("importance", 2), c.get("definition", ""), c.get("estimated_minutes"))
         c["schema_version"] = SCHEMA_VERSION
         
         # Attach cleaned relations in both standard formats (target_id and name)

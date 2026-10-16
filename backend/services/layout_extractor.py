@@ -50,7 +50,16 @@ EXERCISE_KEYWORDS = {
 
 REFERENCE_KEYWORDS = {
     "references", "bibliography", "further reading", "sources",
-    "works cited", "suggested reading", "acknowledgements", "credits"
+    "works cited", "suggested reading", "acknowledgements", "credits",
+    "appendix", "index", "glossary", "citations", "readings", "acknowledgments",
+    "citations and references", "source materials"
+}
+
+CLOSING_KEYWORDS = {
+    "thank you", "thanks", "questions?", "questions", "any questions", "q&a", "q & a",
+    "the end", "conclusion", "conclusions", "author biography", "about the author",
+    "published by", "table of figures", "list of tables", "disclaimer",
+    "legal notice", "terms of use", "contact us", "contact info", "wrap up", "wrap-up"
 }
 
 
@@ -83,6 +92,10 @@ class LayoutAwarePage:
         self.char_count = char_count
         self.is_scanned_or_low_text = is_scanned_or_low_text
         self.blocks = blocks or []
+
+    def is_content_eligible(self) -> bool:
+        """Determines if a page is eligible for educational concept extraction."""
+        return self.page_type not in ("title", "agenda", "exercise", "references", "blank", "low_text")
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -329,9 +342,22 @@ class LayoutExtractor:
         if any(kw in title_lower or kw in text_lower[:250] for kw in EXERCISE_KEYWORDS):
             return "exercise"
 
-        # 6. References / Bibliography
-        if (page_num >= total_pages - 3) and any(kw in title_lower or kw in text_lower[:250] for kw in REFERENCE_KEYWORDS):
+        # 6. References / Bibliography / Appendix / Closing / Thank you / Q&A
+        is_closing_phase = (page_num >= total_pages - 2) if total_pages > 2 else (page_num == total_pages and total_pages > 1)
+        if any(kw in title_lower or kw in text_lower[:400] for kw in REFERENCE_KEYWORDS):
             return "references"
+        if is_closing_phase and any(kw in title_lower or kw in text_lower for kw in CLOSING_KEYWORDS):
+            return "references"
+
+        # Check citation density near document end
+        citation_matches = len(re.findall(r"(?:\[\d{1,3}\]|\(\d{4}\)|et al\.|doi:\s*10\.|isbn|https?:\/\/)", text_lower))
+        if citation_matches >= 3 and is_closing_phase:
+            return "references"
+
+        # On the very last page of multi-page notes, check if it contains no definitions and minimal content
+        if page_num == total_pages and total_pages > 1:
+            if char_count < 150 and not any(kw in text_lower for kw in ("is a", "defined as", "refers to", "concept", "theory")):
+                return "references"
 
         if char_count < 80:
             return "low_text"
