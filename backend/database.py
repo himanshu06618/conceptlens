@@ -851,6 +851,16 @@ def init_db() -> None:
     except Exception:
         pass
 
+    # Initialize graph & RAG schema & migrations
+    try:
+        try:
+            from backend.services.graph_service import init_graph_db
+        except ImportError:
+            from services.graph_service import init_graph_db
+        init_graph_db()
+    except Exception as e_gdb:
+        logger.warning(f"Graph DB initialization warning: {e_gdb}")
+
     # Apply safe structural unique constraints (skips and logs warnings if duplicates exist)
     try:
         conn = get_connection()
@@ -1681,6 +1691,16 @@ def delete_document_by_id(user_id: str, doc_id: str) -> bool:
                 delete_document_file(conn, doc_id)
             except Exception as e:
                 logger.warning(f"Failed to delete document file for {doc_id}: {e}")
+
+            # 5b. Cleanup graph entities, mentions, edges, and chunks
+            try:
+                try:
+                    from backend.services.graph_service import cleanup_document_graph
+                except ImportError:
+                    from services.graph_service import cleanup_document_graph
+                cleanup_document_graph(doc_id, user_id, conn=conn)
+            except Exception as e_gc:
+                logger.warning(f"Failed to cleanup document graph for {doc_id}: {e_gc}")
 
             # 6. Delete document
             cursor = conn.execute("DELETE FROM documents WHERE id = ? AND user_id = ?", (doc_id, user_id))

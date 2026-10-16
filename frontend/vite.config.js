@@ -82,7 +82,7 @@ export default defineConfig({
         skipWaiting: true,
         clientsClaim: true,
         // Exclude all API routes, exports, viewer, version checks, and storage calls from service worker navigation fallback
-        navigateFallbackDenylist: [/^\/api/, /^https?:\/\/.*\/api/, /export/, /\/file/, /\/version/, /version\.json/],
+        navigateFallbackDenylist: [/^\/api/, /^https?:\/\/.*\/api/, /export/, /\/file/, /\/version/, /version\.json/, /\/graph/, /\/flow/, /\/mastery-map/, /\/ask/],
         // Precache and serve ONLY static build assets (JS, CSS, HTML, fonts, icons)
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         // Exclude API calls entirely from runtime caching so the browser dispatches them directly via network
@@ -91,6 +91,10 @@ export default defineConfig({
             // Explicitly route all API/backend/export/storage/version calls strictly via NetworkOnly (never cache in SW)
             urlPattern: ({ url }) =>
               url.pathname.startsWith('/api') ||
+              url.pathname.startsWith('/graph') ||
+              url.pathname.startsWith('/flow') ||
+              url.pathname.startsWith('/mastery-map') ||
+              url.pathname.startsWith('/ask') ||
               url.pathname.startsWith('/documents') ||
               url.pathname.startsWith('/dashboard') ||
               url.pathname.startsWith('/health') ||

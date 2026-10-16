@@ -790,3 +790,139 @@ export async function deleteNote(noteId) {
   return res.json();
 }
 
+// ==================== Graph RAG & Knowledge Visualisations API ====================
+
+export async function fetchKnowledgeGraph({
+  scope = 'all',
+  documentId = null,
+  origin = 'all',
+  includeRelated = true,
+  search = '',
+  focus = null,
+  hops = 2,
+  limit = 80,
+} = {}) {
+  const params = new URLSearchParams();
+  if (scope) params.set('scope', scope);
+  if (documentId) params.set('document_id', documentId);
+  if (origin) params.set('origin', origin);
+  params.set('include_related', String(includeRelated));
+  if (search) params.set('search', search);
+  if (focus) params.set('focus', focus);
+  if (hops) params.set('hops', String(hops));
+  if (limit) params.set('limit', String(limit));
+
+  const res = await apiFetch(`/graph?${params.toString()}`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Failed to load knowledge graph');
+  }
+  return res.json();
+}
+
+export async function fetchEntityDetail(entityId) {
+  const res = await apiFetch(`/graph/entities/${encodeURIComponent(entityId)}`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Failed to load concept detail');
+  }
+  return res.json();
+}
+
+export async function fetchFlowChart({
+  target = null,
+  scope = 'all',
+  documentId = null,
+  chapter = null,
+} = {}) {
+  const params = new URLSearchParams();
+  if (target) params.set('target', target);
+  if (scope) params.set('scope', scope);
+  if (documentId) params.set('document_id', documentId);
+  if (chapter) params.set('chapter', chapter);
+
+  const res = await apiFetch(`/flow?${params.toString()}`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Failed to load learning flow');
+  }
+  return res.json();
+}
+
+export async function fetchMasteryMap() {
+  const res = await apiFetch('/mastery-map');
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Failed to load mastery map');
+  }
+  return res.json();
+}
+
+export async function fetchMergeSuggestions() {
+  const res = await apiFetch('/graph/merge-suggestions');
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Failed to load merge suggestions');
+  }
+  return res.json();
+}
+
+export async function acceptMergeSuggestion(suggestionId) {
+  const res = await apiFetch(`/graph/merge-suggestions/${encodeURIComponent(suggestionId)}/accept`, {
+    method: 'POST',
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Failed to accept merge suggestion');
+  }
+  return res.json();
+}
+
+export async function rejectMergeSuggestion(suggestionId) {
+  const res = await apiFetch(`/graph/merge-suggestions/${encodeURIComponent(suggestionId)}/reject`, {
+    method: 'POST',
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Failed to reject merge suggestion');
+  }
+  return res.json();
+}
+
+export async function unmergeEntity(entityId) {
+  const res = await apiFetch(`/graph/entities/${encodeURIComponent(entityId)}/unmerge`, {
+    method: 'POST',
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Failed to unmerge entity');
+  }
+  return res.json();
+}
+
+export async function askNotes(question, { documentId = null, scope = 'document' } = {}) {
+  const res = await apiFetch('/ask', {
+    method: 'POST',
+    body: JSON.stringify({
+      question,
+      document_id: documentId,
+      scope,
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Failed to get answer from notes');
+  }
+  return res.json();
+}
+
+export async function fetchAskHistory() {
+  const res = await apiFetch('/ask/history');
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Failed to load ask history');
+  }
+  return res.json();
+}
+
+

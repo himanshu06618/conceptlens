@@ -83,6 +83,7 @@ try:
     from backend.routers.auth import router as auth_router, limiter
     from backend.routers.planner import router as planner_router
     from backend.routers.notes import router as notes_router
+    from backend.routers.graph import router as graph_router
     from backend.services.notes_db import init_notes_db
     from backend.services.planner_db import (
         init_planner_db,
@@ -163,6 +164,7 @@ except ImportError:
     from routers.auth import router as auth_router, limiter
     from routers.planner import router as planner_router
     from routers.notes import router as notes_router
+    from routers.graph import router as graph_router
     from services.notes_db import init_notes_db
     from services.planner_db import (
         init_planner_db,
@@ -358,6 +360,10 @@ except ImportError:
 app.include_router(notes_router, prefix="/api/notes", tags=["notes"])
 app.include_router(notes_router, prefix="/notes", tags=["notes"])
 
+# Mount Graph RAG and Visualisations router under both /api and root
+app.include_router(graph_router, prefix="/api")
+app.include_router(graph_router)
+
 def process_document_background(
     doc_id: str,
     file_path: Path,
@@ -545,6 +551,39 @@ def process_document_background(
                 process_document_chapters_and_relations(doc_id)
             except Exception as e_rel:
                 logger.warning(f"Could not build chapter relations for document {doc_id}: {e_rel}")
+
+            # Process Graph RAG & chunks for Graph / Ask features
+            try:
+                conn_doc = get_connection()
+                try:
+                    doc_owner = conn_doc.execute("SELECT user_id FROM documents WHERE id = ?", (doc_id,)).fetchone()
+                    doc_uid = doc_owner["user_id"] if doc_owner else None
+                finally:
+                    conn_doc.close()
+
+                if doc_uid:
+                    # 1. Chunk document and generate embeddings
+                    try:
+                        from backend.services.rag_service import chunk_document_file
+                    except ImportError:
+                        from services.rag_service import chunk_document_file
+                    chunk_document_file(file_path=file_path, doc_id=doc_id, user_id=doc_uid)
+
+                    # 2. Incrementally resolve entities & build graph edges
+                    try:
+                        from backend.services.graph_service import (
+                            resolve_entities_for_document,
+                            build_edges_for_document
+                        )
+                    except ImportError:
+                        from services.graph_service import (
+                            resolve_entities_for_document,
+                            build_edges_for_document
+                        )
+                    concept_to_ent = resolve_entities_for_document(doc_id, doc_uid)
+                    build_edges_for_document(doc_id, doc_uid, concept_to_ent, file_path=file_path)
+            except Exception as e_graph:
+                logger.warning(f"Could not build graph / chunks for document {doc_id}: {e_graph}")
 
             t_total = time.perf_counter() - t_start
 

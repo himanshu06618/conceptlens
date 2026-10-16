@@ -42,8 +42,11 @@ const ConceptListView = lazy(() => import('./ConceptListView'));
 const ConceptDetailPanel = lazy(() => import('./ConceptDetailPanel'));
 const ConceptTreeView = lazy(() => import('./ConceptTreeView'));
 const StudyRoadmapView = lazy(() => import('./StudyRoadmapView'));
+const PrerequisiteFlowView = lazy(() => import('./PrerequisiteFlowView'));
+const KnowledgeGraphView = lazy(() => import('./KnowledgeGraphView'));
+const AskAnswerCard = lazy(() => import('./AskAnswerCard'));
 
-const VALID_TABS = ['concepts', 'tree', 'roadmap'];
+const VALID_TABS = ['concepts', 'tree', 'roadmap', 'flow', 'graph'];
 
 function resolveInitialTab() {
   try {
@@ -53,26 +56,24 @@ function resolveInitialTab() {
       const urlView = (params.get('view') || params.get('tab') || '').toLowerCase().trim();
       if (urlView) {
         if (VALID_TABS.includes(urlView)) return urlView;
-        if (urlView === 'flowchart' || urlView === 'mindmap' || urlView === 'mind-map') return 'tree';
+        if (urlView === 'flowchart') return 'flow';
+        if (urlView === 'mindmap' || urlView === 'mind-map') return 'tree';
       }
 
       // 2. Check URL hash (#flowchart, #mindmap, etc.)
       const hash = (window.location.hash || '').replace('#', '').toLowerCase().trim();
       if (hash) {
         if (VALID_TABS.includes(hash)) return hash;
-        if (hash === 'flowchart' || hash === 'mindmap' || hash === 'mind-map') return 'tree';
+        if (hash === 'flowchart') return 'flow';
+        if (hash === 'mindmap' || hash === 'mind-map') return 'tree';
       }
 
       // 3. Check persistent stored last view
       const stored = (localStorage.getItem('conceptlens_last_view') || sessionStorage.getItem('conceptlens_last_view') || '').toLowerCase().trim();
       if (stored) {
         if (VALID_TABS.includes(stored)) return stored;
-        if (stored === 'flowchart' || stored === 'mindmap' || stored === 'mind-map') {
-          try {
-            localStorage.setItem('conceptlens_last_view', 'tree');
-          } catch (_) {}
-          return 'tree';
-        }
+        if (stored === 'flowchart') return 'flow';
+        if (stored === 'mindmap' || stored === 'mind-map') return 'tree';
       }
     }
   } catch (_) {
@@ -109,6 +110,10 @@ export default function UnifiedResultsPanel({
   // Shared search & selected concept state
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedConcept, setSelectedConcept] = useState(null);
+
+  // Ask Drawer state
+  const [isAskOpen, setIsAskOpen] = useState(false);
+  const [askInitialQuestion, setAskInitialQuestion] = useState('');
 
   // Local concepts state for optimistic updates
   const [concepts, setConcepts] = useState(() =>
@@ -391,6 +396,22 @@ export default function UnifiedResultsPanel({
 
         {/* Header Actions Controls */}
         <div className="results-panel-actions">
+          {/* Ask Notes Action (Screen 3) */}
+          <button
+            type="button"
+            className="panel-action-btn ask-notes-btn"
+            onClick={() => {
+              setAskInitialQuestion('');
+              setIsAskOpen(true);
+            }}
+            title="Ask your notes with Graph RAG"
+            aria-label="Ask your notes with Graph RAG"
+            style={{ color: 'var(--brand-deep, #46790C)' }}
+          >
+            <Sparkles size={14} />
+            <span className="hide-on-mobile">Ask Notes</span>
+          </button>
+
           {/* Re-analyse Action */}
           <button
             type="button"
@@ -562,6 +583,30 @@ export default function UnifiedResultsPanel({
               <ArrowRight size={15} />
               <span>Roadmap</span>
             </button>
+
+            {/* Tab 4: Flow (Prerequisite Flowchart) */}
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'flow'}
+              className={`panel-tab-btn ${activeTab === 'flow' ? 'active' : ''}`}
+              onClick={() => handleTabChange('flow')}
+            >
+              <Layers size={15} />
+              <span>Flow</span>
+            </button>
+
+            {/* Tab 5: Graph (Knowledge Graph) */}
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'graph'}
+              className={`panel-tab-btn ${activeTab === 'graph' ? 'active' : ''}`}
+              onClick={() => handleTabChange('graph')}
+            >
+              <Sparkles size={15} />
+              <span>Graph</span>
+            </button>
           </div>
 
           {/* Shared Search Box */}
@@ -629,6 +674,36 @@ export default function UnifiedResultsPanel({
                     />
                   </ViewErrorBoundary>
                 )}
+
+                {activeTab === 'flow' && (
+                  <ViewErrorBoundary viewName="Prerequisite Flow">
+                    <PrerequisiteFlowView
+                      documentId={documentData?.id}
+                      initialTargetConcept={selectedConcept?.name}
+                      onSelectConcept={setSelectedConcept}
+                      onToggleStudied={handleToggleStudied}
+                      isAuthenticated={isAuthenticated}
+                    />
+                  </ViewErrorBoundary>
+                )}
+
+                {activeTab === 'graph' && (
+                  <ViewErrorBoundary viewName="Knowledge Graph">
+                    <KnowledgeGraphView
+                      documentId={documentData?.id}
+                      initialSelectedId={selectedConcept?.id}
+                      onSelectConcept={setSelectedConcept}
+                      onAskAboutConcept={(cName) => {
+                        setAskInitialQuestion(`What are the prerequisites and dependencies of ${cName}?`);
+                        setIsAskOpen(true);
+                      }}
+                      onOpenViewer={(dId, pg, qt) => {
+                        window.location.href = `/viewer?doc=${dId}&page=${pg}&q=${encodeURIComponent(qt || '')}`;
+                      }}
+                      isAuthenticated={isAuthenticated}
+                    />
+                  </ViewErrorBoundary>
+                )}
               </Suspense>
             )}
           </div>
@@ -648,6 +723,44 @@ export default function UnifiedResultsPanel({
               />
             </Suspense>
           )}
+        </div>
+      )}
+
+      {/* Floating Ask Notes Drawer Modal (Screen 3) */}
+      {isAskOpen && (
+        <div className="floating-ask-drawer-scrim" onClick={() => setIsAskOpen(false)}>
+          <div className="floating-ask-drawer" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Ask Your Notes">
+            <div className="floating-ask-header">
+              <div className="floating-ask-title">
+                <Sparkles size={20} color="var(--brand, #9AE62E)" />
+                <h3>Ask your notes</h3>
+              </div>
+              <button
+                type="button"
+                className="floating-ask-close"
+                onClick={() => setIsAskOpen(false)}
+                aria-label="Close ask panel"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div style={{ padding: '16px' }}>
+              <Suspense fallback={<div className="panel-loader-wrap"><BookshelfLoader message="Loading ask agent..." /></div>}>
+                <AskAnswerCard
+                  documentId={documentData?.id}
+                  initialQuestion={askInitialQuestion}
+                  onOpenViewer={(dId, pg, qt) => {
+                    window.location.href = `/viewer?doc=${dId}&page=${pg}&q=${encodeURIComponent(qt || '')}`;
+                  }}
+                  onSelectConcept={(c) => {
+                    setSelectedConcept(c);
+                    setIsAskOpen(false);
+                  }}
+                  isAuthenticated={isAuthenticated}
+                />
+              </Suspense>
+            </div>
+          </div>
         </div>
       )}
     </section>

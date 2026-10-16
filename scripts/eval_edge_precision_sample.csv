@@ -1,0 +1,12 @@
+edge_id,source_concept,target_concept,type,origin,verified,evidence_quote,human_label_valid_1_or_0
+edge_824ed9801818,Graph Representation,Breadth-First Search,prerequisite,suggested,False,Adjacency lists represent directed and undirected graphs.,
+edge_147581134b4a,Graph Representation,Depth-First Search,prerequisite,suggested,False,Adjacency lists represent directed and undirected graphs.,
+edge_37649215502b,Breadth-First Search,Weighted Shortest Paths,prerequisite,suggested,False,Breadth-First Search traverses level by level with queue.,
+edge_4cf799d17828,Priority Queue,Binary Heaps,related,suggested,False,Priority queues maintain elements with associated priority.,
+edge_511eb14d54da,Binary Heaps,Dijkstra's Algorithm,prerequisite,suggested,False,Binary heap maintains heap property in array.,
+edge_d0e32ff6c664,Weighted Shortest Paths,Dijkstra's Algorithm,prerequisite,suggested,False,Shortest path weights on directed graphs.,
+edge_8a78e335ca08,Weighted Shortest Paths,Bellman-Ford,prerequisite,suggested,False,Shortest path weights on directed graphs.,
+edge_2c9c51d65cf0,Binary Search Trees,AVL Trees,prerequisite,suggested,False,Binary search tree property holds for left and right children.,
+edge_8c8e008baa63,Direct Access Arrays,Hashing,prerequisite,suggested,False,Direct access arrays map keys directly to array offsets.,
+edge_2fb1769ed37a,Recursion,Dynamic Programming Subproblems,prerequisite,suggested,False,Recursion divides problem into subproblems.,
+edge_d3100e050fb3,Computational Thinking,Abstraction,prerequisite,suggested,False,Computational thinking comprises abstraction and algorithm design.,

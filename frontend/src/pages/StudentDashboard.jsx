@@ -42,6 +42,8 @@ import NotesAnalysisSection from '../components/planner/NotesAnalysisSection';
 import MyNotesCard from '../components/planner/MyNotesCard';
 import CompactUploadCard from '../components/planner/CompactUploadCard';
 import BookshelfLoader from '../components/ui/BookshelfLoader';
+import MasteryMapView from '../components/results/MasteryMapView';
+import AskAnswerCard from '../components/results/AskAnswerCard';
 import '../styles/planner.css';
 import '../styles/results-panel.css';
 
@@ -58,6 +60,7 @@ export default function StudentDashboard({ onToast = () => {} }) {
   const [isUpdating, setIsUpdating] = useState(false);
   const [selectedSubjectId, setSelectedSubjectId] = useState(null);
   const [activeBookId, setActiveBookId] = useState(null);
+  const [isAskOpen, setIsAskOpen] = useState(false);
 
   // Bootstrap preview items for notes and reminders (zero waterfall requests)
   const [bootstrapNotes, setBootstrapNotes] = useState(null);
@@ -1041,6 +1044,23 @@ export default function StudentDashboard({ onToast = () => {} }) {
             initialTotalCount={bootstrapNotesCount}
           />
 
+          {/* Course Mastery Map Section (Screen 4) */}
+          <section className="planner-section-card" aria-label="Course Mastery Map">
+            <MasteryMapView
+              onOpenRoadmapChapter={(docId, chapterName) => {
+                setActiveBookId(docId);
+                loadDocResults(docId);
+              }}
+              onSelectConcept={(concept) => {
+                if (concept.document_id) {
+                  setActiveBookId(concept.document_id);
+                  loadDocResults(concept.document_id);
+                }
+              }}
+              isAuthenticated={isAuthenticated}
+            />
+          </section>
+
           {/* 4 & 5. Study Route Planner & RouteMap */}
           <section className="planner-section-card">
             <div className="planner-section-title">
@@ -1255,6 +1275,52 @@ export default function StudentDashboard({ onToast = () => {} }) {
           />
         </div>
       </div>
+
+      {/* Floating Ask Your Notes Button & Drawer (Screen 3) */}
+      <button
+        type="button"
+        className="floating-ask-btn"
+        onClick={() => setIsAskOpen(true)}
+        aria-label="Ask your notes with Graph RAG"
+      >
+        <Sparkles size={18} />
+        <span>Ask your notes</span>
+      </button>
+
+      {isAskOpen && (
+        <div className="floating-ask-drawer-scrim" onClick={() => setIsAskOpen(false)}>
+          <div className="floating-ask-drawer" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Ask Your Notes">
+            <div className="floating-ask-header">
+              <div className="floating-ask-title">
+                <Sparkles size={20} color="var(--brand, #9AE62E)" />
+                <h3>Ask your notes</h3>
+              </div>
+              <button
+                type="button"
+                className="floating-ask-close"
+                onClick={() => setIsAskOpen(false)}
+                aria-label="Close ask panel"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div style={{ padding: '16px' }}>
+              <AskAnswerCard
+                documentId={activeDocId}
+                initialQuestion=""
+                onSelectConcept={(concept) => {
+                  if (concept.document_id) {
+                    setActiveBookId(concept.document_id);
+                    loadDocResults(concept.document_id);
+                  }
+                  setIsAskOpen(false);
+                }}
+                isAuthenticated={isAuthenticated}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
