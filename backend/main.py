@@ -387,11 +387,26 @@ def process_document_background(
     doc_id: str,
     file_path: Path,
     pdf_password: Optional[str] = None,
-    prefer_cloud: bool = True
+    prefer_cloud: bool = True,
+    user_id: Optional[str] = None
 ):
     """Background task to extract concepts with Gemini API, build tree & flowchart, and protect memory."""
     t_start = time.perf_counter()
     logger.info(f"Queued background processing for document {doc_id} ({file_path.name})...")
+
+    # Defensive resolution of user_id if not provided
+    if not user_id:
+        try:
+            conn_u = get_connection()
+            try:
+                row_u = conn_u.execute("SELECT user_id FROM documents WHERE id = ?", (doc_id,)).fetchone()
+                if row_u:
+                    user_id = row_u["user_id"]
+            finally:
+                conn_u.close()
+        except Exception as e_uid:
+            logger.warning(f"Could not resolve user_id for document {doc_id}: {e_uid}")
+
     update_document_stage(
         doc_id,
         stage="reading",
@@ -514,7 +529,7 @@ def process_document_background(
                     conn_s3 = get_connection()
                     try:
                         doc_row = conn_s3.execute("SELECT user_id, file_hash FROM documents WHERE id = ?", (doc_id,)).fetchone()
-                        u_id = doc_row["user_id"] if doc_row else None
+                        u_id = user_id or (doc_row["user_id"] if doc_row else None)
                         f_hash = doc_row["file_hash"] if doc_row else None
                         if u_id:
                             f_size = file_path.stat().st_size
@@ -548,12 +563,14 @@ def process_document_background(
 
             # Process Graph RAG & chunks for Graph / Ask features
             try:
-                conn_doc = get_connection()
-                try:
-                    doc_owner = conn_doc.execute("SELECT user_id FROM documents WHERE id = ?", (doc_id,)).fetchone()
-                    doc_uid = doc_owner["user_id"] if doc_owner else None
-                finally:
-                    conn_doc.close()
+                doc_uid = user_id
+                if not doc_uid:
+                    conn_doc = get_connection()
+                    try:
+                        doc_owner = conn_doc.execute("SELECT user_id FROM documents WHERE id = ?", (doc_id,)).fetchone()
+                        doc_uid = doc_owner["user_id"] if doc_owner else None
+                    finally:
+                        conn_doc.close()
 
                 if doc_uid:
                     # 1. Chunk document and generate embeddings
@@ -881,7 +898,8 @@ async def upload_document(
         doc_id,
         save_path,
         pdf_password=pdf_password,
-        prefer_cloud=prefer_cloud
+        prefer_cloud=prefer_cloud,
+        user_id=actor["id"]
     )
 
     return UploadResponse(
