@@ -511,7 +511,8 @@ input, select, textarea {
 
 .app-header .header-dashboard-btn,
 .app-header .theme-toggle-btn,
-.app-header .header-sidebar-toggle {
+.app-header .header-sidebar-toggle,
+.app-header .header-nav-sidebar-btn {
   border: 1px solid rgba(111, 194, 26, 0.35);
   background: var(--glass-control-bg);
   backdrop-filter: var(--glass-blur);
@@ -528,7 +529,8 @@ input, select, textarea {
 
 .app-header .header-dashboard-btn:hover,
 .app-header .theme-toggle-btn:hover,
-.app-header .header-sidebar-toggle:hover {
+.app-header .header-sidebar-toggle:hover,
+.app-header .header-nav-sidebar-btn:hover {
   border-color: var(--brand-deep);
   background: var(--surface-hover);
   color: var(--brand-text);
@@ -537,7 +539,8 @@ input, select, textarea {
 
 .app-header .header-dashboard-btn:focus-visible,
 .app-header .theme-toggle-btn:focus-visible,
-.app-header .header-sidebar-toggle:focus-visible {
+.app-header .header-sidebar-toggle:focus-visible,
+.app-header .header-nav-sidebar-btn:focus-visible {
   outline: none;
   box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--brand-deep);
 }

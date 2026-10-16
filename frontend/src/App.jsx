@@ -3,11 +3,13 @@ import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-
 import { 
   LogIn,
   PanelLeftOpen,
-  PanelLeftClose
+  PanelLeftClose,
+  Menu
 } from 'lucide-react';
 import StudentDashboard from './pages/StudentDashboard';
 import NeutralSkeleton from './components/planner/NeutralSkeleton';
 import Sidebar from './components/Sidebar';
+import NavSidebar from './components/NavSidebar';
 import UploadView from './components/UploadView';
 import ToastContainer from './components/Toast';
 import AuthModal from './components/AuthModal';
@@ -133,6 +135,7 @@ export default function App() {
 
   // Sidebar Navigation State (Mobile drawer + Desktop collapse)
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isNavSidebarOpen, setIsNavSidebarOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
     try {
       return localStorage.getItem('conceptlens_sidebar_collapsed') === 'true';
@@ -739,6 +742,17 @@ export default function App() {
             </Button>
           )}
 
+          {/* Sidebar button in top right side (right side of profile view) */}
+          <button
+            type="button"
+            className={`header-nav-sidebar-btn ${isNavSidebarOpen ? 'is-active' : ''}`}
+            onClick={() => setIsNavSidebarOpen((prev) => !prev)}
+            aria-label="Open Navigation Sidebar"
+            title="Navigation Menu: Dashboard, Personal Notes & Study Reminders"
+          >
+            <Menu size={20} strokeWidth={2} />
+          </button>
+
           {isGuestWorkspaceRoute && (
             <button
               type="button"
@@ -827,6 +841,13 @@ export default function App() {
 
       {/* Global In-Dashboard Auth Modal */}
       <AuthModal onSuccess={handleAuthSuccess} guestStatus={guestStatus} />
+
+      {/* Global Navigation Sidebar & Study Reminders Drawer */}
+      <NavSidebar
+        isOpen={isNavSidebarOpen}
+        onClose={() => setIsNavSidebarOpen(false)}
+        onToast={addToast}
+      />
 
       {/* Toast Notifications */}
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
