@@ -1,5 +1,6 @@
 import React from 'react';
-import { Target, CheckCircle2, AlertCircle, Award } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Target, CheckCircle2, AlertCircle, Award, MapPin, ArrowRight } from 'lucide-react';
 
 export default function CourseStatusCard({
   activePlan = null,
@@ -7,6 +8,8 @@ export default function CourseStatusCard({
   totalChapters = 0,
   doneChapters = 0
 }) {
+  const navigate = useNavigate();
+
   if (!activePlan) {
     return (
       <div className="planner-section-card">
@@ -16,8 +19,32 @@ export default function CourseStatusCard({
             Course Status
           </span>
         </div>
-        <div style={{ padding: '24px', textAlign: 'center', color: 'var(--planner-text-muted)', background: 'var(--planner-chip-bg)', borderRadius: 'var(--planner-radius-sm)' }}>
-          No active study plan selected. Choose a deadline above and click <strong>Start this plan</strong> to track your progress!
+        <div style={{ padding: '24px 20px', textAlign: 'center', color: 'var(--planner-text-muted)', background: 'var(--planner-chip-bg)', borderRadius: 'var(--planner-radius-sm)' }}>
+          <p style={{ margin: '0 0 14px 0', fontSize: '0.9rem' }}>
+            No active study plan started yet. Use the <strong>Study Route Planner</strong> from the sidebar to set your pace and track daily milestones.
+          </p>
+          <button
+            type="button"
+            onClick={() => navigate('/planner')}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              background: 'var(--planner-mint)',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '999px',
+              padding: '8px 18px',
+              fontSize: '0.84rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              boxShadow: 'var(--planner-shadow-sm)'
+            }}
+          >
+            <MapPin size={14} />
+            <span>Open Study Route Planner</span>
+            <ArrowRight size={14} />
+          </button>
         </div>
       </div>
     );

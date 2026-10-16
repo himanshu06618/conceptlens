@@ -219,6 +219,11 @@
   color: #1976D2;
 }
 
+.nav-card-icon-slot.icon-route {
+  background: rgba(255, 140, 66, 0.18);
+  color: #E66A1F;
+}
+
 .nav-card-icon-slot.icon-reminders {
   background: rgba(255, 179, 0, 0.18);
   color: #D97706;

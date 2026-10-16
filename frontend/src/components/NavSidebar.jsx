@@ -18,7 +18,8 @@ import {
   LogIn,
   User,
   Compass,
-  AlertCircle
+  AlertCircle,
+  MapPin
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -337,6 +338,7 @@ export default function NavSidebar({ isOpen, onClose, onToast = () => {} }) {
   };
 
   const isDashboardActive = location.pathname === '/' || location.pathname === '/dashboard';
+  const isPlannerActive = location.pathname.startsWith('/planner') || location.pathname.startsWith('/study-plan');
   const isNotesActive = location.pathname.startsWith('/notes');
 
   const displayName = getDisplayName(user, 'Scholar');
@@ -407,13 +409,40 @@ export default function NavSidebar({ isOpen, onClose, onToast = () => {} }) {
                   )}
                 </div>
                 <p className="nav-card-description">
-                  Curriculum roadmap, concept trees & mastery tracking
+                  Curriculum roadmap, concept trees & chapter mastery
                 </p>
               </div>
               <ArrowRight size={16} className="nav-card-arrow" />
             </button>
 
-            {/* 2. Personal Notes */}
+            {/* 2. Study Route Planner */}
+            <button
+              type="button"
+              className={`nav-card-item ${isPlannerActive ? 'is-active' : ''}`}
+              onClick={() => {
+                navigate('/planner');
+                onClose();
+              }}
+              aria-label="Go to Study Route Planner"
+            >
+              <div className="nav-card-icon-slot icon-route">
+                <MapPin size={20} strokeWidth={2} />
+              </div>
+              <div className="nav-card-content">
+                <div className="nav-card-title-row">
+                  <span className="nav-card-title">Study Route Planner</span>
+                  {isPlannerActive && (
+                    <span className="nav-card-badge">Current</span>
+                  )}
+                </div>
+                <p className="nav-card-description">
+                  Target pace, milestone timeline & daily study schedule
+                </p>
+              </div>
+              <ArrowRight size={16} className="nav-card-arrow" />
+            </button>
+
+            {/* 3. Personal Notes */}
             <button
               type="button"
               className={`nav-card-item ${isNotesActive ? 'is-active' : ''}`}

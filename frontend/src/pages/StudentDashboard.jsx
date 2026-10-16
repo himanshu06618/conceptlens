@@ -8,9 +8,6 @@ import {
   TrendingUp,
   RotateCcw,
   RotateCw,
-  Play,
-  ListFilter,
-  MapPin,
   Calendar,
   AlertTriangle,
   X
@@ -22,10 +19,6 @@ import {
   renameDocument,
   updateChapterProgress,
   updateChapterMeta,
-  previewStudyPlan,
-  createStudyPlan,
-  togglePlanDay,
-  resetStudyPlan,
   uploadDocument,
   getDocumentStatus,
   getDocument,
@@ -35,16 +28,12 @@ import {
 } from '../api/client';
 import { getDashboardCache, saveDashboardCache } from '../utils/dashboardCache';
 
-import RouteMap from '../components/planner/RouteMap';
 import RelatedTopicsCard from '../components/planner/RelatedTopicsCard';
 import CourseStatusCard from '../components/planner/CourseStatusCard';
-import RemindersCard from '../components/planner/RemindersCard';
 import NotesAnalysisSection from '../components/planner/NotesAnalysisSection';
-import MyNotesCard from '../components/planner/MyNotesCard';
 import CompactUploadCard from '../components/planner/CompactUploadCard';
 import UploadedFilesSection from '../components/planner/UploadedFilesSection';
 import BookshelfLoader from '../components/ui/BookshelfLoader';
-import MasteryMapView from '../components/results/MasteryMapView';
 import AskAnswerCard from '../components/results/AskAnswerCard';
 import '../styles/planner.css';
 import '../styles/results-panel.css';
@@ -63,11 +52,6 @@ export default function StudentDashboard({ onToast = () => {} }) {
   const [selectedSubjectId, setSelectedSubjectId] = useState(null);
   const [activeBookId, setActiveBookId] = useState(null);
   const [isAskOpen, setIsAskOpen] = useState(false);
-
-  // Bootstrap preview items for notes and reminders (zero waterfall requests)
-  const [bootstrapNotes, setBootstrapNotes] = useState(null);
-  const [bootstrapNotesCount, setBootstrapNotesCount] = useState(null);
-  const [bootstrapReminders, setBootstrapReminders] = useState(null);
 
   // Honest server wake-up banner & backoff retry states
   const [showWakingBanner, setShowWakingBanner] = useState(false);
@@ -101,15 +85,6 @@ export default function StudentDashboard({ onToast = () => {} }) {
   const [documentsList, setDocumentsList] = useState([]);
   const [isDocumentsLoading, setIsDocumentsLoading] = useState(false);
 
-  // Planner controls state
-  const [days, setDays] = useState(7);
-  const [scopeChapterId, setScopeChapterId] = useState('');
-  const [orderMode, setOrderMode] = useState('syllabus');
-  const [viewMode, setViewMode] = useState('route'); // 'route' | 'list'
-  const [previewRoute, setPreviewRoute] = useState(null);
-  const [isStartingPlan, setIsStartingPlan] = useState(false);
-  const [animTrigger, setAnimTrigger] = useState(0);
-
   // Selected chapter for relations card
   const [relationsChapterId, setRelationsChapterId] = useState(null);
 
@@ -139,24 +114,9 @@ export default function StudentDashboard({ onToast = () => {} }) {
           if (cached.overview.books?.length > 0) {
             setActiveBookId(cached.overview.books[0].id);
           }
-          if (cached.overview.route) {
-            setPreviewRoute(cached.overview.route);
-          }
           if (cached.overview.selected_chapter_id && !relationsChapterId) {
             setRelationsChapterId(cached.overview.selected_chapter_id);
           }
-          if (cached.overview.active_plan) {
-            setDays(cached.overview.active_plan.days || 7);
-            setOrderMode(cached.overview.active_plan.order_mode || 'syllabus');
-            setScopeChapterId(cached.overview.active_plan.scope_chapter_id || '');
-          }
-        }
-        if (cached.notes_preview) {
-          setBootstrapNotes(cached.notes_preview.items || []);
-          setBootstrapNotesCount(cached.notes_preview.total || 0);
-        }
-        if (cached.reminders) {
-          setBootstrapReminders(cached.reminders || []);
         }
         // Cached data is ready immediately: show instant paint
         setLoading(false);
@@ -187,10 +147,7 @@ export default function StudentDashboard({ onToast = () => {} }) {
 
       try {
         const data = await getDashboardBootstrap({
-          subjectId: subId || selectedSubjectId,
-          days,
-          orderMode,
-          scopeChapterId
+          subjectId: subId || selectedSubjectId
         });
 
         // Backend answered: clear waking timer and banner
@@ -211,25 +168,9 @@ export default function StudentDashboard({ onToast = () => {} }) {
           } else {
             setActiveBookId(null);
           }
-          if (data.overview.route) {
-            setPreviewRoute(data.overview.route);
-          }
           if (data.overview.selected_chapter_id && !relationsChapterId) {
             setRelationsChapterId(data.overview.selected_chapter_id);
           }
-          if (data.overview.active_plan) {
-            setDays(data.overview.active_plan.days || 7);
-            setOrderMode(data.overview.active_plan.order_mode || 'syllabus');
-            setScopeChapterId(data.overview.active_plan.scope_chapter_id || '');
-          }
-        }
-
-        if (data?.notes_preview) {
-          setBootstrapNotes(data.notes_preview.items || []);
-          setBootstrapNotesCount(data.notes_preview.total || 0);
-        }
-        if (data?.reminders) {
-          setBootstrapReminders(data.reminders || []);
         }
 
         // Save fresh per-user payload in IndexedDB
@@ -266,7 +207,7 @@ export default function StudentDashboard({ onToast = () => {} }) {
         setIsUpdating(false);
       }
     },
-    [selectedSubjectId, days, orderMode, scopeChapterId, relationsChapterId, activeBookId, user?.id, onToast]
+    [selectedSubjectId, relationsChapterId, activeBookId, user?.id, onToast]
   );
 
   const handleManualRetry = () => {
@@ -555,44 +496,6 @@ export default function StudentDashboard({ onToast = () => {} }) {
     }
   }, [allChapters, relationsChapterId]);
 
-  // Fetch or compute preview route whenever days, scope, or order changes
-  useEffect(() => {
-    if (!selectedSubjectId) return;
-
-    // If an active plan exists and matches the current settings, show the active plan route
-    if (
-      overview?.active_plan &&
-      overview.active_plan.days === days &&
-      overview.active_plan.order_mode === orderMode &&
-      (overview.active_plan.scope_chapter_id || '') === scopeChapterId
-    ) {
-      setPreviewRoute(overview.active_plan.route);
-      return;
-    }
-
-    // Otherwise fetch preview from API
-    let isCancelled = false;
-    previewStudyPlan({
-      subject_id: selectedSubjectId,
-      days,
-      order_mode: orderMode,
-      scope_chapter_id: scopeChapterId || null
-    })
-      .then((res) => {
-        if (!isCancelled && res?.route) {
-          setPreviewRoute(res.route);
-          setAnimTrigger((prev) => prev + 1);
-        }
-      })
-      .catch((err) => {
-        console.warn('Preview generation failed:', err);
-      });
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [days, scopeChapterId, orderMode, selectedSubjectId, overview?.active_plan]);
-
   // Handlers for Chapter Progress & Meta
   const handleUpdateChapterStatus = async (chapterId, status) => {
     try {
@@ -619,77 +522,6 @@ export default function StudentDashboard({ onToast = () => {} }) {
       onToast({
         type: 'error',
         message: 'Failed to update chapter metadata'
-      });
-    }
-  };
-
-  // Start / Save Plan
-  const handleStartPlan = async () => {
-    if (!selectedSubjectId) return;
-    setIsStartingPlan(true);
-    try {
-      const res = await createStudyPlan({
-        subject_id: selectedSubjectId,
-        days,
-        order_mode: orderMode,
-        scope_chapter_id: scopeChapterId || null
-      });
-      if (res?.plan) {
-        onToast({
-          type: 'success',
-          message: `Active study plan started (${days} days)!`
-        });
-        loadOverview(selectedSubjectId);
-        setAnimTrigger((prev) => prev + 1);
-      }
-    } catch (err) {
-      onToast({
-        type: 'error',
-        message: err.message || 'Could not start study plan'
-      });
-    } finally {
-      setIsStartingPlan(false);
-    }
-  };
-
-  // Toggle Day Done
-  const handleToggleDayDone = async (dayIndex) => {
-    const planId = overview?.active_plan?.id;
-    if (!planId) return;
-    try {
-      const res = await togglePlanDay(planId, dayIndex);
-      if (res?.plan) {
-        setOverview((prev) => ({
-          ...prev,
-          active_plan: res.plan,
-          plan_status: res.plan_status
-        }));
-      }
-    } catch (err) {
-      onToast({
-        type: 'error',
-        message: 'Could not update day status'
-      });
-    }
-  };
-
-  // Reset Plan
-  const handleResetPlan = async () => {
-    const planId = overview?.active_plan?.id;
-    if (!planId) return;
-    if (!window.confirm('Are you sure you want to reset your current study plan?')) return;
-
-    try {
-      await resetStudyPlan(planId);
-      onToast({
-        type: 'info',
-        message: 'Study plan reset'
-      });
-      loadOverview(selectedSubjectId);
-    } catch (err) {
-      onToast({
-        type: 'error',
-        message: 'Could not reset study plan'
       });
     }
   };
@@ -745,8 +577,6 @@ export default function StudentDashboard({ onToast = () => {} }) {
     }
     return `You have 0h left in ${subName}. Choose a deadline to begin.`;
   }, [overview?.status_line, activePlan, planStatus, overview?.subject?.name, stats.study_time_left]);
-
-  const displayRoute = activePlan?.route || previewRoute || [];
 
   return (
     <div className="planner-container">
@@ -1074,11 +904,11 @@ export default function StudentDashboard({ onToast = () => {} }) {
         </React.Suspense>
       )}
 
-      {/* Main Layout: Left Column (Analysis & Route) / Right Column (Relations, Status, Reminders) */}
+      {/* Main Layout: Left Column (Chapters & Notes Analysis) / Right Column (Course Status & Relations) */}
       <div className="planner-main-layout">
         {/* Left Column */}
         <div className="planner-left-col">
-          {/* 3. Notes Analysis Section */}
+          {/* Notes & Chapters Analysis Section */}
           <NotesAnalysisSection
             books={overview?.books || []}
             activeBookId={activeBookId}
@@ -1094,217 +924,11 @@ export default function StudentDashboard({ onToast = () => {} }) {
             onUpdateChapterStatus={handleUpdateChapterStatus}
             onUpdateChapterMeta={handleUpdateChapterMeta}
           />
-
-          {/* Personal Notes Card */}
-          <MyNotesCard
-            onToast={onToast}
-            initialNotes={bootstrapNotes}
-            initialTotalCount={bootstrapNotesCount}
-          />
-
-          {/* Course Mastery Map Section (Screen 4) */}
-          <section className="planner-section-card" aria-label="Course Mastery Map">
-            <MasteryMapView
-              onOpenRoadmapChapter={(docId, chapterName) => {
-                setActiveBookId(docId);
-                loadDocResults(docId);
-              }}
-              onSelectConcept={(concept) => {
-                if (concept.document_id) {
-                  setActiveBookId(concept.document_id);
-                  loadDocResults(concept.document_id);
-                }
-              }}
-              isAuthenticated={isAuthenticated}
-            />
-          </section>
-
-          {/* 4 & 5. Study Route Planner & RouteMap */}
-          <section className="planner-section-card">
-            <div className="planner-section-title">
-              <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <MapPin size={20} color="var(--planner-mint)" />
-                Study Route Planner
-              </span>
-
-              {activePlan && (
-                <button
-                  type="button"
-                  onClick={handleResetPlan}
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    color: 'var(--planner-orange)',
-                    fontSize: '0.85rem',
-                    fontFamily: 'var(--planner-font-title)',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 4
-                  }}
-                  title="Reset saved plan"
-                >
-                  <RotateCcw size={14} />
-                  Reset Plan
-                </button>
-              )}
-            </div>
-
-            {/* Controls Bar */}
-            <div className="planner-controls-bar">
-              {/* Deadline Chips: 7 days, 15 days, 1 month */}
-              <div className="deadline-chips-group" role="group" aria-label="Target Deadline">
-                <button
-                  type="button"
-                  className={`deadline-chip ${days === 7 ? 'active' : ''}`}
-                  onClick={() => setDays(7)}
-                >
-                  7 Days
-                </button>
-                <button
-                  type="button"
-                  className={`deadline-chip ${days === 15 ? 'active' : ''}`}
-                  onClick={() => setDays(15)}
-                >
-                  15 Days
-                </button>
-                <button
-                  type="button"
-                  className={`deadline-chip ${days === 30 ? 'active' : ''}`}
-                  onClick={() => setDays(30)}
-                >
-                  1 Month
-                </button>
-              </div>
-
-              {/* Scope & Order dropdowns */}
-              <div className="planner-select-group">
-                <select
-                  value={scopeChapterId}
-                  onChange={(e) => setScopeChapterId(e.target.value)}
-                  className="planner-select"
-                  aria-label="Planning Scope"
-                >
-                  <option value="">Whole Subject</option>
-                  {allChapters.map((ch) => (
-                    <option key={ch.id} value={ch.id} disabled={ch.status === 2}>
-                      {ch.name} {ch.status === 2 ? '(Done)' : ''}
-                    </option>
-                  ))}
-                </select>
-
-                <select
-                  value={orderMode}
-                  onChange={(e) => setOrderMode(e.target.value)}
-                  className="planner-select"
-                  aria-label="Chapter Ordering"
-                >
-                  <option value="syllabus">Syllabus Order</option>
-                  <option value="easy">Easiest First</option>
-                  <option value="hard">Hardest First</option>
-                </select>
-
-                {/* Timeline / List toggle */}
-                <button
-                  type="button"
-                  className="view-toggle-btn"
-                  onClick={() => setViewMode(viewMode === 'route' ? 'list' : 'route')}
-                  title="Switch between Timeline and List view"
-                >
-                  <ListFilter size={15} />
-                  <span>{viewMode === 'route' ? 'List View' : 'Timeline View'}</span>
-                </button>
-
-                {/* Start this plan button */}
-                <button
-                  type="button"
-                  className="start-plan-btn"
-                  onClick={handleStartPlan}
-                  disabled={isStartingPlan}
-                >
-                  <Play size={16} fill="#ffffff" />
-                  <span>{activePlan ? 'Update Plan' : 'Start this plan'}</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Route Rendering */}
-            {viewMode === 'route' ? (
-              <RouteMap
-                route={displayRoute}
-                subjectName={overview?.subject?.name || 'Core Curriculum'}
-                scopeChapterId={scopeChapterId}
-                activePlan={activePlan}
-                todayIndex={planStatus?.today_index || 1}
-                doneDays={activePlan?.done_days || []}
-                onToggleDayDone={handleToggleDayDone}
-                animationTrigger={animTrigger}
-              />
-            ) : (
-              /* List View alternative */
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {displayRoute.map((day) => {
-                  const isDone = activePlan?.done_days?.includes(day.day_index);
-                  const isToday = day.day_index === (planStatus?.today_index || 1);
-
-                  return (
-                    <div
-                      key={day.day_index}
-                      style={{
-                        padding: '12px 16px',
-                        borderRadius: 'var(--planner-radius-sm)',
-                        border: '1px solid var(--planner-card-border)',
-                        background: isDone
-                          ? 'var(--planner-mint-light)'
-                          : isToday
-                          ? 'var(--planner-orange-light)'
-                          : 'var(--planner-card-bg)',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center'
-                      }}
-                    >
-                      <div>
-                        <strong style={{ fontFamily: 'var(--planner-font-title)' }}>
-                          Day {day.day_index}
-                        </strong>{' '}
-                        <span style={{ fontSize: '0.85rem', color: 'var(--planner-text-muted)' }}>
-                          ({day.date} • {day.hours}h)
-                        </span>
-                        <div style={{ fontSize: '0.85rem', marginTop: 4 }}>
-                          {day.items?.map((it) => `${it.chapter}: ${it.topics.join(', ')}`).join(' | ')}
-                        </div>
-                      </div>
-
-                      {activePlan && (
-                        <button
-                          type="button"
-                          onClick={() => handleToggleDayDone(day.day_index)}
-                          style={{
-                            padding: '6px 12px',
-                            borderRadius: '999px',
-                            border: 'none',
-                            cursor: 'pointer',
-                            fontSize: '0.8rem',
-                            fontWeight: 600,
-                            background: isDone ? 'var(--planner-mint)' : 'var(--planner-card-border)',
-                            color: isDone ? '#ffffff' : 'var(--planner-text-muted)'
-                          }}
-                        >
-                          {isDone ? 'Completed' : 'Mark Done'}
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </section>
         </div>
 
         {/* Right Column */}
         <div className="planner-right-col">
-          {/* 7. Course Status Card */}
+          {/* Course Status Card */}
           <CourseStatusCard
             activePlan={activePlan}
             planStatus={planStatus}
@@ -1312,7 +936,7 @@ export default function StudentDashboard({ onToast = () => {} }) {
             doneChapters={stats.chapters_done}
           />
 
-          {/* 6. Related Topics Card */}
+          {/* Related Topics Card */}
           <RelatedTopicsCard
             chapters={allChapters}
             selectedChapterId={relationsChapterId}
@@ -1324,12 +948,6 @@ export default function StudentDashboard({ onToast = () => {} }) {
                 ? (overview?.related_topics || overview?.relations)
                 : null
             }
-          />
-
-          {/* 8. Reminders */}
-          <RemindersCard
-            onToast={onToast}
-            initialReminders={bootstrapReminders}
           />
         </div>
       </div>

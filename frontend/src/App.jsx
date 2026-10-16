@@ -22,6 +22,7 @@ const NotesView = React.lazy(() => import('./pages/NotesView'));
 const ResultsView = React.lazy(() => import('./components/ResultsView'));
 const LandingPage = React.lazy(() => import('./components/LandingPage'));
 const DocumentViewer = React.lazy(() => import('./pages/DocumentViewer'));
+const StudyPlannerView = React.lazy(() => import('./pages/StudyPlannerView'));
 const LoaderShowcase = React.lazy(() => import('./components/dev/LoaderShowcase'));
 import { useAuth } from './context/AuthContext';
 import { 
@@ -818,6 +819,16 @@ export default function App() {
           <Route 
             path="/notes" 
             element={<NotesView onToast={addToast} />} 
+          />
+
+          <Route 
+            path="/planner" 
+            element={<StudyPlannerView onToast={addToast} />} 
+          />
+
+          <Route 
+            path="/study-plan" 
+            element={<Navigate to="/planner" replace />} 
           />
 
           <Route 
