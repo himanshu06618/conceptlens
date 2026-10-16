@@ -468,21 +468,27 @@ export default function StudentDashboard({ onToast = () => {} }) {
   };
 
   const handleDeleteDocument = async (docId) => {
+    const previousDocuments = documentsList;
+    // Optimistic removal so user instantly sees the deleted file disappear without lag
+    setDocumentsList((prev) => (Array.isArray(prev) ? prev.filter((d) => d.id !== docId && String(d.id) !== String(docId)) : []));
+    if (activeDocId === docId || String(activeDocId) === String(docId)) {
+      setActiveDocId(null);
+      setActiveBookId(null);
+      setActiveDocData(null);
+      setActiveConcepts([]);
+      setActiveTopics([]);
+    }
     try {
       await deleteDocument(docId);
       onToast({
         type: 'info',
         message: 'Document removed'
       });
-      if (activeDocId === docId) {
-        setActiveDocId(null);
-        setActiveDocData(null);
-        setActiveConcepts([]);
-        setActiveTopics([]);
-      }
       loadOverview(selectedSubjectId);
       loadDocumentsList();
     } catch (err) {
+      // Rollback if server responded with error
+      setDocumentsList(previousDocuments);
       onToast({
         type: 'error',
         message: err.message || 'Failed to delete document'

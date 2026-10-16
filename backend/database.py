@@ -1665,6 +1665,18 @@ def get_document_by_id(user_id: str, doc_id: str) -> Optional[Dict[str, Any]]:
     finally:
         conn.close()
 
+def check_table_exists(conn, table_name: str) -> bool:
+    """Safely checks if a table exists in SQLite or PostgreSQL without aborting transactions."""
+    try:
+        if is_postgres():
+            row = conn.execute("SELECT to_regclass(?)", (f"public.{table_name}",)).fetchone()
+            return bool(row and row[0])
+        else:
+            row = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name = ?", (table_name,)).fetchone()
+            return row is not None
+    except Exception:
+        return False
+
 def delete_document_by_id(user_id: str, doc_id: str) -> bool:
     """Deletes document strictly matching user_id, along with its chapters, topics, progress, and relations."""
     conn = get_connection()
@@ -1676,52 +1688,66 @@ def delete_document_by_id(user_id: str, doc_id: str) -> bool:
                 return False
 
             # 2. Get chapter IDs for this document
-            ch_rows = conn.execute("SELECT id FROM chapters WHERE book_id = ?", (doc_id,)).fetchall()
-            ch_ids = [r["id"] for r in ch_rows]
+            ch_ids = []
+            if check_table_exists(conn, "chapters"):
+                ch_rows = conn.execute("SELECT id FROM chapters WHERE book_id = ?", (doc_id,)).fetchall()
+                ch_ids = [r["id"] for r in ch_rows]
 
-            if ch_ids:
-                # Get topic IDs for these chapters
-                t_rows = conn.execute(
-                    "SELECT id FROM topics WHERE chapter_id IN ({seq})".format(seq=",".join("?" * len(ch_ids))),
-                    ch_ids
-                ).fetchall()
-                t_ids = [r["id"] for r in t_rows]
+                if ch_ids:
+                    # Get topic IDs for these chapters
+                    if check_table_exists(conn, "topics"):
+                        t_rows = conn.execute(
+                            "SELECT id FROM topics WHERE chapter_id IN ({seq})".format(seq=",".join("?" * len(ch_ids))),
+                            ch_ids
+                        ).fetchall()
+                        t_ids = [r["id"] for r in t_rows]
 
-                if t_ids:
-                    # Delete topic relations
-                    conn.execute(
-                        "DELETE FROM topic_relations WHERE from_topic_id IN ({seq}) OR to_topic_id IN ({seq})".format(seq=",".join("?" * len(t_ids))),
-                        t_ids + t_ids
-                    )
-                    # Delete topics
-                    conn.execute(
-                        "DELETE FROM topics WHERE id IN ({seq})".format(seq=",".join("?" * len(t_ids))),
-                        t_ids
-                    )
+                        if t_ids:
+                            if check_table_exists(conn, "topic_relations"):
+                                conn.execute(
+                                    "DELETE FROM topic_relations WHERE from_topic_id IN ({seq}) OR to_topic_id IN ({seq})".format(seq=",".join("?" * len(t_ids))),
+                                    t_ids + t_ids
+                                )
+                            conn.execute(
+                                "DELETE FROM topics WHERE id IN ({seq})".format(seq=",".join("?" * len(t_ids))),
+                                t_ids
+                            )
 
-                # Delete chapter progress
-                conn.execute(
-                    "DELETE FROM chapter_progress WHERE chapter_id IN ({seq})".format(seq=",".join("?" * len(ch_ids))),
-                    ch_ids
-                )
-                # Delete chapters
-                conn.execute("DELETE FROM chapters WHERE book_id = ?", (doc_id,))
+                    if check_table_exists(conn, "chapter_progress"):
+                        conn.execute(
+                            "DELETE FROM chapter_progress WHERE chapter_id IN ({seq})".format(seq=",".join("?" * len(ch_ids))),
+                            ch_ids
+                        )
+                    conn.execute("DELETE FROM chapters WHERE book_id = ?", (doc_id,))
 
             # 3. Delete concept progress, relations and concepts
-            conn.execute(
-                "DELETE FROM concept_progress WHERE concept_id IN (SELECT id FROM concepts WHERE document_id = ?)",
-                (doc_id,)
-            )
-            conn.execute("DELETE FROM relations WHERE document_id = ?", (doc_id,))
-            conn.execute("DELETE FROM concepts WHERE document_id = ?", (doc_id,))
+            # Explicitly cast concept id to TEXT for PostgreSQL text = integer compatibility
+            if check_table_exists(conn, "concept_progress") and check_table_exists(conn, "concepts"):
+                conn.execute(
+                    "DELETE FROM concept_progress WHERE concept_id IN (SELECT CAST(id AS TEXT) FROM concepts WHERE document_id = ?)",
+                    (doc_id,)
+                )
+            if check_table_exists(conn, "relations"):
+                conn.execute("DELETE FROM relations WHERE document_id = ?", (doc_id,))
+            if check_table_exists(conn, "concepts"):
+                conn.execute("DELETE FROM concepts WHERE document_id = ?", (doc_id,))
 
-            # 4. Nullify scope_chapter_id in study plans if pointing to a deleted chapter, and unlink notes
-            if ch_ids:
+            # 3b. Delete page_coverage, document_files, document_chunks
+            if check_table_exists(conn, "page_coverage"):
+                conn.execute("DELETE FROM page_coverage WHERE document_id = ?", (doc_id,))
+
+            if check_table_exists(conn, "document_files"):
+                conn.execute("DELETE FROM document_files WHERE document_id = ?", (doc_id,))
+
+            if check_table_exists(conn, "document_chunks"):
+                conn.execute("DELETE FROM document_chunks WHERE document_id = ?", (doc_id,))
+
+            # 4. Nullify scope_chapter_id in study plans if pointing to a deleted chapter
+            if ch_ids and check_table_exists(conn, "study_plans"):
                 conn.execute(
                     "UPDATE study_plans SET scope_chapter_id = NULL WHERE user_id = ? AND scope_chapter_id IN ({seq})".format(seq=",".join("?" * len(ch_ids))),
                     [user_id] + ch_ids
                 )
-            conn.execute("UPDATE notes SET document_id = NULL WHERE document_id = ?", (doc_id,))
 
             # 5. Delete associated document file (and remove from S3 if configured)
             try:

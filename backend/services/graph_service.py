@@ -842,11 +842,17 @@ def cleanup_document_graph(doc_id: str, user_id: str, conn=None) -> None:
         should_close = True
 
     try:
-        with conn:
-            # 1. Remove edge_evidence for this document
+        try:
+            from backend.database import check_table_exists
+        except ImportError:
+            from database import check_table_exists
+
+        # 1. Remove edge_evidence for this document
+        if check_table_exists(conn, "edge_evidence"):
             conn.execute("DELETE FROM edge_evidence WHERE document_id = ?", (doc_id,))
 
-            # 2. Update edge support counts and remove edges with no remaining evidence
+        # 2. Update edge support counts and remove edges with no remaining evidence
+        if check_table_exists(conn, "concept_edges") and check_table_exists(conn, "edge_evidence"):
             orphan_edges = conn.execute(
                 """
                 SELECT ce.id, COUNT(ee.id) AS ev_cnt
@@ -854,7 +860,7 @@ def cleanup_document_graph(doc_id: str, user_id: str, conn=None) -> None:
                 LEFT JOIN edge_evidence ee ON ce.id = ee.edge_id
                 WHERE ce.user_id = ?
                 GROUP BY ce.id
-                HAVING ev_cnt = 0
+                HAVING COUNT(ee.id) = 0
                 """,
                 (user_id,)
             ).fetchall()
@@ -862,10 +868,12 @@ def cleanup_document_graph(doc_id: str, user_id: str, conn=None) -> None:
             for oe in orphan_edges:
                 conn.execute("DELETE FROM concept_edges WHERE id = ?", (oe["id"],))
 
-            # 3. Remove entity_mentions for this document
+        # 3. Remove entity_mentions for this document
+        if check_table_exists(conn, "entity_mentions"):
             conn.execute("DELETE FROM entity_mentions WHERE document_id = ?", (doc_id,))
 
-            # 4. Remove concept_entities that have no remaining mentions
+        # 4. Remove concept_entities that have no remaining mentions
+        if check_table_exists(conn, "concept_entities") and check_table_exists(conn, "entity_mentions"):
             orphan_entities = conn.execute(
                 """
                 SELECT ce.id, COUNT(em.id) AS m_cnt
@@ -873,7 +881,7 @@ def cleanup_document_graph(doc_id: str, user_id: str, conn=None) -> None:
                 LEFT JOIN entity_mentions em ON ce.id = em.entity_id
                 WHERE ce.user_id = ?
                 GROUP BY ce.id
-                HAVING m_cnt = 0
+                HAVING COUNT(em.id) = 0
                 """,
                 (user_id,)
             ).fetchall()
@@ -881,15 +889,19 @@ def cleanup_document_graph(doc_id: str, user_id: str, conn=None) -> None:
             for o_ent in orphan_entities:
                 conn.execute("DELETE FROM concept_entities WHERE id = ?", (o_ent["id"],))
                 # Cleanup merge suggestions referencing this entity
-                conn.execute(
-                    "DELETE FROM merge_suggestions WHERE entity_a = ? OR entity_b = ?",
-                    (o_ent["id"], o_ent["id"])
-                )
+                if check_table_exists(conn, "merge_suggestions"):
+                    conn.execute(
+                        "DELETE FROM merge_suggestions WHERE entity_a = ? OR entity_b = ?",
+                        (o_ent["id"], o_ent["id"])
+                    )
 
-            # 5. Remove document_chunks
+        # 5. Remove document_chunks
+        if check_table_exists(conn, "document_chunks"):
             conn.execute("DELETE FROM document_chunks WHERE document_id = ?", (doc_id,))
 
-            logger.info(f"cleanup_document_graph completed for document {doc_id}.")
+        logger.info(f"cleanup_document_graph completed for document {doc_id}.")
+    except Exception as e:
+        logger.warning(f"cleanup_document_graph non-fatal error: {e}")
     finally:
         if should_close:
             conn.close()

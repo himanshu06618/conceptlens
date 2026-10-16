@@ -41,26 +41,13 @@ describe('UploadedFilesSection Component', () => {
 
     expect(screen.getByText('Operating_Systems_Chapter1.pdf')).toBeTruthy();
     expect(screen.getByText('Database_Normalization_Notes.pdf')).toBeTruthy();
-    expect(screen.getByText(/14 concepts/i)).toBeTruthy();
-    expect(screen.getByText(/22 concepts/i)).toBeTruthy();
-    expect(screen.getByText(/12 pages/i)).toBeTruthy();
-    expect(screen.getByText(/18 pages/i)).toBeTruthy();
+    expect(screen.getByText('14')).toBeTruthy();
+    expect(screen.getByText('22')).toBeTruthy();
+    expect(screen.getByText('12p')).toBeTruthy();
+    expect(screen.getByText('18p')).toBeTruthy();
   });
 
-  it('displays the quick switcher bar when user has 2 or more uploaded files', () => {
-    render(
-      <UploadedFilesSection
-        documents={mockDocs}
-        activeDocId="doc-1"
-      />
-    );
-
-    expect(screen.getByRole('toolbar', { name: /quick file switcher/i })).toBeTruthy();
-    expect(screen.getByTitle(/switch to operating_systems_chapter1\.pdf/i)).toBeTruthy();
-    expect(screen.getByTitle(/switch to database_normalization_notes\.pdf/i)).toBeTruthy();
-  });
-
-  it('marks active file with "Viewing Now" and allows switching via pill or button', () => {
+  it('marks active file with "Viewing" badge and allows 1-click switching by clicking file card', () => {
     const handleSelect = vi.fn();
     render(
       <UploadedFilesSection
@@ -70,22 +57,16 @@ describe('UploadedFilesSection Component', () => {
       />
     );
 
-    // Active document shows "Viewing Now"
-    expect(screen.getByText('Currently Viewing')).toBeTruthy();
-    expect(screen.getByText('Viewing Now')).toBeTruthy();
+    // Active document shows "Viewing" badge
+    expect(screen.getByText('Viewing')).toBeTruthy();
 
-    // Click quick switch pill for doc-2
-    const switchPill2 = screen.getByTitle(/switch to database_normalization_notes\.pdf/i);
-    fireEvent.click(switchPill2);
-    expect(handleSelect).toHaveBeenCalledWith('doc-2');
-
-    // Click "Switch to this file" card button for doc-2
-    const switchCardBtn = screen.getByLabelText(/switch to database_normalization_notes\.pdf and view concepts/i);
-    fireEvent.click(switchCardBtn);
+    // Click on card for doc-2 to switch
+    const card2 = screen.getByTitle(/click to switch to "database_normalization_notes\.pdf"/i);
+    fireEvent.click(card2);
     expect(handleSelect).toHaveBeenCalledWith('doc-2');
   });
 
-  it('shows inline confirmation prompt before deleting and calls onDeleteDoc on confirm', () => {
+  it('shows compact inline confirmation prompt before deleting and calls onDeleteDoc on confirm', () => {
     const handleDelete = vi.fn();
     render(
       <UploadedFilesSection
@@ -99,14 +80,14 @@ describe('UploadedFilesSection Component', () => {
     const deleteBtn = screen.getByLabelText(/delete "database_normalization_notes\.pdf"/i);
     fireEvent.click(deleteBtn);
 
-    // Inline confirmation box is shown
-    expect(screen.getByText(/delete this file and all its extracted concepts\?/i)).toBeTruthy();
+    // Inline confirmation box is shown with "Delete file?"
+    expect(screen.getByText(/delete file\?/i)).toBeTruthy();
 
     // Clicking cancel dismisses confirmation without calling onDeleteDoc
     const cancelBtn = screen.getByText('Cancel');
     fireEvent.click(cancelBtn);
     expect(handleDelete).not.toHaveBeenCalled();
-    expect(screen.queryByText(/delete this file and all its extracted concepts\?/i)).toBeNull();
+    expect(screen.queryByText(/delete file\?/i)).toBeNull();
 
     // Click delete again, then click Confirm Delete
     const deleteBtnAgain = screen.getByLabelText(/delete "database_normalization_notes\.pdf"/i);
