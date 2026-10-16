@@ -30,7 +30,8 @@ import {
   getDocumentStatus,
   getDocument,
   getDocumentConcepts,
-  deleteDocument
+  deleteDocument,
+  listDocuments
 } from '../api/client';
 import { getDashboardCache, saveDashboardCache } from '../utils/dashboardCache';
 
@@ -41,6 +42,7 @@ import RemindersCard from '../components/planner/RemindersCard';
 import NotesAnalysisSection from '../components/planner/NotesAnalysisSection';
 import MyNotesCard from '../components/planner/MyNotesCard';
 import CompactUploadCard from '../components/planner/CompactUploadCard';
+import UploadedFilesSection from '../components/planner/UploadedFilesSection';
 import BookshelfLoader from '../components/ui/BookshelfLoader';
 import MasteryMapView from '../components/results/MasteryMapView';
 import AskAnswerCard from '../components/results/AskAnswerCard';
@@ -94,6 +96,10 @@ export default function StudentDashboard({ onToast = () => {} }) {
   const [activeTopics, setActiveTopics] = useState([]);
   const [isResultsLoading, setIsResultsLoading] = useState(false);
   const [resultsError, setResultsError] = useState(null);
+
+  // Uploaded documents list for switching & deletion
+  const [documentsList, setDocumentsList] = useState([]);
+  const [isDocumentsLoading, setIsDocumentsLoading] = useState(false);
 
   // Planner controls state
   const [days, setDays] = useState(7);
@@ -278,14 +284,36 @@ export default function StudentDashboard({ onToast = () => {} }) {
     [loadBootstrap]
   );
 
+  // Fetch uploaded documents list
+  const loadDocumentsList = useCallback(async () => {
+    if (!isAuthenticated) {
+      setDocumentsList([]);
+      return;
+    }
+    setIsDocumentsLoading(true);
+    try {
+      const docs = await listDocuments();
+      if (Array.isArray(docs)) {
+        setDocumentsList(docs);
+      }
+    } catch (err) {
+      console.warn('Failed to load documents list:', err);
+    } finally {
+      setIsDocumentsLoading(false);
+    }
+  }, [isAuthenticated]);
+
   useEffect(() => {
     if (isAuthenticated) {
       loadBootstrap(selectedSubjectId);
+      loadDocumentsList();
+    } else {
+      setDocumentsList([]);
     }
     return () => {
       if (waitingTimerRef.current) clearTimeout(waitingTimerRef.current);
     };
-  }, [isAuthenticated, selectedSubjectId, loadBootstrap]);
+  }, [isAuthenticated, selectedSubjectId, loadBootstrap, loadDocumentsList]);
 
   // Load full extracted document results (concepts, tree, roadmap) for the in-dashboard results panel
   const loadDocResults = useCallback(async (docId) => {
@@ -361,6 +389,7 @@ export default function StudentDashboard({ onToast = () => {} }) {
               setProcessingError(null);
               await loadDocResults(docId);
               await loadOverview(selectedSubjectId);
+              loadDocumentsList();
               onToast({
                 type: 'success',
                 message: 'Concepts successfully extracted!'
@@ -406,6 +435,7 @@ export default function StudentDashboard({ onToast = () => {} }) {
           setProcessingError(null);
           await loadDocResults(resp.id);
           await loadOverview(selectedSubjectId);
+          loadDocumentsList();
           onToast({
             type: 'success',
             message: 'Document loaded successfully!'
@@ -451,6 +481,7 @@ export default function StudentDashboard({ onToast = () => {} }) {
         setActiveTopics([]);
       }
       loadOverview(selectedSubjectId);
+      loadDocumentsList();
     } catch (err) {
       onToast({
         type: 'error',
@@ -464,6 +495,7 @@ export default function StudentDashboard({ onToast = () => {} }) {
       await renameDocument(docId, newTitle);
       setActiveDocData((prev) => (prev ? { ...prev, filename: newTitle } : prev));
       loadOverview(selectedSubjectId);
+      loadDocumentsList();
       onToast({
         type: 'success',
         message: 'Document title updated'
@@ -898,6 +930,21 @@ export default function StudentDashboard({ onToast = () => {} }) {
         onToast={onToast}
       />
 
+      {/* Dedicated Uploaded Files Section: See, Switch & Delete Notes */}
+      {isAuthenticated && (
+        <UploadedFilesSection
+          documents={documentsList}
+          activeDocId={activeDocId}
+          onSelectDoc={(docId) => {
+            setActiveBookId(docId);
+            loadDocResults(docId);
+          }}
+          onDeleteDoc={handleDeleteDocument}
+          isLoading={isDocumentsLoading}
+          onRefresh={loadDocumentsList}
+        />
+      )}
+
       {/* In-Dashboard Results Panel: Loading State */}
       {activeDocId && isResultsLoading && !activeDocData && !resultsError && (
         <section
@@ -1000,6 +1047,11 @@ export default function StudentDashboard({ onToast = () => {} }) {
             concepts={activeConcepts}
             topics={activeTopics}
             chapterCount={activeDocData.chapter_count || activeTopics.length}
+            documents={documentsList}
+            onSelectDoc={(id) => {
+              setActiveBookId(id);
+              loadDocResults(id);
+            }}
             isLoading={isResultsLoading}
             selectedConceptName={selectedConceptForResults}
             onClose={() => {
