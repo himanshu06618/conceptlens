@@ -1044,41 +1044,42 @@
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  min-height: 44px;
-  padding: 8px 16px;
-  border-radius: 999px;
-  font-family: var(--font-nunito, 'Nunito', sans-serif);
-  font-weight: 700;
-  font-size: 0.92rem;
-  color: var(--ink, #10140C);
-  background: rgba(255, 255, 255, 0.65);
-  border: 1.5px solid rgba(16, 20, 12, 0.12);
+  min-height: 40px;
+  padding: 8px 18px;
+  border-radius: var(--radius-pill, 9999px);
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--text-muted, #6B6B73);
+  background: var(--surface-subtle, #F0F0F2);
+  border: none;
   cursor: pointer;
-  transition: all 0.18s ease;
+  transition: all var(--transition-fast);
   white-space: nowrap;
 }
 
 .panel-tab-btn:hover {
-  background: rgba(255, 255, 255, 0.95);
-  border-color: var(--brand-deep, #4C8F0F);
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--text-main, #111113);
 }
 
 .panel-tab-btn.active {
-  background: var(--brand, #9AE62E);
-  color: var(--ink, #10140C);
-  border-color: var(--brand-deep, #4C8F0F);
-  box-shadow: 0 4px 14px rgba(154, 230, 46, 0.35);
+  background: #111113;
+  color: #FFFFFF;
+  font-weight: 700;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
 }
 
 [data-theme='dark'] .panel-tab-btn {
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--ink, #F2F5ED);
-  border-color: rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-muted-dark, #A8A8B0);
+  border: none;
 }
 
 [data-theme='dark'] .panel-tab-btn.active {
-  background: var(--brand, #9AE62E);
-  color: #10140C;
+  background: var(--accent-lime, #D7F25C);
+  color: #111113;
+  font-weight: 700;
 }
 
 /* Shared Search Box */
@@ -1576,30 +1577,37 @@
 
 /* Tree Nodes */
 .tree-node {
-  font-family: var(--font-nunito, 'Nunito', sans-serif);
-  border-radius: 12px;
-  box-shadow: 0 4px 16px rgba(16, 20, 12, 0.08);
+  font-family: var(--font-heading);
+  border-radius: var(--radius-card-sm, 18px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.05);
   cursor: pointer;
-  transition: all 0.18s ease;
+  transition: all var(--transition-fast);
   box-sizing: border-box;
 }
 
 .tree-root-node {
   width: 240px;
-  padding: 12px 16px;
-  background: var(--brand, #9AE62E);
-  border: 2px solid var(--brand-deep, #4C8F0F);
+  padding: 12px 18px;
+  background: var(--dark-surface, #1B1B1D);
+  border: 2px solid transparent;
+  border-radius: var(--radius-card-sm, 18px);
   display: flex;
   align-items: center;
   gap: 12px;
-  color: #10140C;
+  color: #FFFFFF;
+}
+
+[data-theme='dark'] .tree-root-node {
+  background: #111113;
+  border-color: var(--accent-lime, #D7F25C);
 }
 
 .tree-root-node .node-icon-wrap {
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: rgba(16, 20, 12, 0.12);
+  background: rgba(215, 242, 92, 0.2);
+  color: var(--accent-lime, #D7F25C);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1607,15 +1615,16 @@
 
 .tree-root-node .node-meta {
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: 0.05em;
-  opacity: 0.8;
+  color: var(--text-muted-dark, #A8A8B0);
 }
 
 .tree-root-node .node-title {
   display: block;
-  font-family: var(--font-lilita, 'Lilita One', cursive, sans-serif);
-  font-size: 1.05rem;
+  font-family: var(--font-heading);
+  font-size: 1rem;
+  font-weight: 700;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1625,10 +1634,17 @@
 /* Chapter Node */
 .tree-chapter-node {
   width: 230px;
-  padding: 10px 14px;
-  background: rgba(255, 255, 255, 0.85);
-  border: 1.5px solid rgba(111, 180, 26, 0.35);
-  color: var(--ink, #10140C);
+  padding: 12px 16px;
+  background: var(--card, #FFFFFF);
+  border: 1.5px solid transparent;
+  border-radius: var(--radius-card-sm, 18px);
+  color: var(--text-main, #111113);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.04);
+}
+
+[data-theme='dark'] .tree-chapter-node {
+  background: var(--dark-surface, #1B1B1D);
+  color: #FFFFFF;
 }
 
 .chapter-node-inner {
@@ -1638,7 +1654,7 @@
 }
 
 .chapter-expand-icon {
-  background: var(--tint, #E6FABB);
+  background: var(--surface-subtle, #F0F0F2);
   border: none;
   border-radius: 50%;
   width: 28px;
@@ -1647,7 +1663,12 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  color: var(--brand-text, #2E5E04);
+  color: var(--text-main, #111113);
+}
+
+[data-theme='dark'] .chapter-expand-icon {
+  background: rgba(255, 255, 255, 0.1);
+  color: #FFFFFF;
 }
 
 .chapter-info {
@@ -1659,7 +1680,7 @@
 
 .chapter-title {
   font-size: 0.95rem;
-  font-weight: 800;
+  font-weight: 700;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1667,30 +1688,36 @@
 
 .chapter-count-badge {
   font-size: 0.76rem;
-  color: var(--muted-text, #44502F);
+  color: var(--text-muted, #6B6B73);
   font-weight: 600;
 }
 
 /* Concept Leaf Node */
 .tree-concept-node {
   width: 210px;
-  padding: 10px 14px;
-  background: rgba(255, 255, 255, 0.92);
-  border: 1.5px solid rgba(16, 20, 12, 0.12);
+  padding: 12px 16px;
+  background: var(--card, #FFFFFF);
+  border: 1.5px solid transparent;
+  border-radius: var(--radius-card-sm, 18px);
   display: flex;
   flex-direction: column;
   gap: 6px;
-  color: var(--ink, #10140C);
+  color: var(--text-main, #111113);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.04);
+}
+
+[data-theme='dark'] .tree-concept-node {
+  background: var(--dark-surface, #1B1B1D);
+  color: #FFFFFF;
 }
 
 .tree-concept-node.is-selected {
-  border: 2px solid var(--brand, #9AE62E);
-  box-shadow: 0 0 16px rgba(154, 230, 46, 0.5);
-  background: var(--tint, #E6FABB);
+  border-color: var(--accent-lime, #D7F25C);
+  box-shadow: 0 0 16px rgba(215, 242, 92, 0.4);
 }
 
 .tree-concept-node.is-studied {
-  border-left: 4px solid var(--brand-deep, #4C8F0F);
+  border-left: 4px solid var(--accent-lime, #D7F25C);
 }
 
 .concept-node-header {
@@ -1710,11 +1737,12 @@
   align-items: center;
   gap: 3px;
   font-size: 0.74rem;
-  color: var(--muted-text, #44502F);
+  color: var(--text-muted, #6B6B73);
 }
 
 .concept-node-title {
   font-size: 0.92rem;
+  font-weight: 600;
   line-height: 1.3;
   white-space: nowrap;
   overflow: hidden;

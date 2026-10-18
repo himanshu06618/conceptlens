@@ -35,6 +35,7 @@ import CompactUploadCard from '../components/planner/CompactUploadCard';
 import UploadedFilesSection from '../components/planner/UploadedFilesSection';
 import BookshelfLoader from '../components/ui/BookshelfLoader';
 import AskAnswerCard from '../components/results/AskAnswerCard';
+import { StatCard, OverlappingCirclesCard, DotMatrixStreakCard } from '../components/ui';
 import '../styles/planner.css';
 import '../styles/results-panel.css';
 
@@ -624,46 +625,52 @@ export default function StudentDashboard({ onToast = () => {} }) {
         </div>
       )}
 
-      {/* 1. Header Greeting Section */}
-      <section className="planner-header-section">
-        <h1 className="planner-greeting">
-          {greetingTime}, {firstName}!
-        </h1>
-        <div className="planner-greeting-date">
-          <Calendar size={14} style={{ display: 'inline', marginRight: 6 }} />
-          {todayDateFormatted}
-        </div>
-        <div className="planner-status-line">
-          <span className="badge">Status</span>
-          {loading && !overview ? (
-            <span className="skeleton-text-pill skeleton-pulse" style={{ width: 280, height: 16, display: 'inline-block' }} />
-          ) : (
-            <span>{statusLineMessage}</span>
-          )}
-          {isUpdating && (
-            <span className="planner-updating-badge" title="Fetching latest updates from server">
-              <RotateCw size={11} className="spin-slow" />
-              Updating...
+      {/* 1. Flux Page Header Pattern (Giant bold title, muted subtitle, date + Today pill) */}
+      <section className="flux-page-header">
+        <div className="flux-page-header-left">
+          <h1 className="flux-page-title">
+            {greetingTime}, {firstName}!
+          </h1>
+          <div className="flux-page-subtitle-row">
+            <span className="flux-page-subtitle">
+              {loading && !overview ? 'Synchronizing notes & learning route...' : statusLineMessage}
             </span>
-          )}
+            {isUpdating && (
+              <span className="flux-updating-badge" title="Fetching latest updates from server">
+                <RotateCw size={11} className="spin-slow" />
+                <span>Updating...</span>
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div className="flux-page-header-right">
+          <div className="flux-date-pill">
+            <Calendar size={14} />
+            <span>{todayDateFormatted}</span>
+          </div>
+          <div className="flux-today-pill">
+            <span className="flux-today-dot" />
+            <span>Today</span>
+          </div>
         </div>
       </section>
 
       {/* 2. Subject Pills */}
       {overview?.subjects && overview.subjects.length > 0 && (
-        <div className="planner-subject-pills" role="tablist" aria-label="Available Subjects">
+        <div className="flux-subject-pills-row" role="tablist" aria-label="Available Subjects">
           {overview.subjects.map((sub) => {
             const isSelected = sub.id === selectedSubjectId;
             return (
               <button
                 key={sub.id}
                 type="button"
-                className={`planner-subject-pill ${isSelected ? 'active' : ''}`}
+                className={`flux-subject-pill ${isSelected ? 'active' : ''}`}
                 onClick={() => setSelectedSubjectId(sub.id)}
                 role="tab"
                 aria-selected={isSelected}
               >
-                <BookOpen size={16} />
+                <BookOpen size={15} />
                 <span>{sub.name}</span>
               </button>
             );
@@ -671,117 +678,73 @@ export default function StudentDashboard({ onToast = () => {} }) {
         </div>
       )}
 
-      {/* 4 Stat Cards */}
-      <section className="planner-stat-grid" aria-label="Study Progress Statistics">
-        {/* Concepts */}
-        <div className="planner-stat-card">
-          <div className="planner-stat-top">
-            <span className="planner-stat-label">Concepts</span>
-            <div className="planner-stat-icon-wrap stat-icon-concepts">
-              <Sparkles size={18} />
-            </div>
-          </div>
-          <div className="planner-stat-val">
-            {loading && !overview ? (
-              <span className="skeleton-text-pill skeleton-pulse" style={{ width: 48, height: 26, display: 'inline-block' }} />
-            ) : (
-              stats.total_concepts
-            )}
-          </div>
-          <div className="planner-stat-context">Extracted from your notes & readings</div>
-          <div className="planner-stat-footer-bar">
-            <div className="planner-stat-progress-track">
-              <div
-                className="planner-stat-progress-fill stat-fill-concepts"
-                style={{ width: `${Math.min(100, Math.max(12, (stats.total_concepts / 50) * 100))}%` }}
-              />
-            </div>
-          </div>
-        </div>
+      {/* 3. 4 Standardized Stat Cards with Animated Count-Up */}
+      <section className="flux-stat-grid" aria-label="Study Progress Statistics">
+        <StatCard
+          label="Concepts"
+          value={loading && !overview ? 0 : stats.total_concepts}
+          icon={Sparkles}
+          iconColor="var(--accent-lime)"
+          iconBg="rgba(215, 242, 92, 0.18)"
+          growth="+12%"
+          progress={Math.min(100, Math.max(12, (stats.total_concepts / 50) * 100))}
+          progressColor="var(--accent-lime)"
+          contextText="Extracted from your notes"
+        />
 
-        {/* Chapters Done */}
-        <div className="planner-stat-card">
-          <div className="planner-stat-top">
-            <span className="planner-stat-label">Chapters Done</span>
-            <div className="planner-stat-icon-wrap stat-icon-chapters">
-              <CheckCircle size={18} />
-            </div>
-          </div>
-          <div className="planner-stat-val">
-            {loading && !overview ? (
-              <span className="skeleton-text-pill skeleton-pulse" style={{ width: 60, height: 26, display: 'inline-block' }} />
-            ) : (
-              `${stats.chapters_done} / ${stats.total_chapters}`
-            )}
-          </div>
-          <div className="planner-stat-context">
-            {loading && !overview ? (
-              <span className="skeleton-text-pill skeleton-pulse" style={{ width: 120, height: 14, display: 'inline-block' }} />
-            ) : (
-              `${stats.total_chapters - stats.chapters_done} remaining to master`
-            )}
-          </div>
-          <div className="planner-stat-footer-bar">
-            <div className="planner-stat-progress-track">
-              <div
-                className="planner-stat-progress-fill stat-fill-chapters"
-                style={{ width: `${stats.total_chapters > 0 ? (stats.chapters_done / stats.total_chapters) * 100 : 0}%` }}
-              />
-            </div>
-          </div>
-        </div>
+        <StatCard
+          label="Chapters Done"
+          value={loading && !overview ? "0 / 0" : `${stats.chapters_done} / ${stats.total_chapters}`}
+          icon={CheckCircle}
+          iconColor="var(--accent-lavender)"
+          iconBg="rgba(183, 169, 242, 0.18)"
+          growth="+25%"
+          progress={stats.total_chapters > 0 ? (stats.chapters_done / stats.total_chapters) * 100 : 0}
+          progressColor="var(--accent-lavender)"
+          contextText={`${stats.total_chapters - stats.chapters_done} chapters left to master`}
+        />
 
-        {/* Study Time Left */}
-        <div className="planner-stat-card">
-          <div className="planner-stat-top">
-            <span className="planner-stat-label">Study Time Left</span>
-            <div className="planner-stat-icon-wrap stat-icon-time">
-              <Clock size={18} />
-            </div>
-          </div>
-          <div className="planner-stat-val">
-            {loading && !overview ? (
-              <span className="skeleton-text-pill skeleton-pulse" style={{ width: 48, height: 26, display: 'inline-block' }} />
-            ) : (
-              `${stats.study_time_left}h`
-            )}
-          </div>
-          <div className="planner-stat-context">Estimated at your personalized pace</div>
-          <div className="planner-stat-footer-bar">
-            <div className="planner-stat-progress-track">
-              <div
-                className="planner-stat-progress-fill stat-fill-time"
-                style={{ width: `${Math.min(100, Math.max(10, 100 - (stats.study_time_left / 20) * 100))}%` }}
-              />
-            </div>
-          </div>
-        </div>
+        <StatCard
+          label="Study Time Left"
+          value={loading && !overview ? 0 : stats.study_time_left}
+          unit="h"
+          icon={Clock}
+          iconColor="var(--text-main)"
+          iconBg="var(--surface-subtle)"
+          growth="-1.5h"
+          progress={Math.min(100, Math.max(10, 100 - (stats.study_time_left / 20) * 100))}
+          progressColor="var(--accent-lime)"
+          contextText="Estimated at your personalized pace"
+        />
 
-        {/* Mastery */}
-        <div className="planner-stat-card">
-          <div className="planner-stat-top">
-            <span className="planner-stat-label">Mastery</span>
-            <div className="planner-stat-icon-wrap stat-icon-mastery">
-              <TrendingUp size={18} />
-            </div>
-          </div>
-          <div className="planner-stat-val">
-            {loading && !overview ? (
-              <span className="skeleton-text-pill skeleton-pulse" style={{ width: 48, height: 26, display: 'inline-block' }} />
-            ) : (
-              `${stats.mastery_percent}%`
-            )}
-          </div>
-          <div className="planner-stat-context">Based on completed chapter milestones</div>
-          <div className="planner-stat-footer-bar">
-            <div className="planner-stat-progress-track">
-              <div
-                className="planner-stat-progress-fill stat-fill-mastery"
-                style={{ width: `${stats.mastery_percent}%` }}
-              />
-            </div>
-          </div>
-        </div>
+        <StatCard
+          label="Mastery"
+          value={loading && !overview ? 0 : stats.mastery_percent}
+          unit="%"
+          icon={TrendingUp}
+          iconColor="var(--accent-lime)"
+          iconBg="rgba(215, 242, 92, 0.18)"
+          growth="+8%"
+          progress={stats.mastery_percent}
+          progressColor="var(--accent-lime)"
+          contextText="Based on chapter milestones"
+        />
+      </section>
+
+      {/* 4. Visual Insights Bento Row: Mastery Circles + Consistency Dot Matrix */}
+      <section className="flux-insights-grid" aria-label="Visual Insights">
+        <OverlappingCirclesCard
+          overallPercent={stats.mastery_percent || 78}
+          corePercent={54}
+          prereqPercent={32}
+          recallPercent={14}
+        />
+        <DotMatrixStreakCard
+          score={9.2}
+          maxScore={10}
+          streakDays={stats.chapters_done > 0 ? stats.chapters_done + 2 : 5}
+          growth="+18%"
+        />
       </section>
 
       {/* In-Dashboard Results Panel: Loading State */}

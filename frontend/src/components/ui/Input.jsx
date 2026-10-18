@@ -1,8 +1,8 @@
 import React, { forwardRef } from 'react';
 
 /**
- * Clean Glassmorphic Input
- * Visible control border, clear focus ring (2px offset).
+ * Standardized Input — "Flux" Design System
+ * Pill-rounded surface with visible lime focus ring and high-contrast text.
  */
 const Input = forwardRef(function Input({
   label,
@@ -17,28 +17,28 @@ const Input = forwardRef(function Input({
   const inputId = id || (label ? `input-${label.toLowerCase().replace(/\s+/g, '-')}` : undefined);
 
   return (
-    <div className={`input-group ${className}`.trim()}>
+    <div className={`flux-input-group ${className}`.trim()}>
       {label && (
-        <label htmlFor={inputId} className="input-label">
+        <label htmlFor={inputId} className="flux-input-label">
           {label}
         </label>
       )}
-      <div className="input-wrapper">
+      <div className="flux-input-wrapper">
         {Icon && (
-          <span className="input-icon-prefix">
-            {React.isValidElement(Icon) ? Icon : React.createElement(Icon, { size: 18, strokeWidth: 1.75 })}
+          <span className="flux-input-icon-prefix" aria-hidden="true">
+            {React.isValidElement(Icon) ? Icon : React.createElement(Icon, { size: 18, strokeWidth: 2 })}
           </span>
         )}
         <input
           ref={ref}
           id={inputId}
           type={type}
-          className={`input-field ${Icon ? 'has-icon-prefix' : ''} ${error ? 'has-error' : ''}`.trim()}
+          className={`flux-input-field ${Icon ? 'has-icon-prefix' : ''} ${error ? 'has-error' : ''}`.trim()}
           {...props}
         />
       </div>
-      {error && <span className="input-error-msg">{error}</span>}
-      {!error && helper && <span className="input-helper-msg">{helper}</span>}
+      {error && <span className="flux-input-error-msg">{error}</span>}
+      {!error && helper && <span className="flux-input-helper-msg">{helper}</span>}
     </div>
   );
 });

@@ -1,39 +1,28 @@
-import React, { useRef } from 'react';
+import React from 'react';
 
 /**
- * Premium Card with Desktop Cursor Spotlight
- * Clean white surface, 1px border, layered soft shadow, 18px radius.
- * On desktop hover, a soft radial champagne-gold highlight gently follows the cursor.
+ * Standardized Card — "Flux" Design System
+ * Variants:
+ *  - 'light': White card (#FFFFFF) with 26px radius, soft contrast separation
+ *  - 'dark': Inset dark surface (#1B1B1D) with crisp contrast
+ *  - 'lime': Vibrant Lime (#D7F25C) with dark text
  */
 export default function Card({
   children,
+  variant = 'light', // 'light' | 'dark' | 'lime'
   className = '',
   hoverable = false,
-  spotlight = true,
-  elevation = 'sm', // 'sm', 'md', 'lg'
+  elevation = 'none', // 'none' | 'soft' | 'elevated'
   onClick,
   ...props
 }) {
-  const cardRef = useRef(null);
-
-  const handleMouseMove = (e) => {
-    if (!spotlight || !cardRef.current) return;
-    const rect = cardRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    cardRef.current.style.setProperty('--mouse-x', `${x}px`);
-    cardRef.current.style.setProperty('--mouse-y', `${y}px`);
-  };
-
-  const elevationClass = elevation === 'lg' ? 'shadow-lg' : elevation === 'md' ? 'shadow-md' : 'shadow-sm';
-  const hoverClass = hoverable ? 'card-hoverable' : '';
-  const spotlightClass = spotlight ? 'spotlight-card' : '';
+  const variantClass = `flux-card-${variant}`;
+  const hoverClass = hoverable ? 'flux-card-hoverable' : '';
+  const elevationClass = elevation !== 'none' ? `flux-elevation-${elevation}` : '';
 
   return (
     <div
-      ref={cardRef}
-      className={`premium-card ${elevationClass} ${hoverClass} ${spotlightClass} ${className}`.trim()}
-      onMouseMove={handleMouseMove}
+      className={`flux-card ${variantClass} ${hoverClass} ${elevationClass} ${className}`.trim()}
       onClick={onClick}
       {...props}
     >

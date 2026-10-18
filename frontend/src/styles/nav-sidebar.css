@@ -1,689 +1,612 @@
 /* =====================================================================
-   ConceptLens — Navigation Sidebar & Study Reminders Drawer
-   Aesthetic: Premium Glassmorphism, Lime Green Glow, Silky Smooth Transitions
+   Flux Navigation System: Desktop Inset Dark Sidebar, Bottom Nav, Reminders
    ===================================================================== */
 
-/* Backdrop overlay */
-.nav-sidebar-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 998;
-  background: rgba(16, 20, 12, 0.45);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  opacity: 0;
-  visibility: hidden;
-  transition: opacity 0.28s cubic-bezier(0.16, 1, 0.3, 1),
-              visibility 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+/* 1. Desktop Inset Rounded Dark Left Sidebar (>=1024px) */
+.flux-desktop-sidebar {
+  display: none;
 }
 
-.nav-sidebar-backdrop.is-open {
-  opacity: 1;
-  visibility: visible;
+@media (min-width: 1024px) {
+  .flux-desktop-sidebar {
+    display: flex;
+    flex-direction: column;
+    width: 260px;
+    min-width: 260px;
+    height: calc(100vh - 28px);
+    margin: 14px 0 14px 14px;
+    background: var(--dark-surface, #1B1B1D);
+    border-radius: var(--radius-card-lg, 28px);
+    box-sizing: border-box;
+    position: sticky;
+    top: 14px;
+    z-index: 40;
+    overflow: hidden;
+  }
 }
 
-/* Sidebar slide-out panel */
-.nav-sidebar-panel {
-  position: fixed;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: 100%;
-  max-width: 420px;
-  z-index: 999;
-  background: var(--surface-solid, #ffffff);
-  background: linear-gradient(180deg, 
-    rgba(255, 255, 255, 0.96) 0%, 
-    rgba(247, 251, 242, 0.98) 100%
-  );
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  box-shadow: -12px 0 36px rgba(16, 20, 12, 0.16), 
-              -1px 0 0 rgba(111, 194, 26, 0.22);
+.flux-sidebar-inner {
   display: flex;
   flex-direction: column;
-  transform: translateX(100%);
-  transition: transform 0.32s cubic-bezier(0.16, 1, 0.3, 1);
-  overflow: hidden;
-}
-
-/* Dark mode adjustment */
-[data-theme="dark"] .nav-sidebar-panel {
-  background: linear-gradient(180deg, 
-    rgba(22, 28, 18, 0.97) 0%, 
-    rgba(16, 20, 12, 0.99) 100%
-  );
-  box-shadow: -12px 0 36px rgba(0, 0, 0, 0.5), 
-              -1px 0 0 rgba(111, 194, 26, 0.18);
-}
-
-.nav-sidebar-panel.is-open {
-  transform: translateX(0);
-}
-
-/* Header */
-.nav-sidebar-header {
-  display: flex;
-  align-items: center;
+  height: 100%;
+  padding: 24px 18px;
+  box-sizing: border-box;
   justify-content: space-between;
-  padding: 20px 24px;
-  border-bottom: 1px solid var(--border-subtle, rgba(16, 20, 12, 0.08));
-  gap: 12px;
 }
 
-.nav-sidebar-header-title-wrap {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.nav-sidebar-icon-badge {
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  background: var(--brand-light, #C4F560);
-  background: linear-gradient(135deg, var(--brand-light, #C4F560), var(--brand, #9AE62E));
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--ink, #10140C);
-  box-shadow: 0 4px 12px rgba(111, 194, 26, 0.24);
-}
-
-.nav-sidebar-title {
-  font-size: 1.15rem;
-  font-weight: 700;
-  color: var(--ink, #10140C);
-  line-height: 1.2;
-}
-
-.nav-sidebar-subtitle {
-  font-size: 0.78rem;
-  color: var(--text-muted, #596B50);
-  margin-top: 2px;
-}
-
-.nav-sidebar-close-btn {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  border: 1px solid var(--border-subtle, rgba(16, 20, 12, 0.12));
-  background: var(--surface, rgba(255, 255, 255, 0.6));
-  color: var(--ink, #10140C);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+/* Brand Logo at top */
+.flux-sidebar-brand {
+  padding: 6px 10px 20px 10px;
   cursor: pointer;
-  transition: all 0.18s ease;
+  display: flex;
+  align-items: center;
 }
 
-.nav-sidebar-close-btn:hover {
-  background: var(--surface-hover, #ffffff);
-  border-color: var(--brand, #9AE62E);
-  transform: rotate(90deg);
-}
-
-/* Scrollable Body */
-.nav-sidebar-body {
+/* Navigation items list */
+.flux-sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
   flex: 1;
-  overflow-y: auto;
-  padding: 20px 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
 }
 
-.nav-sidebar-body::-webkit-scrollbar {
-  width: 5px;
-}
-.nav-sidebar-body::-webkit-scrollbar-track {
-  background: transparent;
-}
-.nav-sidebar-body::-webkit-scrollbar-thumb {
-  background: rgba(111, 194, 26, 0.25);
-  border-radius: 10px;
-}
-
-/* Navigation Section */
-.nav-section-label {
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-muted, #596B50);
-  margin-bottom: 8px;
-}
-
-.nav-items-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-/* Item Card Button */
-.nav-card-item {
+.flux-nav-item {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 14px 16px;
-  border-radius: 14px;
-  border: 1px solid var(--border-subtle, rgba(16, 20, 12, 0.08));
-  background: var(--surface, rgba(255, 255, 255, 0.65));
-  backdrop-filter: blur(10px);
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: var(--radius-pill, 9999px);
+  color: var(--text-muted-dark, #A8A8B0);
+  background: transparent;
+  font-family: var(--font-heading);
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  border: none;
   cursor: pointer;
+  transition: all var(--transition-fast);
   text-align: left;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-  position: relative;
   width: 100%;
+  box-sizing: border-box;
 }
 
-.nav-card-item:hover {
-  border-color: rgba(111, 194, 26, 0.45);
-  background: var(--surface-hover, rgba(255, 255, 255, 0.95));
-  transform: translateY(-1.5px);
-  box-shadow: 0 6px 18px rgba(111, 194, 26, 0.12);
+.flux-nav-item:hover {
+  color: #FFFFFF;
+  background: rgba(255, 255, 255, 0.06);
+  transform: translateX(2px);
 }
 
-.nav-card-item.is-active {
-  border-color: var(--brand, #9AE62E);
-  background: linear-gradient(135deg, rgba(196, 245, 96, 0.18) 0%, rgba(255, 255, 255, 0.85) 100%);
-  box-shadow: 0 4px 16px rgba(111, 194, 26, 0.18);
+/* Active Nav Item: White pill background with near-black text */
+.flux-nav-item.is-active {
+  background: #FFFFFF;
+  color: #111113;
+  font-weight: 600;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
 }
 
-[data-theme="dark"] .nav-card-item.is-active {
-  background: linear-gradient(135deg, rgba(111, 194, 26, 0.22) 0%, rgba(26, 34, 20, 0.85) 100%);
-}
-
-.nav-card-icon-slot {
-  width: 42px;
-  height: 42px;
-  border-radius: 12px;
+.flux-nav-icon {
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  transition: transform 0.2s ease;
 }
 
-.nav-card-item:hover .nav-card-icon-slot {
-  transform: scale(1.06);
-}
-
-.nav-card-icon-slot.icon-dashboard {
-  background: rgba(154, 230, 46, 0.2);
-  color: var(--brand-deep, #4C8F0F);
-}
-
-.nav-card-icon-slot.icon-notes {
-  background: rgba(43, 138, 242, 0.16);
-  color: #1976D2;
-}
-
-.nav-card-icon-slot.icon-route {
-  background: rgba(255, 140, 66, 0.18);
-  color: #E66A1F;
-}
-
-.nav-card-icon-slot.icon-reminders {
-  background: rgba(255, 179, 0, 0.18);
-  color: #D97706;
-}
-
-.nav-card-content {
+.flux-nav-label {
   flex: 1;
-  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.nav-card-title-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 2px;
-}
-
-.nav-card-title {
-  font-size: 0.96rem;
-  font-weight: 700;
-  color: var(--ink, #10140C);
-}
-
-.nav-card-badge {
-  font-size: 0.68rem;
+.flux-nav-badge {
+  background: var(--accent-lime, #D7F25C);
+  color: #111113;
+  font-size: 11px;
   font-weight: 700;
   padding: 2px 7px;
-  border-radius: 999px;
-  background: var(--brand, #9AE62E);
-  color: var(--ink, #10140C);
+  border-radius: var(--radius-pill, 9999px);
+  margin-left: auto;
 }
 
-.nav-card-badge.badge-outline {
-  background: rgba(111, 194, 26, 0.15);
-  border: 1px solid rgba(111, 194, 26, 0.35);
-  color: var(--brand-deep, #3E7806);
-}
-
-.nav-card-description {
-  font-size: 0.78rem;
-  color: var(--text-muted, #596B50);
-  line-height: 1.3;
-}
-
-.nav-card-arrow {
-  color: var(--text-muted, #596B50);
-  transition: transform 0.2s ease;
-}
-
-.nav-card-item:hover .nav-card-arrow {
-  color: var(--brand-deep, #4C8F0F);
-  transform: translateX(3px);
-}
-
-/* =====================================================================
-   Study Reminders Drawer Section
-   ===================================================================== */
-.reminders-section-card {
-  border-radius: 16px;
-  border: 1px solid rgba(111, 194, 26, 0.35);
-  background: var(--surface, rgba(255, 255, 255, 0.75));
-  overflow: hidden;
-  box-shadow: 0 8px 24px rgba(111, 194, 26, 0.08);
-}
-
-.reminders-section-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14px 16px;
-  background: rgba(154, 230, 46, 0.12);
-  border-bottom: 1px solid rgba(111, 194, 26, 0.2);
-}
-
-.reminders-header-left {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.reminders-bell-icon {
-  color: #D97706;
-}
-
-.reminders-header-title {
-  font-size: 0.94rem;
-  font-weight: 700;
-  color: var(--ink, #10140C);
-}
-
-.reminders-active-count {
-  font-size: 0.7rem;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: var(--brand, #9AE62E);
-  color: var(--ink, #10140C);
-  font-weight: 700;
-}
-
-/* Next upcoming banner */
-.reminders-upcoming-banner {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 14px;
-  margin: 12px 14px 4px;
-  border-radius: 10px;
-  background: rgba(154, 230, 46, 0.2);
-  border: 1px solid rgba(111, 194, 26, 0.35);
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: var(--brand-deep, #3E7806);
-}
-
-.reminders-pulse-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--brand-deep, #4C8F0F);
-  box-shadow: 0 0 0 3px rgba(111, 194, 26, 0.3);
-  animation: pulseDot 2s infinite ease-in-out;
-}
-
-@keyframes pulseDot {
-  0%, 100% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(1.2); opacity: 0.6; }
-}
-
-/* Add Reminder Form inside Drawer */
-.reminders-quick-form {
-  padding: 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.reminders-form-row {
-  display: grid;
-  grid-template-columns: 105px 1fr;
-  gap: 8px;
-}
-
-.reminder-drawer-time-input {
-  padding: 8px 10px;
-  border-radius: 8px;
-  border: 1px solid var(--border-subtle, rgba(16, 20, 12, 0.15));
-  background: var(--surface-solid, #ffffff);
-  color: var(--ink, #10140C);
-  font-size: 0.88rem;
-  font-family: inherit;
-  font-weight: 600;
-}
-
-.reminder-drawer-select {
-  padding: 8px 10px;
-  border-radius: 8px;
-  border: 1px solid var(--border-subtle, rgba(16, 20, 12, 0.15));
-  background: var(--surface-solid, #ffffff);
-  color: var(--ink, #10140C);
-  font-size: 0.85rem;
-  font-family: inherit;
-  cursor: pointer;
-}
-
-/* Weekday pills */
-.reminder-drawer-weekdays {
-  display: flex;
-  gap: 4px;
-  justify-content: space-between;
-}
-
-.reminder-drawer-day-pill {
-  flex: 1;
-  height: 28px;
-  border-radius: 6px;
-  border: 1px solid var(--border-subtle, rgba(16, 20, 12, 0.15));
-  background: var(--surface-solid, #ffffff);
-  color: var(--ink, #10140C);
-  font-size: 0.72rem;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.reminder-drawer-day-pill.is-selected {
-  background: var(--brand, #9AE62E);
-  border-color: var(--brand-deep, #4C8F0F);
-  color: var(--ink, #10140C);
-  box-shadow: 0 2px 6px rgba(111, 194, 26, 0.25);
-}
-
-.reminder-drawer-add-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 9px 12px;
-  border-radius: 8px;
-  border: none;
-  background: var(--brand, #9AE62E);
-  color: var(--ink, #10140C);
-  font-weight: 700;
-  font-size: 0.85rem;
-  cursor: pointer;
-  transition: all 0.18s ease;
-  box-shadow: 0 3px 10px rgba(111, 194, 26, 0.25);
-}
-
-.reminder-drawer-add-btn:hover {
-  background: var(--brand-light, #C4F560);
-  transform: translateY(-1px);
-}
-
-/* Existing Reminders List in Drawer */
-.reminders-drawer-list {
-  padding: 0 14px 14px;
+/* Bottom Lime Promo Card */
+.flux-sidebar-promo-card {
+  background: var(--accent-lime, #D7F25C);
+  color: #111113;
+  border-radius: var(--radius-card-sm, 20px);
+  padding: 18px 16px;
+  margin-top: 16px;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  box-sizing: border-box;
 }
 
-.reminder-drawer-item {
-  display: flex;
+.flux-promo-badge {
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 9px 12px;
-  border-radius: 10px;
-  background: var(--surface-hover, rgba(255, 255, 255, 0.8));
-  border: 1px solid var(--border-subtle, rgba(16, 20, 12, 0.08));
-  gap: 8px;
-}
-
-.reminder-drawer-item-left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  flex: 1;
-}
-
-.reminder-switch-wrap {
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-}
-
-.reminder-switch {
-  position: relative;
-  width: 34px;
-  height: 20px;
-  border-radius: 999px;
-  background: rgba(16, 20, 12, 0.2);
-  transition: background 0.2s ease;
-}
-
-.reminder-switch.is-on {
-  background: var(--brand, #9AE62E);
-}
-
-.reminder-switch-handle {
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: #ffffff;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
-  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.reminder-switch.is-on .reminder-switch-handle {
-  transform: translateX(14px);
-}
-
-.reminder-drawer-details {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.reminder-drawer-time-label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.reminder-drawer-time {
-  font-size: 0.9rem;
+  gap: 5px;
+  background: rgba(17, 17, 19, 0.12);
+  padding: 3px 8px;
+  border-radius: var(--radius-pill, 9999px);
+  font-size: 11px;
   font-weight: 700;
-  color: var(--ink, #10140C);
+  width: fit-content;
 }
 
-.reminder-drawer-label {
-  font-size: 0.78rem;
-  color: var(--text-muted, #596B50);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.reminder-drawer-days {
-  font-size: 0.68rem;
-  color: var(--brand-deep, #4C8F0F);
-  font-weight: 600;
-}
-
-.reminder-drawer-delete-btn {
-  background: transparent;
-  border: none;
-  color: var(--text-muted, #596B50);
-  padding: 4px;
-  border-radius: 6px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.15s ease;
-}
-
-.reminder-drawer-delete-btn:hover {
-  color: #DC2626;
-  background: rgba(220, 38, 38, 0.1);
-}
-
-/* Secondary Actions Bar */
-.reminders-drawer-actions {
-  display: flex;
-  gap: 8px;
-  padding: 0 14px 14px;
-}
-
-.reminders-drawer-action-btn {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 7px 10px;
-  border-radius: 8px;
-  border: 1px solid var(--border-subtle, rgba(16, 20, 12, 0.12));
-  background: var(--surface-solid, #ffffff);
-  color: var(--ink, #10140C);
-  font-size: 0.75rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.reminders-drawer-action-btn:hover {
-  border-color: var(--brand, #9AE62E);
-  background: var(--surface-hover, rgba(255, 255, 255, 0.95));
-}
-
-/* Footer / User Strip */
-.nav-sidebar-footer {
-  padding: 16px 24px;
-  border-top: 1px solid var(--border-subtle, rgba(16, 20, 12, 0.08));
-  background: rgba(16, 20, 12, 0.02);
-}
-
-.nav-sidebar-user-card {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.nav-sidebar-user-left {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-}
-
-.nav-sidebar-user-avatar {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: var(--brand-light, #C4F560);
-  color: var(--ink, #10140C);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.flux-promo-title {
+  font-family: var(--font-heading);
+  font-size: 15px;
   font-weight: 700;
-  font-size: 0.85rem;
-  flex-shrink: 0;
-  border: 1.5px solid var(--brand, #9AE62E);
+  margin: 0;
+  color: #111113;
 }
 
-.nav-sidebar-user-name {
-  font-size: 0.88rem;
-  font-weight: 700;
-  color: var(--ink, #10140C);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.flux-promo-desc {
+  font-size: 12px;
+  line-height: 1.35;
+  color: rgba(17, 17, 19, 0.82);
+  margin: 0;
 }
 
-.nav-sidebar-user-role {
-  font-size: 0.7rem;
-  color: var(--text-muted, #596B50);
-}
-
-.nav-sidebar-auth-btn {
-  padding: 6px 12px;
-  border-radius: 8px;
-  border: 1px solid rgba(111, 194, 26, 0.4);
-  background: var(--brand, #9AE62E);
-  color: var(--ink, #10140C);
-  font-size: 0.78rem;
-  font-weight: 700;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  white-space: nowrap;
-}
-
-.nav-sidebar-auth-btn:hover {
-  background: var(--brand-light, #C4F560);
-  transform: translateY(-1px);
-}
-
-/* Header button in top-right */
-.header-nav-sidebar-btn {
-  border: 1px solid rgba(111, 194, 26, 0.35);
-  background: var(--glass-control-bg, rgba(255, 255, 255, 0.6));
-  backdrop-filter: var(--glass-blur, blur(10px));
-  -webkit-backdrop-filter: var(--glass-blur, blur(10px));
-  color: var(--ink, #10140C);
-  min-width: 40px;
-  min-height: 40px;
+.flux-promo-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: var(--radius-control, 10px);
+  gap: 6px;
+  background: #111113;
+  color: #FFFFFF;
+  border-radius: var(--radius-pill, 9999px);
+  padding: 8px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  border: none;
   cursor: pointer;
-  transition: all 0.18s ease;
+  margin-top: 4px;
+  transition: transform var(--transition-fast), background var(--transition-fast);
 }
 
-.header-nav-sidebar-btn:hover {
-  border-color: var(--brand-deep, #4C8F0F);
-  background: var(--surface-hover, rgba(255, 255, 255, 0.9));
-  color: var(--brand-text, #2E5E04);
+.flux-promo-btn:hover {
+  background: #25252A;
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(111, 194, 26, 0.2);
 }
 
-.header-nav-sidebar-btn.is-active {
-  background: var(--brand, #9AE62E);
-  border-color: var(--brand-deep, #3E7806);
-  color: var(--ink, #10140C);
-  box-shadow: 0 0 0 2px rgba(111, 194, 26, 0.3);
+/* =====================================================================
+   2. Mobile Bottom Navigation Bar (<640px)
+   ===================================================================== */
+.flux-mobile-bottom-nav {
+  display: none;
 }
 
-/* Mobile responsive */
-@media (max-width: 480px) {
-  .nav-sidebar-panel {
-    max-width: 100%;
+@media (max-width: 639px) {
+  .flux-mobile-bottom-nav {
+    display: block;
+    position: fixed;
+    bottom: 12px;
+    left: 14px;
+    right: 14px;
+    z-index: 100;
+  }
+
+  .flux-bottom-nav-inner {
+    background: var(--dark-surface, #1B1B1D);
+    border-radius: var(--radius-pill, 9999px);
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    padding: 8px 12px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  }
+
+  .flux-bottom-nav-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    background: none;
+    border: none;
+    color: var(--text-muted-dark, #A8A8B0);
+    font-size: 10px;
+    font-weight: 500;
+    padding: 6px 10px;
+    cursor: pointer;
+    transition: color var(--transition-fast);
+  }
+
+  .flux-bottom-nav-btn.active {
+    color: var(--accent-lime, #D7F25C);
+    font-weight: 700;
   }
 }
+
+/* =====================================================================
+   3. Reminders Slide-Out Drawer
+   ===================================================================== */
+.flux-reminders-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 998;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.flux-reminders-drawer {
+  width: 100%;
+  max-width: 380px;
+  height: 100%;
+  background: var(--card, #FFFFFF);
+  color: var(--text-main, #111113);
+  box-shadow: -10px 0 35px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+  padding: 24px;
+  box-sizing: border-box;
+  overflow-y: auto;
+  animation: slideDrawerIn 240ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideDrawerIn {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+.flux-reminders-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+.flux-reminders-title-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.flux-reminders-icon-chip {
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius-icon, 14px);
+  background: rgba(215, 242, 92, 0.20);
+  color: #111113;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.flux-reminders-title {
+  font-family: var(--font-heading);
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.flux-reminders-subtitle {
+  font-size: 12px;
+  color: var(--text-muted, #6B6B73);
+}
+
+.flux-reminders-close-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: none;
+  background: var(--surface-subtle, #F0F0F2);
+  color: var(--text-main, #111113);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+/* Reminders Form */
+.flux-reminders-form {
+  background: var(--surface-subtle, #F0F0F2);
+  border-radius: var(--radius-card-sm, 20px);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.flux-reminder-input-row {
+  display: flex;
+  gap: 8px;
+}
+
+.flux-time-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--card, #FFFFFF);
+  border-radius: var(--radius-pill, 9999px);
+  padding: 8px 12px;
+  flex: 0 0 120px;
+}
+
+.flux-time-input {
+  border: none;
+  background: transparent;
+  font-family: var(--font-heading);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-main, #111113);
+  width: 100%;
+}
+
+.flux-label-input {
+  flex: 1;
+  border: none;
+  background: var(--card, #FFFFFF);
+  border-radius: var(--radius-pill, 9999px);
+  padding: 8px 14px;
+  font-size: 13px;
+  color: var(--text-main, #111113);
+}
+
+.flux-weekday-pills {
+  display: flex;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.flux-weekday-pill {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: none;
+  background: var(--card, #FFFFFF);
+  color: var(--text-muted, #6B6B73);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.flux-weekday-pill.active {
+  background: var(--accent-lime, #D7F25C);
+  color: #111113;
+  font-weight: 700;
+}
+
+.flux-reminders-form-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 4px;
+}
+
+.flux-chime-test-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--text-muted, #6B6B73);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+/* Scheduled List */
+.flux-reminders-list-heading {
+  font-family: var(--font-heading);
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 12px 0;
+  color: var(--text-muted, #6B6B73);
+}
+
+.flux-reminder-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  background: var(--surface-subtle, #F0F0F2);
+  border-radius: var(--radius-chip, 14px);
+  margin-bottom: 8px;
+}
+
+.flux-reminder-time-col {
+  display: flex;
+  flex-direction: column;
+}
+
+.flux-reminder-time {
+  font-family: var(--font-heading);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.flux-reminder-label {
+  font-size: 12px;
+  color: var(--text-muted, #6B6B73);
+}
+
+.flux-reminder-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.flux-reminder-toggle {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: none;
+  background: var(--card, #FFFFFF);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.flux-reminder-toggle.is-on {
+  background: var(--accent-lime, #D7F25C);
+  color: #111113;
+}
+
+.flux-reminder-del-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted, #6B6B73);
+  cursor: pointer;
+  padding: 6px;
+}
+
+/* =====================================================================
+   4. Flux Master Layout Shell: Desktop 2-Column, Tablet & Mobile Shell
+   ===================================================================== */
+.flux-app-layout {
+  display: flex;
+  width: 100vw;
+  min-height: 100vh;
+  background: var(--canvas, #E6E6E8);
+  box-sizing: border-box;
+  position: relative;
+  overflow-x: hidden;
+}
+
+[data-theme='dark'] .flux-app-layout {
+  background: var(--canvas, #121214);
+}
+
+/* Main Panel: Large Rounded Panel on Canvas */
+.flux-main-panel {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  background: var(--canvas, #E6E6E8);
+  transition: all var(--transition-normal);
+}
+
+@media (min-width: 1024px) {
+  .flux-main-panel {
+    height: calc(100vh - 28px);
+    margin: 14px 14px 14px 0;
+    background: var(--card, #FFFFFF);
+    border-radius: var(--radius-card-lg, 28px);
+    overflow-y: auto;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.04);
+  }
+
+  [data-theme='dark'] .flux-main-panel {
+    background: var(--card, #1B1B1D);
+    box-shadow: none;
+  }
+}
+
+/* Top Header inside main panel */
+.flux-top-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 24px;
+  box-sizing: border-box;
+  background: transparent;
+  position: sticky;
+  top: 0;
+  z-index: 30;
+}
+
+@media (max-width: 1023px) {
+  .flux-top-header {
+    background: var(--card, #FFFFFF);
+    border-bottom: 1px solid var(--surface-subtle, #E6E6E8);
+    padding: 12px 16px;
+  }
+
+  [data-theme='dark'] .flux-top-header {
+    background: var(--dark-surface, #1B1B1D);
+    border-bottom-color: rgba(255, 255, 255, 0.06);
+  }
+}
+
+.flux-mobile-brand {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+@media (min-width: 1024px) {
+  .flux-mobile-brand {
+    display: none;
+  }
+}
+
+.flux-header-search-wrap {
+  flex: 1;
+  max-width: 460px;
+}
+
+@media (max-width: 640px) {
+  .flux-header-search-wrap {
+    display: none;
+  }
+}
+
+.flux-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.flux-header-bell-btn {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: none;
+  background: var(--surface-subtle, #F0F0F2);
+  color: var(--text-main, #111113);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.flux-header-bell-btn:hover {
+  background: rgba(215, 242, 92, 0.25);
+  transform: translateY(-1px);
+}
+
+[data-theme='dark'] .flux-header-bell-btn {
+  background: rgba(255, 255, 255, 0.08);
+  color: #FFFFFF;
+}
+
+.flux-bell-lime-dot {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent-lime, #D7F25C);
+  box-shadow: 0 0 6px var(--accent-lime, #D7F25C);
+}
+
+.flux-signin-btn {
+  background: var(--accent-lime, #D7F25C) !important;
+  color: #111113 !important;
+  border-radius: var(--radius-pill, 9999px) !important;
+  font-weight: 600 !important;
+}
+
+/* Scrollable Main Content Container */
+.flux-main-content {
+  flex: 1;
+  padding: 0 24px 32px 24px;
+  box-sizing: border-box;
+}
+
+@media (max-width: 640px) {
+  .flux-main-content {
+    padding: 12px 14px 96px 14px;
+  }
+}
+

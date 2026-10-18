@@ -4,22 +4,17 @@ import {
   Quote, 
   Copy, 
   Check, 
-  Star, 
-  Maximize2, 
   ChevronDown, 
   ChevronUp,
-  ExternalLink
+  ExternalLink,
+  Sparkles
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Card, Badge, Button, PaperSurface } from './ui';
 import { normalizeConceptDisplayName, cleanTopicHeading, cleanText } from '../utils/textCleaner';
 import { getDocumentFileUrl } from '../api/client';
 
 const DEF_CHAR_LIMIT = 130;
 
-/**
- * Highlights matching search terms with soft gold mark
- */
 function highlightMatch(text, query) {
   if (!text || !query || !query.trim()) return text;
   const terms = query.trim().split(/\s+/).filter(Boolean);
@@ -34,6 +29,13 @@ function highlightMatch(text, query) {
   );
 }
 
+/**
+ * ConceptCard — "Flux" Design System
+ * - White card (#FFFFFF light, #1B1B1D dark)
+ * - Importance as 1-3 pill indicator (lime / lavender / black)
+ * - Definition text muted
+ * - Topic chip
+ */
 export default function ConceptCard({
   concept,
   documentId,
@@ -61,7 +63,6 @@ export default function ConceptCard({
   const rawExcerpt = concept.source_excerpt?.trim() || '';
   const isFormalDefinition = Boolean(rawDefinition);
   
-  // Primary definition text shown in See More section (cleaned of dotted text)
   const primaryText = cleanText(isFormalDefinition ? rawDefinition : rawExcerpt);
   const isDefLong = primaryText.length > DEF_CHAR_LIMIT;
 
@@ -69,15 +70,19 @@ export default function ConceptCard({
     ? primaryText
     : `${primaryText.slice(0, DEF_CHAR_LIMIT).trim()}…`;
 
-  // Has distinct notes excerpt beyond definition
   const hasDistinctExcerpt = Boolean(
     rawExcerpt && 
     cleanText(rawExcerpt) !== cleanText(rawDefinition)
   );
 
   const cleanedName = normalizeConceptDisplayName(concept.name);
-  const importance = Math.min(5, Math.max(1, Number(concept.importance) || 3));
-  const isTopImportance = importance === 5;
+  
+  // Map importance 1-5 to 1-3 tier pill (Tier 1 = Lime, Tier 2 = Lavender, Tier 3 = Black)
+  const rawImportance = Number(concept.importance) || 3;
+  const importanceTier = rawImportance >= 4 ? 1 : rawImportance >= 2 ? 2 : 3;
+  const importanceLabel = importanceTier === 1 ? 'High Impact' : importanceTier === 2 ? 'Core Concept' : 'Foundation';
+  const importanceClass = importanceTier === 1 ? 'tier-lime' : importanceTier === 2 ? 'tier-lavender' : 'tier-black';
+
   const hasSearch = Boolean(searchQuery && searchQuery.trim().length > 0);
   const matchScorePercent = Math.round((concept.score || 0) * 100);
 
@@ -90,13 +95,12 @@ export default function ConceptCard({
   };
 
   const topicText = concept.topic || 'General';
-  const displayTopic = cleanTopicHeading(topicText, 32);
+  const displayTopic = cleanTopicHeading(topicText, 28);
 
   return (
-    <Card
+    <div
       id={`concept-card-${concept.id}`}
-      className={`concept-glass-card ${isSelected ? 'selected' : ''}`}
-      hoverable
+      className={`flux-card flux-concept-card ${isSelected ? 'selected' : ''}`}
       onClick={() => onSelect(concept)}
       role="button"
       tabIndex={0}
@@ -107,226 +111,145 @@ export default function ConceptCard({
         }
       }}
     >
-      {/* Card Header: Concept Name & Meta Chips */}
-      <div className="card-top">
-        <div className="card-top-main">
-          <div className="card-title-row">
-            <h3 className="card-title">
-              {hasSearch ? highlightMatch(cleanedName, searchQuery) : cleanedName}
-            </h3>
-            <button
-              type="button"
-              className="card-deepdive-quick-btn"
-              onClick={handleDeepDive}
-              title={`Deep Dive into PDF on Page ${concept.page || 1}`}
-              aria-label={`Deep Dive to Page ${concept.page || 1} in PDF`}
-            >
-              <ExternalLink size={12} strokeWidth={2} />
-              <span>Deep Dive</span>
-            </button>
-          </div>
+      {/* Top Header: Concept Title & Importance 1-3 Pill */}
+      <div className="flux-concept-top">
+        <div className="flux-concept-title-row">
+          <h3 className="flux-concept-title">
+            {hasSearch ? highlightMatch(cleanedName, searchQuery) : cleanedName}
+          </h3>
 
-          {/* Chips: Topic, Page chip, and Match chip (separate, with spacing) */}
-          <div className="card-meta-chips">
-            <Badge 
-              variant={topicText && topicText !== 'General' ? 'sky' : 'amber'} 
-              size="sm"
-              title={topicText}
-            >
-              {displayTopic}
-            </Badge>
-            
-            <span 
-              className="card-page-chip card-page-chip-interactive"
-              onClick={handleDeepDive}
-              title={`Deep Dive into PDF on Page ${concept.page || 1}`}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  handleDeepDive(e);
-                }
-              }}
-            >
-              Page {concept.page || 1}
-              <ExternalLink size={10} style={{ marginLeft: 3, opacity: 0.75 }} />
+          {/* Importance 1-3 Pill Indicator (lime / lavender / black) */}
+          <div className={`flux-importance-pill ${importanceClass}`} title={`Priority Tier ${importanceTier}: ${importanceLabel}`}>
+            <span className="importance-dots-mini">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <span
+                  key={i}
+                  className={`dot-mini ${i < (4 - importanceTier) ? 'active' : ''}`}
+                />
+              ))}
             </span>
-
-            {hasSearch && matchScorePercent > 0 && (
-              <span className="card-score-chip">
-                {matchScorePercent}% match
-              </span>
-            )}
+            <span className="importance-tier-name">{importanceLabel}</span>
           </div>
+        </div>
+
+        {/* Chips: Topic Chip & Page Badge */}
+        <div className="flux-concept-chips-row">
+          <span className="flux-badge badge-lavender">
+            {displayTopic}
+          </span>
+
+          <span
+            className="flux-badge badge-neutral page-chip-interactive"
+            onClick={handleDeepDive}
+            title={`Deep dive into PDF on page ${concept.page || 1}`}
+            role="button"
+            tabIndex={0}
+          >
+            Page {concept.page || 1}
+            <ExternalLink size={11} style={{ marginLeft: 3 }} />
+          </span>
+
+          {hasSearch && matchScorePercent > 0 && (
+            <span className="flux-badge badge-lime">
+              {matchScorePercent}% match
+            </span>
+          )}
         </div>
       </div>
 
-      {/* Card Collapsible Content: Definition on PaperSurface */}
+      {/* Primary Definition Text (Clean & Muted) */}
+      <div className="flux-concept-definition-body">
+        <p className="flux-concept-def-text">
+          {primaryText ? (
+            <>
+              {hasSearch 
+                ? highlightMatch(displayedDefText, searchQuery) 
+                : displayedDefText}
+            </>
+          ) : (
+            <span className="flux-concept-missing-def">
+              Extracted from notes without formal definition sentence.
+            </span>
+          )}
+        </p>
+
+        {isDefLong && (
+          <button
+            type="button"
+            className="flux-see-more-btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsDefExpanded(!isDefExpanded);
+            }}
+          >
+            {isDefExpanded ? 'See less' : 'Read more'}
+          </button>
+        )}
+      </div>
+
+      {/* Expandable Deep Content */}
       <AnimatePresence>
         {isExpanded && (
           <motion.div 
-            className="card-expanded-body" 
+            className="flux-concept-expanded" 
             onClick={(e) => e.stopPropagation()}
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
           >
-            {/* Extracted Definition Box sits on Flat PaperSurface */}
-            <PaperSurface className="card-paper-definition">
-              <div className="card-section-label">
-                <BookMarked size={14} strokeWidth={1.75} style={{ color: 'var(--accent-amber)' }} />
-                <span>{isFormalDefinition ? 'Extracted Definition' : 'Context Summary'}</span>
-              </div>
-              <p className="card-reading-text">
-                {primaryText ? (
-                  <>
-                    "
-                    {hasSearch 
-                      ? highlightMatch(displayedDefText, searchQuery) 
-                      : displayedDefText}
-                    "
-                  </>
-                ) : (
-                  <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                    Mentioned in text without explicit definition sentence.
-                  </span>
-                )}
-                {isDefLong && (
-                  <>
-                    {' '}
-                    <button
-                      type="button"
-                      className="inline-see-more-btn"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setIsDefExpanded(!isDefExpanded);
-                      }}
-                      aria-label={isDefExpanded ? 'See less of definition' : 'See more of definition'}
-                    >
-                      {isDefExpanded ? 'See less' : 'See more'}
-                    </button>
-                  </>
-                )}
-              </p>
-            </PaperSurface>
-
-            {/* Original Notes Excerpt on Flat PaperSurface */}
             {hasDistinctExcerpt && (
-              <PaperSurface className="card-paper-excerpt">
-                <div className="card-section-label">
-                  <Quote size={14} strokeWidth={1.75} style={{ color: 'var(--accent-amber)' }} />
-                  <span>Original Notes Excerpt (Page {concept.page || 1})</span>
+              <div className="flux-concept-excerpt-box">
+                <div className="flux-excerpt-label">
+                  <Quote size={13} />
+                  <span>Notes Excerpt (Page {concept.page || 1})</span>
                 </div>
-                <p className="card-reading-text">
-                  "
-                  {hasSearch 
-                    ? highlightMatch(cleanText(concept.source_excerpt), searchQuery) 
-                    : cleanText(concept.source_excerpt)}
-                  "
+                <p className="flux-excerpt-text">
+                  "{cleanText(concept.source_excerpt)}"
                 </p>
-              </PaperSurface>
+              </div>
             )}
 
-            {/* Related Concepts */}
             {concept.related_concepts && concept.related_concepts.length > 0 && (
-              <div className="card-related-group">
-                <span className="card-related-title">Related Concepts</span>
-                <div className="card-related-chips">
+              <div className="flux-concept-related-box">
+                <span className="flux-related-title">Connected Concepts</span>
+                <div className="flux-related-chips">
                   {concept.related_concepts.map((rel, idx) => (
-                    <span key={idx} className="related-pill">
-                      <span>{normalizeConceptDisplayName(rel.name)}</span>
-                      <span className="related-weight">&times;{rel.weight}</span>
+                    <span key={idx} className="flux-badge badge-neutral">
+                      {normalizeConceptDisplayName(rel.name)}
                     </span>
                   ))}
                 </div>
               </div>
             )}
-
-            {/* Expanded Footer Actions */}
-            <div className="card-footer-buttons">
-              <Button
-                variant="secondary"
-                size="sm"
-                icon={copied ? Check : Copy}
-                onClick={handleCopy}
-              >
-                {copied ? 'Copied' : 'Copy Text'}
-              </Button>
-
-              <Button
-                variant="outline"
-                size="sm"
-                icon={Maximize2}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onSelect(concept);
-                }}
-              >
-                Details
-              </Button>
-            </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* "See More" / "See Less" Button */}
-      <button
-        type="button"
-        className={`card-expander-btn ${isExpanded ? 'expanded' : ''}`}
-        onClick={(e) => {
-          e.stopPropagation();
-          setIsExpanded(!isExpanded);
-        }}
-        aria-label={isExpanded ? 'See less data' : 'See more data'}
-      >
-        <span>{isExpanded ? 'See less' : 'See more'}</span>
-        {isExpanded ? <ChevronUp size={14} strokeWidth={2} /> : <ChevronDown size={14} strokeWidth={2} />}
-      </button>
+      {/* Footer Actions */}
+      <div className="flux-concept-footer">
+        <button
+          type="button"
+          className="flux-expand-toggle-btn"
+          onClick={(e) => {
+            e.stopPropagation();
+            setIsExpanded(!isExpanded);
+          }}
+        >
+          <span>{isExpanded ? 'Hide details' : 'More context'}</span>
+          {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+        </button>
 
-      {/* Tidy Card Footer: KEY star label, importance dots, 5/5, and copy icon on one tidy row */}
-      <div className="card-footer-row">
-        <div className="card-footer-left">
-          {isTopImportance && (
-            <span className="key-concept-badge" title="Top Importance Concept">
-              <Star size={12} strokeWidth={2} fill="var(--text-on-amber)" />
-              <span>KEY</span>
-            </span>
-          )}
-
-          <div 
-            className="importance-indicator"
-            title={`Importance: ${importance}/5`}
-            aria-label={`Importance: ${importance} out of 5`}
-          >
-            <div className="importance-dots">
-              {[1, 2, 3, 4, 5].map((dotVal) => (
-                <span 
-                  key={dotVal}
-                  className={`dot ${dotVal <= importance ? 'active' : ''}`}
-                />
-              ))}
-            </div>
-            <span className="importance-label">{importance}/5</span>
-          </div>
-        </div>
-
-        <div className="card-footer-right">
-          <button
-            type="button"
-            className="card-copy-btn"
-            onClick={handleCopy}
-            title={copied ? 'Copied to clipboard' : 'Copy definition'}
-            aria-label="Copy definition"
-          >
-            {copied ? (
-              <Check size={14} strokeWidth={2} style={{ color: 'var(--success)' }} />
-            ) : (
-              <Copy size={14} strokeWidth={1.75} />
-            )}
-          </button>
-        </div>
+        <button
+          type="button"
+          className="flux-concept-copy-btn"
+          onClick={handleCopy}
+          title={copied ? 'Copied to clipboard' : 'Copy concept text'}
+          aria-label="Copy concept text"
+        >
+          {copied ? <Check size={14} color="var(--accent-lime)" /> : <Copy size={14} />}
+        </button>
       </div>
-    </Card>
+    </div>
   );
 }

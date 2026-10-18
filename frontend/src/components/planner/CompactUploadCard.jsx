@@ -1,23 +1,28 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import { 
   Upload, 
   Camera, 
-  AlertCircle, 
-  CheckCircle,
-  FileText,
-  RotateCcw,
-  X,
-  Sparkles
+  FileText, 
+  RotateCcw, 
+  X, 
+  Sparkles,
+  AlertCircle
 } from 'lucide-react';
 import { compressImageIfNeeded } from '../../utils/imageCompressor';
 import { BookshelfLoader } from '../ui';
-import '../../styles/results-panel.css';
 
 const ACCEPTED_TYPES = '.pdf,.png,.jpg,.jpeg,.webp,.txt,.md';
 const ALLOWED_EXTS = ['pdf', 'png', 'jpg', 'jpeg', 'webp', 'txt', 'md'];
 const MAX_FILE_SIZE_MB = 10;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 
+/**
+ * CompactUploadCard — "Flux" Health-Dashboard Inspired Quick Dropzone
+ * LIME card (#D7F25C) with dashed dropzone:
+ * - "Browse files" (black button)
+ * - "Take photo" (white button)
+ * - Camera capture + client-side photo optimization preserved.
+ */
 export default function CompactUploadCard({
   onUpload,
   isUploading = false,
@@ -110,194 +115,160 @@ export default function CompactUploadCard({
     }
   };
 
-  const handleOpenFilePicker = (e) => {
-    e.stopPropagation();
-    if (isUploading || inFlightRef.current) return;
-    fileInputRef.current?.click();
-  };
-
-  const handleOpenCamera = (e) => {
-    e.stopPropagation();
-    // On mobile, capture="environment" immediately opens rear camera.
-    // On desktop, opens file selector configured for image capture.
-    cameraInputRef.current?.click();
-  };
-
-  return (
-    <section 
-      className={`compact-upload-card ${isDragActive ? 'drag-active' : ''} ${isUploading ? 'is-processing' : ''}`}
-      onDragEnter={handleDrag}
-      onDragOver={handleDrag}
-      onDragLeave={handleDrag}
-      onDrop={handleDrop}
-      aria-label="Upload notes drop card"
-    >
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept={ACCEPTED_TYPES}
-        style={{ display: 'none' }}
-        onChange={handleFileSelect}
-        aria-hidden="true"
-      />
-      <input
-        ref={cameraInputRef}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        style={{ display: 'none' }}
-        onChange={handleFileSelect}
-        aria-hidden="true"
-      />
-
-      {/* Progress / Processing State */}
-      {processingDoc || isUploading ? (
-        <div className="compact-upload-processing">
-          {processingError ? (
-            <div className="compact-upload-error-state">
-              <div className="compact-error-leading">
-                <AlertCircle size={28} className="compact-error-icon" />
-              </div>
-              <div className="compact-error-body">
-                <div className="compact-error-title">Processing failed</div>
-                <div className="compact-error-msg">{processingError}</div>
-                {processingError.toLowerCase().includes('password') && (
-                  <div className="compact-password-retry-row">
-                    <input
-                      type="password"
-                      placeholder="Enter PDF password..."
-                      value={retryPassword}
-                      onChange={(e) => setRetryPassword(e.target.value)}
-                      className="compact-password-input"
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && retryPassword && onRetryUpload) {
-                          onRetryUpload({ password: retryPassword });
-                        }
-                      }}
-                      autoFocus
-                    />
-                    <button
-                      type="button"
-                      className="compact-btn compact-btn-primary"
-                      disabled={!retryPassword}
-                      onClick={() => onRetryUpload && onRetryUpload({ password: retryPassword })}
-                    >
-                      Unlock & Retry
-                    </button>
-                  </div>
-                )}
-              </div>
-              <div className="compact-error-actions">
-                {onRetryUpload && !processingError.toLowerCase().includes('password') && (
-                  <button
-                    type="button"
-                    className="compact-btn compact-btn-primary"
-                    onClick={() => onRetryUpload()}
-                    title="Retry extraction"
-                  >
-                    <RotateCcw size={15} />
-                    <span>Retry</span>
-                  </button>
-                )}
-                {onCancelProcessing && (
-                  <button
-                    type="button"
-                    className="compact-btn compact-btn-secondary"
-                    onClick={onCancelProcessing}
-                    title="Dismiss"
-                  >
-                    <X size={15} />
-                    <span>Dismiss</span>
-                  </button>
-                )}
-              </div>
+  // Processing state view
+  if (isUploading || processingDoc) {
+    return (
+      <div className="flux-card flux-card-lime compact-upload-card is-processing">
+        <div className="compact-processing-content">
+          <div className="compact-processing-header">
+            <div className="compact-processing-icon-wrap">
+              <BookshelfLoader size="sm" />
             </div>
-          ) : (
-            <div className="compact-upload-active-progress">
-              <div className="compact-progress-anim">
-                <BookshelfLoader size="sm" />
+            <div className="compact-processing-text">
+              <strong className="compact-processing-filename">
+                {processingDoc?.filename || 'Analyzing notes...'}
+              </strong>
+              <span className="compact-processing-status">
+                {processingMessage || `Processing: ${processingStage}...`}
+              </span>
+            </div>
+            {onCancelProcessing && (
+              <button
+                type="button"
+                className="compact-processing-cancel-btn"
+                onClick={onCancelProcessing}
+                title="Cancel upload"
+                aria-label="Cancel upload"
+              >
+                <X size={16} />
+              </button>
+            )}
+          </div>
+
+          <div className="compact-processing-progress-bar">
+            <div
+              className="compact-processing-progress-fill"
+              style={{ width: `${Math.min(100, Math.max(5, processingProgress))}%` }}
+            />
+          </div>
+
+          {processingError && (
+            <div className="compact-processing-error">
+              <div className="compact-error-msg">
+                <AlertCircle size={15} style={{ flexShrink: 0 }} />
+                <span>{processingError}</span>
               </div>
-              <div className="compact-progress-info">
-                <div className="compact-progress-filename-row">
-                  <span className="compact-progress-filename" title={processingDoc?.filename}>
-                    {processingDoc?.filename || 'Analyzing document...'}
-                  </span>
-                  <span className="compact-progress-pct">{Math.round(processingProgress)}%</span>
-                </div>
-                <div className="compact-progress-bar-wrap">
-                  <div 
-                    className="compact-progress-bar-fill" 
-                    style={{ width: `${Math.min(100, Math.max(5, processingProgress))}%` }} 
+              {processingError.includes('password') ? (
+                <div className="compact-password-retry">
+                  <input
+                    type="password"
+                    placeholder="PDF password..."
+                    value={retryPassword}
+                    onChange={(e) => setRetryPassword(e.target.value)}
+                    className="compact-password-input"
                   />
+                  <button
+                    type="button"
+                    className="flux-btn btn-dark btn-sm"
+                    onClick={() => onRetryUpload && onRetryUpload({ password: retryPassword })}
+                  >
+                    Retry
+                  </button>
                 </div>
-                <div className="compact-progress-status-msg">
-                  {isCompressing ? 'Optimizing photo...' : (processingMessage || 'Extracting concepts and chapter relations...')}
-                </div>
-              </div>
-              {onCancelProcessing && (
-                <button
-                  type="button"
-                  className="compact-cancel-btn"
-                  onClick={onCancelProcessing}
-                  title="Cancel upload"
-                  aria-label="Cancel upload"
-                >
-                  <X size={16} />
-                </button>
+              ) : (
+                onRetryUpload && (
+                  <button
+                    type="button"
+                    className="flux-btn btn-dark btn-sm"
+                    onClick={() => onRetryUpload()}
+                  >
+                    <RotateCcw size={14} />
+                    <span>Try Again</span>
+                  </button>
+                )
               )}
             </div>
           )}
         </div>
-      ) : (
-        /* Default Drop Card State: Compact (140-200px), short, interactive */
-        <div 
-          className="compact-upload-content"
-          onClick={handleOpenFilePicker}
-          role="button"
-          tabIndex={0}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
-              handleOpenFilePicker(e);
-            }
-          }}
-        >
-          <div className="compact-upload-icon-wrap" aria-hidden="true">
-            <Upload size={22} className="compact-upload-icon" />
-          </div>
+      </div>
+    );
+  }
 
-          <div className="compact-upload-text-group">
-            <h2 className="compact-upload-title">
-              {isDragActive ? 'Release to upload your notes' : 'Drop your notes here'}
-            </h2>
-            <p className="compact-upload-hint">
-              PDF, PNG, JPG, WEBP, TXT, MD up to 10 MB
-            </p>
+  return (
+    <div
+      className={`flux-card flux-card-lime compact-upload-card ${isDragActive ? 'is-drag-active' : ''}`}
+      onDragEnter={handleDrag}
+      onDragOver={handleDrag}
+      onDragLeave={handleDrag}
+      onDrop={handleDrop}
+    >
+      <div className="compact-upload-inner">
+        <div className="compact-upload-header-row">
+          <div className="compact-upload-title-group">
+            <div className="compact-upload-icon-chip" aria-hidden="true">
+              <Upload size={18} strokeWidth={2.4} />
+            </div>
+            <div>
+              <h3 className="compact-upload-title">Drop your notes here</h3>
+              <p className="compact-upload-subtitle">PDF, camera photos, textbook pages & markdown</p>
+            </div>
           </div>
+          <span className="compact-upload-badge">Fast OCR</span>
+        </div>
 
-          <div className="compact-upload-buttons-row" onClick={(e) => e.stopPropagation()}>
+        {/* Dashed Dropzone */}
+        <div className="compact-upload-dashed-dropzone" onClick={() => fileInputRef.current?.click()}>
+          <div className="compact-dropzone-icon">
+            <FileText size={28} strokeWidth={1.8} />
+          </div>
+          <p className="compact-dropzone-prompt">
+            Drag & drop course notes here, or choose an action
+          </p>
+
+          <div className="compact-upload-actions" onClick={(e) => e.stopPropagation()}>
             <button
               type="button"
-              className="compact-btn compact-btn-primary"
-              onClick={handleOpenFilePicker}
-              aria-label="Browse files to upload"
+              className="flux-btn btn-dark compact-browse-btn"
+              onClick={() => fileInputRef.current?.click()}
             >
-              <Upload size={16} strokeWidth={2} />
+              <Upload size={15} />
               <span>Browse files</span>
             </button>
 
             <button
               type="button"
-              className="compact-btn compact-btn-secondary"
-              onClick={handleOpenCamera}
-              aria-label="Take photo with camera"
+              className="flux-btn btn-outline compact-camera-btn"
+              onClick={() => cameraInputRef.current?.click()}
             >
-              <Camera size={16} strokeWidth={2} />
+              <Camera size={15} />
               <span>Take photo</span>
             </button>
           </div>
         </div>
-      )}
-    </section>
+
+        {/* Hidden Native File Inputs */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept={ACCEPTED_TYPES}
+          style={{ display: 'none' }}
+          onChange={handleFileSelect}
+        />
+        <input
+          ref={cameraInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          style={{ display: 'none' }}
+          onChange={handleFileSelect}
+        />
+
+        <div className="compact-upload-footer-hint">
+          <span>Max 10 MB per file</span>
+          <span>•</span>
+          <span>Auto-compressed on device</span>
+        </div>
+      </div>
+    </div>
   );
 }

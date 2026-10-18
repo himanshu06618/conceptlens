@@ -1,332 +1,192 @@
 /**
- * ConceptLens Design Tokens — Lime Green + White Glass Theme
- * Aesthetic: Fresh, high-contrast, modern educational workspace.
- * Brand Palette: Bright lime green (#9AE62E, #C4F560, #6FC21A) with near-black ink (#10140C) and pure white (#FFFFFF).
+ * ConceptLens Design System Tokens — "Flux" Visual Language
+ * Aesthetic: High-contrast, clean bento workspace with crisp color separation.
+ * Primary Accent: Vibrant Lime (#D7F25C) with dark ink (#111113)
+ * Secondary Accent: Soft Lavender (#B7A9F2)
+ * Surfaces: Light Canvas (#E6E6E8) / White Card (#FFFFFF) / Dark Surface (#1B1B1D)
  */
 
 :root {
   /* =====================================================================
-     1. Brand Core Palette & Contrast Tokens
+     1. Color Palette: Light Theme (Default)
      ===================================================================== */
-  --brand: #9AE62E;
-  --brand-light: #C4F560;
-  --brand-mid: #6FB41A;
-  --brand-deep: #4C8F0F;
-  --brand-dark: #3E7806;
-  --tint: #E6FABB;
-  --ink: #10140C;              /* WCAG AAA 12.35:1 on lime, 18.87:1 on white */
-  --muted-text: #44502F;
-  --white: #FFFFFF;
-  --font-lilita: 'Lilita One', cursive, sans-serif;
-  --font-nunito: 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --glass-card-bg: rgba(255, 255, 255, 0.62);
-  --glass-card-border: 1px solid rgba(255, 255, 255, 0.95);
-  --glass-card-radius: 20px;
-  --glass-card-shadow: 0 10px 30px rgba(111, 180, 26, 0.12);
-  --brand-text: #2E5E04;       /* WCAG AAA/AA 7.7:1 contrast on white */
+  --canvas: #E6E6E8;
+  --card: #FFFFFF;
+  --card-elevated: #FFFFFF;
+  --dark-surface: #1B1B1D;
+  --dark-surface-elevated: #262629;
+  --surface-subtle: #F0F0F2;
+  --surface-active: #F5F5F7;
 
-  /* =====================================================================
-     2. Light Theme Surfaces & Background
-     ===================================================================== */
-  --bg: #F7FBF2;
-  --bg-gradient: linear-gradient(175deg, #F8FCF3 0%, #EEF8E2 48%, #FFFFFF 100%);
-  --surface: rgba(255, 255, 255, 0.70);
-  --surface-solid: #FFFFFF;
-  --surface-2: rgba(234, 248, 218, 0.60);
-  --surface-hover: rgba(255, 255, 255, 0.88);
-  --border: rgba(255, 255, 255, 0.75);
-  --border-strong: rgba(111, 194, 26, 0.32);
-  --border-subtle: rgba(16, 20, 12, 0.08);
+  /* Accents */
+  --accent-lime: #D7F25C;
+  --accent-lime-hover: #E2F77D;
+  --accent-lime-active: #CBE94C;
+  --accent-lime-soft: rgba(215, 242, 92, 0.18);
+  --accent-lime-dim: rgba(215, 242, 92, 0.35);
+
+  --accent-lavender: #B7A9F2;
+  --accent-lavender-hover: #C6BAF7;
+  --accent-lavender-soft: rgba(183, 169, 242, 0.18);
+  --accent-lavender-dim: rgba(183, 169, 242, 0.35);
 
   /* Typography Colors */
-  --text: #10140C;
-  --text-2: #384531;
-  --text-secondary: #384531;
-  --text-muted: #596B50;
+  --text-main: #111113;
+  --text-secondary: #3D3D44;
+  --text-muted: #6B6B73;
+  --text-dim: #92929B;
+  --text-inverse: #FFFFFF;
 
-  /* Legacy aliases mapped to new brand */
-  --gold: var(--brand);
-  --gold-bright: var(--brand-light);
-  --gold-deep: var(--brand-deep);
-  --gold-soft: rgba(154, 230, 46, 0.16);
-  --text-on-gold: var(--ink);
-  --logo-accent: var(--brand-text);
+  /* Dark Surface Typography */
+  --text-on-dark: #FFFFFF;
+  --text-muted-dark: #A8A8B0;
+  --text-dim-dark: #6E6E78;
 
-  /* Midnight Stage & Contrast Accents */
-  --midnight: #10140C;
-  --midnight-2: #192213;
-  --midnight-border: rgba(255, 255, 255, 0.18);
-  --midnight-text: #FFFFFF;
-  --midnight-text-muted: #D5E0CC;
+  /* Semantic Feedback Tokens */
+  --status-success: #D7F25C;
+  --status-success-bg: rgba(215, 242, 92, 0.22);
+  --status-warning: #F5A623;
+  --status-warning-bg: rgba(245, 166, 35, 0.14);
+  --status-danger: #E05656;
+  --status-danger-bg: rgba(224, 86, 86, 0.14);
+  --status-info: #B7A9F2;
+  --status-info-bg: rgba(183, 169, 242, 0.16);
 
-  /* Focus & Interactive */
-  --focus-ring-color: #6FC21A;
-  --focus-ring: 0 0 0 2px var(--bg), 0 0 0 4px var(--focus-ring-color);
-
-  /* Semantic Feedback Colors (kept for status only) */
-  --success: #2E5E04;
-  --success-bg: rgba(111, 194, 26, 0.12);
-  --warning: #A15C00;
-  --warning-bg: rgba(161, 92, 0, 0.10);
-  --danger: #C9303A;
-  --danger-bg: rgba(201, 48, 58, 0.08);
-
-  /* Primary Button Gradient (Lime with Ink text) */
-  --btn-gold-gradient: linear-gradient(135deg, #C4F560 0%, #9AE62E 100%);
-  --btn-gold-hover: linear-gradient(135deg, #CEF873 0%, #A4EE35 100%);
-  --btn-gold-active: linear-gradient(135deg, #9AE62E 0%, #6FC21A 100%);
-
-  /* Secondary Button Glass */
-  --btn-glass-bg: rgba(255, 255, 255, 0.70);
-  --btn-glass-border: var(--ink);
-  --btn-glass-color: var(--ink);
-
-  /* Concept-Tree Branch Colors (Harmonious shades of lime, green, and ink/grey) */
-  --branch-gold: #6FC21A;
-  --branch-gold-bg: rgba(196, 245, 96, 0.18);
-  --branch-gold-border: rgba(111, 194, 26, 0.45);
-
-  --branch-indigo: #4A8C13;
-  --branch-indigo-bg: rgba(154, 230, 46, 0.15);
-  --branch-indigo-border: rgba(74, 140, 19, 0.45);
-
-  --branch-teal: #337A1A;
-  --branch-teal-bg: rgba(111, 194, 26, 0.14);
-  --branch-teal-border: rgba(51, 122, 26, 0.45);
-
-  --branch-rose: #2E5E04;
-  --branch-rose-bg: rgba(154, 230, 46, 0.12);
-  --branch-rose-border: rgba(46, 94, 4, 0.40);
-
-  --branch-violet: #527E23;
-  --branch-violet-bg: rgba(196, 245, 96, 0.14);
-  --branch-violet-border: rgba(82, 126, 35, 0.40);
-
-  --branch-sky: #639E1B;
-  --branch-sky-bg: rgba(196, 245, 96, 0.16);
-  --branch-sky-border: rgba(99, 158, 27, 0.40);
-
-  --bookshelf-stroke: var(--ink);
-  --bookshelf-accent: var(--brand);
+  /* Contrast Separation & Borders (Separate with color contrast, not borders) */
+  --border-subtle: rgba(17, 17, 19, 0.05);
+  --border-strong: rgba(17, 17, 19, 0.12);
+  --border-dark-subtle: rgba(255, 255, 255, 0.08);
+  --border-dashed: rgba(17, 17, 19, 0.18);
 
   /* =====================================================================
-     3. Glassmorphism System Tokens
+     2. Typography System
      ===================================================================== */
-  --glass-bg: rgba(255, 255, 255, 0.65);
-  --glass-bg-subtle: rgba(255, 255, 255, 0.52);
-  --glass-bg-solid: rgba(255, 255, 255, 0.96);
-  --glass-border: rgba(255, 255, 255, 0.75);
-  --glass-border-subtle: rgba(255, 255, 255, 0.45);
-  --glass-blur: blur(16px);
-  --glass-blur-mobile: blur(12px);
-  --glass-shadow: 0 10px 32px rgba(16, 20, 12, 0.06), 0 3px 10px rgba(111, 194, 26, 0.05);
+  --font-family: 'Poppins', 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-heading: 'Poppins', 'Plus Jakarta Sans', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, Consolas, monospace;
 
-  --glass-header-bg: rgba(255, 255, 255, 0.68);
-  --glass-header-border: rgba(255, 255, 255, 0.80);
-  --glass-control-bg: rgba(255, 255, 255, 0.72);
-  --glass-control-border: rgba(255, 255, 255, 0.85);
-  --glass-surface: rgba(255, 255, 255, 0.65);
-  --glass-surface-border: rgba(255, 255, 255, 0.75);
-
-  /* Layered Soft Shadows */
-  --shadow-sm: 0 2px 8px rgba(16, 20, 12, 0.045);
-  --shadow-md: 0 8px 24px rgba(16, 20, 12, 0.07);
-  --shadow-lg: 0 16px 40px rgba(16, 20, 12, 0.09);
-  --shadow-gold: 0 4px 18px rgba(111, 194, 26, 0.20);
-  --shadow-midnight: 0 20px 50px rgba(16, 20, 12, 0.24);
-
-  /* Border Radii */
-  --radius-card: 18px;
-  --radius-control: 12px;
-  --radius-modal: 24px;
-  --radius-pill: 999px;
+  --title-huge: 42px;
+  --title-large: 32px;
+  --title-medium: 22px;
+  --title-small: 17px;
+  --stat-number: 40px;
+  --body-regular: 15px;
+  --body-small: 13px;
+  --label-tiny: 11px;
 
   /* =====================================================================
-     3B. Shared High-Opacity Overlay Tokens (Menus, Modals, Fullscreen Views)
+     3. Shape & Geometry Tokens
      ===================================================================== */
-  --overlay-bg: rgba(255, 255, 255, 0.94);
-  --overlay-blur: 24px;
-  --overlay-border: 1px solid rgba(16, 20, 12, 0.12);
-  --overlay-shadow: 0 16px 48px rgba(16, 20, 12, 0.14), 0 4px 16px rgba(111, 194, 26, 0.08);
-  --scrim: rgba(16, 20, 12, 0.28);
-  --scrim-filter: blur(6px);
+  --radius-card: 26px;
+  --radius-card-sm: 20px;
+  --radius-card-lg: 30px;
+  --radius-pill: 9999px;
+  --radius-chip: 14px;
+  --radius-icon: 14px;
+  --radius-btn: 9999px;
+  --radius-input: 9999px;
+
+  /* Shadows: Minimal or None; separate with color contrast */
+  --shadow-none: none;
+  --shadow-soft: 0 4px 20px rgba(0, 0, 0, 0.03);
+  --shadow-elevated: 0 10px 30px rgba(0, 0, 0, 0.05);
+  --shadow-floating: 0 16px 40px rgba(0, 0, 0, 0.12);
+
+  /* Transitions */
+  --transition-fast: 150ms cubic-bezier(0.16, 1, 0.3, 1);
+  --transition-normal: 220ms cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Focus Ring */
+  --focus-ring: 0 0 0 2px var(--card), 0 0 0 4px var(--accent-lime);
 
   /* =====================================================================
-     4. Typography & Font Families
+     4. Backward-Compatible Component Aliases
      ===================================================================== */
-  --font-display: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-heading: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-logo-display: 'Rubik Dirt', 'Arial Black', sans-serif;
-  --font-body: 'Berlin Sans FB', 'Berlin Sans FB Demi', Arial, sans-serif;
-  --font-bell: 'Bell MT', 'Bell MT MT', Georgia, serif;
-  --font-mono: 'JetBrains Mono', monospace;
+  --bg: var(--canvas);
+  --surface: var(--card);
+  --surface-solid: var(--card);
+  --surface-2: var(--surface-subtle);
+  --surface-hover: var(--surface-active);
+  --brand: var(--accent-lime);
+  --brand-light: var(--accent-lime-hover);
+  --brand-dark: var(--dark-surface);
+  --ink: var(--text-main);
+  --white: #FFFFFF;
+  --midnight: var(--dark-surface);
+  --text: var(--text-main);
+  --text-2: var(--text-secondary);
+  --muted-text: var(--text-muted);
+  --border: var(--border-subtle);
 
-  /* Fluid Typography Scale */
-  --font-hero: clamp(3.2rem, 5.5vw, 4.75rem);
-  --font-section: clamp(1.85rem, 3.2vw, 2.6rem);
-  --font-h1: clamp(1.5rem, 2.4vw, 1.85rem);
-  --font-h2: clamp(1.2rem, 1.8vw, 1.45rem);
-  --font-h3: clamp(1.0rem, 1.4vw, 1.15rem);
-  --font-size-hero: var(--font-hero);
-  --font-size-h1: var(--font-h1);
-  --font-size-h2: var(--font-h2);
-  --font-size-h3: var(--font-h3);
-  --font-size-body: 16px;
-  --font-size-sm: 0.875rem;
-  --font-size-xs: 0.78rem;
-
-  --line-height-hero: 1.05;
-  --line-height-heading: 1.25;
-  --line-height-body: 1.65;
-  --reading-max-width: 65ch;
-
-  /* =====================================================================
-     5. Motion & Springs
-     ===================================================================== */
-  --ease-smooth: cubic-bezier(0.22, 1, 0.36, 1);
-  --transition-fast: 180ms cubic-bezier(0.22, 1, 0.36, 1);
-  --transition-normal: 320ms cubic-bezier(0.22, 1, 0.36, 1);
-  --transition-slow: 540ms cubic-bezier(0.22, 1, 0.36, 1);
+  /* Planner Component Variables */
+  --planner-bg: var(--canvas);
+  --planner-card-bg: var(--card);
+  --planner-card-border: var(--border-subtle);
+  --planner-radius-lg: var(--radius-card);
+  --planner-radius-md: var(--radius-card-sm);
+  --planner-radius-sm: var(--radius-chip);
+  --planner-text-main: var(--text-main);
+  --planner-text-muted: var(--text-muted);
+  --planner-mint: var(--accent-lime);
+  --planner-orange: var(--accent-lavender);
+  --planner-chip-bg: var(--surface-subtle);
+  --planner-chip-active-bg: var(--dark-surface);
+  --planner-chip-active-text: var(--text-on-dark);
+  --planner-shadow-sm: var(--shadow-none);
+  --planner-shadow-md: var(--shadow-soft);
+  --planner-border: var(--border-subtle);
 }
 
 /* =====================================================================
-   DARK THEME: Neutral dark surfaces with vibrant lime accents
+   5. Dark Theme Overrides
    ===================================================================== */
-[data-theme='dark'] {
-  --bg: #0C1008;
-  --bg-gradient: linear-gradient(175deg, #0C1008 0%, #12180E 50%, #161F12 100%);
-  --surface: rgba(20, 27, 16, 0.74);
-  --surface-solid: #151C11;
-  --surface-2: rgba(28, 38, 23, 0.70);
-  --surface-hover: rgba(36, 48, 29, 0.85);
-  --border: rgba(255, 255, 255, 0.12);
-  --border-strong: rgba(154, 230, 46, 0.30);
+[data-theme="dark"] {
+  --canvas: #121214;
+  --card: #1B1B1D;
+  --card-elevated: #242428;
+  --dark-surface: #121214;
+  --dark-surface-elevated: #1F1F23;
+  --surface-subtle: #242428;
+  --surface-active: #2C2C32;
+
+  /* Typography */
+  --text-main: #FFFFFF;
+  --text-secondary: #D4D4D8;
+  --text-muted: #A8A8B0;
+  --text-dim: #71717A;
+  --text-inverse: #111113;
+
+  /* Dark Surface Typography */
+  --text-on-dark: #FFFFFF;
+  --text-muted-dark: #A8A8B0;
+  --text-dim-dark: #71717A;
+
+  /* Separation */
   --border-subtle: rgba(255, 255, 255, 0.06);
+  --border-strong: rgba(255, 255, 255, 0.14);
+  --border-dark-subtle: rgba(255, 255, 255, 0.08);
+  --border-dashed: rgba(255, 255, 255, 0.16);
 
-  --ink: #F2F5ED;
-  --text: #F2F5ED;
-  --text-2: #C5CEB8;
-  --muted-text: #A8B896;
-  --tint: #1C2B10;
-  --glass-card-bg: rgba(20, 27, 16, 0.74);
-  --glass-card-border: 1px solid rgba(255, 255, 255, 0.14);
-  --glass-card-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
-  --text-muted: #95A187;
+  /* Backward Compatibility */
+  --bg: var(--canvas);
+  --surface: var(--card);
+  --surface-solid: var(--card);
+  --surface-2: var(--surface-subtle);
+  --surface-hover: var(--surface-active);
+  --ink: var(--text-main);
+  --text: var(--text-main);
+  --text-2: var(--text-secondary);
+  --muted-text: var(--text-muted);
+  --border: var(--border-subtle);
 
-  --gold: #9AE62E;
-  --gold-bright: #C4F560;
-  --gold-deep: #6FC21A;
-  --gold-soft: rgba(154, 230, 46, 0.18);
-  --text-on-gold: #10140C;
-  --logo-accent: #9AE62E;
-
-  --midnight: #080B06;
-  --midnight-2: #10150B;
-  --midnight-border: rgba(255, 255, 255, 0.14);
-  --midnight-text: #F2F5ED;
-  --midnight-text-muted: #95A187;
-
-  --btn-gold-gradient: linear-gradient(135deg, #C4F560 0%, #9AE62E 100%);
-  --btn-gold-hover: linear-gradient(135deg, #CEF873 0%, #A4EE35 100%);
-  --btn-gold-active: linear-gradient(135deg, #9AE62E 0%, #6FC21A 100%);
-
-  --btn-glass-bg: rgba(24, 33, 20, 0.75);
-  --btn-glass-border: rgba(255, 255, 255, 0.35);
-  --btn-glass-color: #F2F5ED;
-
-  --focus-ring: 0 0 0 2px var(--bg), 0 0 0 4px #9AE62E;
-
-  /* Branch color dark adjustments */
-  --branch-gold-bg: rgba(154, 230, 46, 0.14);
-  --branch-indigo-bg: rgba(111, 194, 26, 0.14);
-  --branch-teal-bg: rgba(196, 245, 96, 0.12);
-  --branch-rose-bg: rgba(74, 140, 19, 0.14);
-  --branch-violet-bg: rgba(154, 230, 46, 0.12);
-  --branch-sky-bg: rgba(111, 194, 26, 0.14);
-
-  /* Glass on Dark */
-  --glass-bg: rgba(18, 24, 14, 0.74);
-  --glass-bg-subtle: rgba(18, 24, 14, 0.55);
-  --glass-bg-solid: rgba(18, 24, 14, 0.96);
-  --glass-border: rgba(255, 255, 255, 0.12);
-  --glass-border-subtle: rgba(255, 255, 255, 0.08);
-  --glass-shadow: 0 16px 44px rgba(0, 0, 0, 0.55), 0 4px 16px rgba(154, 230, 46, 0.08);
-
-  --glass-header-bg: rgba(18, 24, 14, 0.76);
-  --glass-header-border: rgba(255, 255, 255, 0.14);
-  --glass-control-bg: rgba(25, 34, 20, 0.82);
-  --glass-control-border: rgba(255, 255, 255, 0.14);
-  --glass-surface: rgba(18, 24, 14, 0.74);
-  --glass-surface-border: rgba(255, 255, 255, 0.12);
-
-  /* Shadows on Dark */
-  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.35);
-  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.45);
-  --shadow-lg: 0 16px 44px rgba(0, 0, 0, 0.60);
-  --shadow-gold: 0 4px 24px rgba(154, 230, 46, 0.18);
-
-  --bookshelf-stroke: var(--brand);
-  --bookshelf-accent: var(--brand-light);
-
-  /* Overlays on Dark (translucent tone at about 94% opacity) */
-  --overlay-bg: rgba(18, 24, 14, 0.94);
-  --overlay-border: 1px solid rgba(255, 255, 255, 0.14);
-  --overlay-shadow: 0 18px 52px rgba(0, 0, 0, 0.65), 0 4px 20px rgba(154, 230, 46, 0.10);
-  --scrim: rgba(0, 0, 0, 0.62);
-  --scrim-filter: blur(6px);
-}
-
-/* Reduced overlay blur on phones to avoid GPU strain */
-@media (max-width: 640px) {
-  :root {
-    --overlay-blur: 14px;
-  }
-}
-
-/* Fallback for browsers without backdrop-filter support */
-@supports not (backdrop-filter: blur(1px)) {
-  :root {
-    --glass-bg: var(--glass-bg-solid);
-    --glass-header-bg: rgba(255, 255, 255, 0.96);
-    --glass-surface: rgba(255, 255, 255, 0.96);
-    --overlay-bg: #FFFFFF;
-  }
-  [data-theme='dark'] {
-    --glass-bg: var(--glass-bg-solid);
-    --glass-header-bg: rgba(18, 24, 14, 0.96);
-    --glass-surface: rgba(18, 24, 14, 0.96);
-    --overlay-bg: #12180E;
-  }
-}
-
-/* Accessibility: User prefers reduced transparency */
-@media (prefers-reduced-transparency: reduce) {
-  :root {
-    --glass-bg: #FFFFFF;
-    --glass-header-bg: #FFFFFF;
-    --glass-surface: #FFFFFF;
-    --overlay-bg: #FFFFFF;
-    --overlay-blur: 0px;
-    --scrim: rgba(16, 20, 12, 0.85);
-    --scrim-filter: none;
-  }
-  [data-theme='dark'] {
-    --glass-bg: #12180E;
-    --glass-header-bg: #12180E;
-    --glass-surface: #12180E;
-    --overlay-bg: #12180E;
-    --overlay-blur: 0px;
-    --scrim: rgba(0, 0, 0, 0.88);
-    --scrim-filter: none;
-  }
-}
-
-/* Accessibility: User prefers reduced motion */
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
-  }
+  --planner-bg: var(--canvas);
+  --planner-card-bg: var(--card);
+  --planner-card-border: var(--border-subtle);
+  --planner-text-main: var(--text-main);
+  --planner-text-muted: var(--text-muted);
+  --planner-chip-bg: var(--surface-subtle);
+  --planner-chip-active-bg: var(--accent-lime);
+  --planner-chip-active-text: #111113;
+  --planner-border: var(--border-subtle);
+  --focus-ring: 0 0 0 2px var(--card), 0 0 0 4px var(--accent-lime);
 }

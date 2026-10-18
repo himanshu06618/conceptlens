@@ -506,8 +506,9 @@ function ConceptTreeCanvas({
   const handleExportPng = async () => {
     if (!stageRef.current) return;
     try {
+      const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
       const dataUrl = await toPng(stageRef.current, {
-        backgroundColor: '#17211C',
+        backgroundColor: isDark ? '#121214' : '#E6E6E8',
         quality: 0.95,
         filter: (node) => !node.classList?.contains('tree-controls-bar')
       });
@@ -524,8 +525,9 @@ function ConceptTreeCanvas({
   const handleExportSvg = async () => {
     if (!stageRef.current) return;
     try {
+      const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
       const dataUrl = await toSvg(stageRef.current, {
-        backgroundColor: '#17211C',
+        backgroundColor: isDark ? '#121214' : '#E6E6E8',
         filter: (node) => !node.classList?.contains('tree-controls-bar')
       });
       const link = document.createElement('a');

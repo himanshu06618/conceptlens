@@ -1,7 +1,16 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Target, CheckCircle2, AlertCircle, Award, MapPin, ArrowRight } from 'lucide-react';
+import { Target, CheckCircle2, AlertCircle, Award, MapPin, ArrowRight, MoreHorizontal } from 'lucide-react';
 
+/**
+ * CourseStatusCard — "Flux" Health-Dashboard Inspired Study Route Tracker
+ * DARK card (#1B1B1D) with pill-shaped bars per day:
+ * - Today: Lime (#D7F25C)
+ * - Done: Lavender (#B7A9F2)
+ * - Upcoming: Dim / hatched (#2E2E34)
+ * - Status pill: Amber "2 days behind" or Lime "On track"
+ * - CTA: Lime "Manage Study Route" button
+ */
 export default function CourseStatusCard({
   activePlan = null,
   planStatus = null,
@@ -12,37 +21,33 @@ export default function CourseStatusCard({
 
   if (!activePlan) {
     return (
-      <div className="planner-section-card">
-        <div className="planner-section-title">
-          <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Target size={20} color="var(--planner-mint)" />
-            Course Status
-          </span>
+      <div className="flux-card flux-card-dark course-status-card">
+        <div className="course-status-dark-header">
+          <div className="course-status-title-group">
+            <div className="flux-card-icon-chip" style={{ background: 'rgba(215, 242, 92, 0.16)', color: 'var(--accent-lime)' }}>
+              <Target size={18} strokeWidth={2} />
+            </div>
+            <div>
+              <h3 className="course-status-card-title">Study Route</h3>
+              <span className="course-status-card-subtitle">Daily pacing & milestones</span>
+            </div>
+          </div>
+          <button type="button" className="flux-stat-menu-btn on-dark" aria-label="Route options">
+            <MoreHorizontal size={17} />
+          </button>
         </div>
-        <div style={{ padding: '24px 20px', textAlign: 'center', color: 'var(--planner-text-muted)', background: 'var(--planner-chip-bg)', borderRadius: 'var(--planner-radius-sm)' }}>
-          <p style={{ margin: '0 0 14px 0', fontSize: '0.9rem' }}>
-            No active study plan started yet. Use the <strong>Study Route Planner</strong> from the sidebar to set your pace and track daily milestones.
+
+        <div className="course-status-empty-dark">
+          <p className="course-status-empty-text">
+            No active study plan started yet. Generate an adaptive study schedule to balance your milestones.
           </p>
           <button
             type="button"
+            className="flux-btn btn-lime btn-sm"
             onClick={() => navigate('/planner')}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-              background: 'var(--planner-mint)',
-              color: '#ffffff',
-              border: 'none',
-              borderRadius: '999px',
-              padding: '8px 18px',
-              fontSize: '0.84rem',
-              fontWeight: 600,
-              cursor: 'pointer',
-              boxShadow: 'var(--planner-shadow-sm)'
-            }}
           >
             <MapPin size={14} />
-            <span>Open Study Route Planner</span>
+            <span>Set Study Route</span>
             <ArrowRight size={14} />
           </button>
         </div>
@@ -58,83 +63,108 @@ export default function CourseStatusCard({
   const onTrack = planStatus?.on_track || (behindCount === 0 && !isComplete);
 
   const completionPct = Math.min(100, Math.round((doneDays.length / days) * 100));
-
-  // Find today's chapters from route snapshot
   const todayItems = activePlan.route?.find((d) => d.day_index === todayIndex)?.items || [];
 
   return (
-    <div className="planner-section-card">
-      <div className="course-status-header">
-        <div className="course-status-day">
-          {isComplete ? (
-            <span style={{ color: 'var(--planner-mint)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Award size={26} />
-              Course Complete!
-            </span>
-          ) : (
-            `Day ${todayIndex} of ${days}`
-          )}
+    <div className="flux-card flux-card-dark course-status-card">
+      {/* Dark Header */}
+      <div className="course-status-dark-header">
+        <div>
+          <div className="course-status-day-heading">
+            {isComplete ? (
+              <span className="complete-heading">
+                <Award size={22} color="var(--accent-lime)" />
+                Course Complete!
+              </span>
+            ) : (
+              `Day ${todayIndex} of ${days}`
+            )}
+          </div>
+          <span className="course-status-subhead">
+            {isComplete ? 'All targets achieved' : `${days - todayIndex + 1} days remaining to target exam`}
+          </span>
         </div>
 
         <div>
           {isComplete ? (
-            <span className="ontrack-chip chip-complete">
+            <span className="flux-badge badge-lime">
               100% Done
             </span>
           ) : behindCount > 0 ? (
-            <span className="ontrack-chip chip-behind">
-              <AlertCircle size={13} style={{ display: 'inline', marginRight: 4 }} />
+            <span className="flux-badge badge-amber">
+              <AlertCircle size={12} style={{ display: 'inline', marginRight: 4 }} />
               {behindCount} {behindCount === 1 ? 'day' : 'days'} behind
             </span>
           ) : (
-            <span className="ontrack-chip chip-ontrack">
-              <CheckCircle2 size={13} style={{ display: 'inline', marginRight: 4 }} />
+            <span className="flux-badge badge-lime">
+              <CheckCircle2 size={12} style={{ display: 'inline', marginRight: 4 }} />
               On track
             </span>
           )}
         </div>
       </div>
 
-      {/* Progress Bar */}
-      <div className="course-progress-bar-wrap" role="progressbar" aria-valuenow={completionPct} aria-valuemin={0} aria-valuemax={100}>
-        <div className="course-progress-fill" style={{ width: `${completionPct}%` }} />
+      {/* Pill-shaped bars per day (today lime, done lavender, upcoming hatched/dim) */}
+      <div className="course-day-pills-bar" role="progressbar" aria-valuenow={completionPct} aria-valuemin={0} aria-valuemax={100}>
+        {Array.from({ length: days }).map((_, idx) => {
+          const dayNum = idx + 1;
+          const isDone = doneDays.includes(dayNum);
+          const isToday = dayNum === todayIndex && !isComplete;
+          const isUpcoming = dayNum > todayIndex && !isDone;
+
+          let pillClass = 'day-pill-upcoming';
+          if (isToday) pillClass = 'day-pill-today';
+          else if (isDone) pillClass = 'day-pill-done';
+
+          return (
+            <div
+              key={dayNum}
+              className={`course-day-pill-segment ${pillClass}`}
+              title={`Day ${dayNum}: ${isToday ? 'Today (Active)' : isDone ? 'Completed' : 'Upcoming'}`}
+            >
+              <span className="day-pill-label">D{dayNum}</span>
+            </div>
+          );
+        })}
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: 'var(--planner-text-muted)', marginBottom: '16px' }}>
+      <div className="course-progress-meta-row">
         <span>{doneDays.length} of {days} days completed</span>
-        <strong style={{ color: 'var(--planner-text-main)' }}>{completionPct}%</strong>
+        <strong className="course-pct-label">{completionPct}%</strong>
       </div>
 
-      {/* Today's Chapters */}
-      <div className="todays-chapters-box">
-        <div className="todays-chapters-label">
-          {isComplete ? "All Goals Met" : "Today's Study Focus"}
+      {/* Today's Study Focus */}
+      <div className="todays-focus-dark-box">
+        <div className="todays-focus-header">
+          <span>{isComplete ? "Milestones Achieved" : "Today's Study Focus"}</span>
+          <span className="focus-target-pill">Target</span>
         </div>
         {todayItems.length > 0 ? (
-          <div className="todays-chapters-list">
+          <div className="todays-focus-list">
             {todayItems.map((item, idx) => (
-              <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span>{item.chapter}</span>
-                <span style={{ color: 'var(--planner-orange)', fontWeight: 600 }}>{item.hours}h</span>
+              <div key={idx} className="todays-focus-row">
+                <span className="focus-chapter-name">{item.chapter}</span>
+                <span className="focus-hours-tag">{item.hours}h</span>
               </div>
             ))}
           </div>
         ) : (
-          <div style={{ color: 'var(--planner-text-muted)', fontSize: '0.88rem' }}>
-            {isComplete ? "Congratulations! You've finished your entire route." : "Rest or revision day scheduled."}
+          <div className="todays-focus-empty">
+            {isComplete ? "Congratulations! You've finished your entire route." : "Review & flashcard revision day scheduled."}
           </div>
         )}
       </div>
 
+      {/* Lime Manage Study Route Button */}
       <button
         type="button"
-        className="course-status-view-plan-btn"
+        className="flux-btn btn-lime course-manage-route-btn"
         onClick={() => navigate('/planner')}
         title="View full study schedule & route"
       >
-        <MapPin size={14} />
+        <MapPin size={15} />
         <span>Manage Study Route</span>
-        <ArrowRight size={14} />
+        <ArrowRight size={15} />
       </button>
     </div>
   );

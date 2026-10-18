@@ -4,12 +4,13 @@ import {
   LogIn,
   PanelLeftOpen,
   PanelLeftClose,
-  Menu
+  Menu,
+  Bell
 } from 'lucide-react';
 import StudentDashboard from './pages/StudentDashboard';
 import NeutralSkeleton from './components/planner/NeutralSkeleton';
 import Sidebar from './components/Sidebar';
-import NavSidebar from './components/NavSidebar';
+import FluxNavigation from './components/FluxNavigation';
 import UploadView from './components/UploadView';
 import ToastContainer from './components/Toast';
 import AuthModal from './components/AuthModal';
@@ -40,11 +41,13 @@ import {
   AmbientBackground,
   Logo, 
   ThemeToggle, 
-  Button 
+  Button,
+  SearchInput
 } from './components/ui';
 
 import './styles/tokens.css';
 import './styles/index.css';
+import './styles/nav-sidebar.css';
 
 export default function App() {
   const { 
@@ -137,6 +140,8 @@ export default function App() {
   // Sidebar Navigation State (Mobile drawer + Desktop collapse)
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isNavSidebarOpen, setIsNavSidebarOpen] = useState(false);
+  const [isRemindersOpen, setIsRemindersOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
     try {
       return localStorage.getItem('conceptlens_sidebar_collapsed') === 'true';
@@ -680,7 +685,7 @@ export default function App() {
   };
 
   return (
-    <div className="app-root" ref={appRootRef}>
+    <div className="flux-app-layout" ref={appRootRef}>
       {/* Background Atmosphere */}
       <AmbientBackground variant={isAppRoute ? 'app' : 'landing'} />
 
@@ -693,14 +698,20 @@ export default function App() {
         </div>
       )}
 
-      {/* 3-Column Glass Header (1fr auto 1fr, perfectly centered Logo & title) */}
-      <header className="app-header">
-        <div className="header-col-left" />
+      {/* Desktop Inset Dark Left Sidebar & Mobile Bottom Nav & Reminders Drawer */}
+      <FluxNavigation
+        isRemindersOpen={isRemindersOpen}
+        onToggleReminders={() => setIsRemindersOpen((prev) => !prev)}
+        onToast={addToast}
+      />
 
-        <div className="header-col-center">
+      {/* Main Area: Large Rounded Light Panel */}
+      <div className="flux-main-panel">
+        {/* Top Header inside main panel */}
+        <header className="flux-top-header">
+          {/* Mobile brand (shown <1024px since sidebar is hidden) */}
           <div 
-            className="brand-clickable-unit"
-            ref={brandUnitRef}
+            className="flux-mobile-brand"
             onClick={() => {
               if (!isAuthenticated) {
                 handleNewUpload();
@@ -713,154 +724,158 @@ export default function App() {
             onKeyDown={(e) => {
               if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
-                if (!isAuthenticated) {
-                  handleNewUpload();
-                }
                 navigate('/');
               }
             }}
           >
-            <Logo size={42} wordmarkSize="1.78rem" scrollMorph />
+            <Logo size={32} wordmarkSize="1.25rem" />
           </div>
-        </div>
 
-        <div className="header-col-right">
-          <ThemeToggle 
-            theme={theme}
-            onToggle={toggleTheme}
-          />
+          {/* Rounded search bar */}
+          <div className="flux-header-search-wrap">
+            <SearchInput
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onClear={() => setSearchQuery('')}
+              placeholder="Search notes, concepts, chapters..."
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && searchQuery.trim()) {
+                  navigate(`/notes?q=${encodeURIComponent(searchQuery.trim())}`);
+                }
+              }}
+            />
+          </div>
 
-          {isAuthenticated ? (
-            <UserMenu onToast={addToast} />
-          ) : (
-            <Button
-              variant="primary"
-              size="sm"
-              icon={LogIn}
-              onClick={() => openAuthModal('signin')}
-              className="header-signin-btn"
-              aria-haspopup="dialog"
-            >
-              Sign in
-            </Button>
-          )}
+          {/* Right controls: Theme toggle, Reminders notification bell with lime badge, UserMenu / Sign in */}
+          <div className="flux-header-actions">
+            <ThemeToggle 
+              theme={theme}
+              onToggle={toggleTheme}
+            />
 
-          {/* Sidebar button in top right side (right side of profile view) */}
-          <button
-            type="button"
-            className={`header-nav-sidebar-btn ${isNavSidebarOpen ? 'is-active' : ''}`}
-            onClick={() => setIsNavSidebarOpen((prev) => !prev)}
-            aria-label="Open Navigation Sidebar"
-            title="Navigation Menu: Dashboard, Personal Notes & Study Reminders"
-          >
-            <Menu size={20} strokeWidth={2} />
-          </button>
-
-          {isGuestWorkspaceRoute && (
             <button
               type="button"
-              className="header-sidebar-toggle"
-              onClick={handleHeaderSidebarToggle}
-              aria-label={`${
-                window.matchMedia('(max-width: 768px)').matches
-                  ? (isSidebarOpen ? 'Close' : 'Open')
-                  : (isSidebarCollapsed ? 'Expand' : 'Collapse')
-              } notes sidebar`}
-              aria-expanded={
-                window.matchMedia('(max-width: 768px)').matches
-                  ? isSidebarOpen
-                  : !isSidebarCollapsed
-              }
-              title={`${
-                window.matchMedia('(max-width: 768px)').matches
-                  ? (isSidebarOpen ? 'Close' : 'Open')
-                  : (isSidebarCollapsed ? 'Expand' : 'Collapse')
-              } notes sidebar`}
+              className="flux-header-bell-btn"
+              onClick={() => setIsRemindersOpen((prev) => !prev)}
+              aria-label="Study reminders & notifications"
+              title="Study Reminders"
             >
-              {window.matchMedia('(max-width: 768px)').matches
-                ? (isSidebarOpen ? (
-                  <PanelLeftClose size={19} strokeWidth={1.8} />
-                ) : (
-                  <PanelLeftOpen size={19} strokeWidth={1.8} />
-                ))
-                : isSidebarCollapsed ? (
-                <PanelLeftOpen size={19} strokeWidth={1.8} />
-              ) : (
-                <PanelLeftClose size={19} strokeWidth={1.8} />
-              )}
+              <Bell size={19} />
+              <span className="flux-bell-lime-dot" />
             </button>
-          )}
-        </div>
-      </header>
 
-      {/* Routes: Auth-based Home with Dashboard as Default for Logged-In Users */}
-      <React.Suspense fallback={<NeutralSkeleton />}>
-        <Routes>
-          <Route 
-            path="/" 
-            element={renderHome()} 
-          />
+            {isAuthenticated ? (
+              <UserMenu onToast={addToast} />
+            ) : (
+              <Button
+                variant="primary"
+                size="sm"
+                icon={LogIn}
+                onClick={() => openAuthModal('signin')}
+                className="flux-signin-btn"
+                aria-haspopup="dialog"
+              >
+                Sign in
+              </Button>
+            )}
 
-          <Route 
-            path="/app" 
-            element={<Navigate to="/" replace />} 
-          />
+            {isGuestWorkspaceRoute && (
+              <button
+                type="button"
+                className="header-sidebar-toggle"
+                onClick={handleHeaderSidebarToggle}
+                aria-label={`${
+                  window.matchMedia('(max-width: 768px)').matches
+                    ? (isSidebarOpen ? 'Close' : 'Open')
+                    : (isSidebarCollapsed ? 'Expand' : 'Collapse')
+                } notes sidebar`}
+                aria-expanded={
+                  window.matchMedia('(max-width: 768px)').matches
+                    ? isSidebarOpen
+                    : !isSidebarCollapsed
+                }
+                title="Notes sidebar"
+              >
+                {window.matchMedia('(max-width: 768px)').matches
+                  ? (isSidebarOpen ? (
+                    <PanelLeftClose size={19} strokeWidth={1.8} />
+                  ) : (
+                    <PanelLeftOpen size={19} strokeWidth={1.8} />
+                  ))
+                  : isSidebarCollapsed ? (
+                  <PanelLeftOpen size={19} strokeWidth={1.8} />
+                ) : (
+                  <PanelLeftClose size={19} strokeWidth={1.8} />
+                )}
+              </button>
+            )}
+          </div>
+        </header>
 
-          <Route 
-            path="/student/dashboard" 
-            element={<Navigate to="/" replace />} 
-          />
+        {/* Scrollable Main Content Container */}
+        <main className="flux-main-content">
+          <React.Suspense fallback={<NeutralSkeleton />}>
+            <Routes>
+              <Route 
+                path="/" 
+                element={renderHome()} 
+              />
 
-          <Route 
-            path="/teacher/dashboard" 
-            element={isAuthenticated && user?.role === 'teacher' ? <TeacherDashboard /> : <Navigate to="/" replace />} 
-          />
+              <Route 
+                path="/app" 
+                element={<Navigate to="/" replace />} 
+              />
 
-          <Route 
-            path="/notes" 
-            element={<NotesView onToast={addToast} />} 
-          />
+              <Route 
+                path="/student/dashboard" 
+                element={<Navigate to="/" replace />} 
+              />
 
-          <Route 
-            path="/planner" 
-            element={<StudyPlannerView onToast={addToast} />} 
-          />
+              <Route 
+                path="/teacher/dashboard" 
+                element={isAuthenticated && user?.role === 'teacher' ? <TeacherDashboard /> : <Navigate to="/" replace />} 
+              />
 
-          <Route 
-            path="/study-plan" 
-            element={<Navigate to="/planner" replace />} 
-          />
+              <Route 
+                path="/notes" 
+                element={<NotesView onToast={addToast} />} 
+              />
 
-          <Route 
-            path="/dashboard" 
-            element={<Navigate to="/" replace />} 
-          />
+              <Route 
+                path="/planner" 
+                element={<StudyPlannerView onToast={addToast} />} 
+              />
 
-          <Route 
-            path="/landing" 
-            element={<LandingPage onOpenAuth={openAuthModal} />} 
-          />
+              <Route 
+                path="/study-plan" 
+                element={<Navigate to="/planner" replace />} 
+              />
 
-          <Route 
-            path="/viewer" 
-            element={<DocumentViewer onToast={addToast} />} 
-          />
+              <Route 
+                path="/dashboard" 
+                element={<Navigate to="/" replace />} 
+              />
 
-          <Route path="/_dev/loader" element={<LoaderShowcase />} />
+              <Route 
+                path="/landing" 
+                element={<LandingPage onOpenAuth={openAuthModal} />} 
+              />
 
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </React.Suspense>
+              <Route 
+                path="/viewer" 
+                element={<DocumentViewer onToast={addToast} />} 
+              />
+
+              <Route path="/_dev/loader" element={<LoaderShowcase />} />
+
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </React.Suspense>
+        </main>
+      </div>
 
       {/* Global In-Dashboard Auth Modal */}
       <AuthModal onSuccess={handleAuthSuccess} guestStatus={guestStatus} />
-
-      {/* Global Navigation Sidebar & Study Reminders Drawer */}
-      <NavSidebar
-        isOpen={isNavSidebarOpen}
-        onClose={() => setIsNavSidebarOpen(false)}
-        onToast={addToast}
-      />
 
       {/* Toast Notifications */}
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />

@@ -283,8 +283,8 @@ function TreeInner({
               target: cId,
               type: 'smoothstep',
               style: {
-                stroke: isSelected ? '#9AE62E' : 'rgba(111, 194, 26, 0.28)',
-                strokeWidth: isSelected ? 2.5 : 1.5,
+                stroke: isSelected ? '#D7F25C' : '#B7A9F2',
+                strokeWidth: isSelected ? 2.5 : 1.8,
               },
             });
           }

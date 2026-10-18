@@ -75,17 +75,20 @@
 
 /* Left Pane: Notes List */
 .notes-list-pane {
-  background: var(--glass-surface, var(--planner-card-bg));
-  border: 1px solid var(--glass-border, var(--planner-card-border));
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
-  border-radius: var(--planner-radius-lg);
-  padding: 18px 16px;
+  background: var(--card, #FFFFFF);
+  border: none;
+  border-radius: var(--radius-card, 26px);
+  padding: 20px 18px;
   display: flex;
   flex-direction: column;
-  box-shadow: var(--planner-shadow-sm);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
   overflow: hidden;
   max-height: calc(100vh - 140px);
+}
+
+[data-theme='dark'] .notes-list-pane {
+  background: var(--dark-surface, #1B1B1D);
+  box-shadow: none;
 }
 
 .notes-pane-header {
@@ -332,18 +335,21 @@
 
 /* Right Pane: Note Editor */
 .notes-editor-pane {
-  background: var(--glass-surface, var(--planner-card-bg));
-  border: 1px solid var(--glass-border, var(--planner-card-border));
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
-  border-radius: var(--planner-radius-lg);
-  padding: 24px;
+  background: var(--card, #FFFFFF);
+  border: none;
+  border-radius: var(--radius-card, 26px);
+  padding: 28px;
   display: flex;
   flex-direction: column;
-  box-shadow: var(--planner-shadow-sm);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
   position: relative;
   overflow: hidden;
   min-height: 600px;
+}
+
+[data-theme='dark'] .notes-editor-pane {
+  background: var(--dark-surface, #1B1B1D);
+  box-shadow: none;
 }
 
 .notes-mobile-back-btn {

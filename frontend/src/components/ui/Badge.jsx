@@ -1,13 +1,13 @@
 import React from 'react';
 
 /**
- * Clean Badge
- * Soft tints (amber, sky, mint, rose, violet) with dark readable text in light mode
- * and light text in dark mode.
+ * Standardized Pill Badge — "Flux" Design System
+ * Fully rounded pill with crisp typography and high-contrast color fills.
+ * Variants: 'lime' | 'lavender' | 'dark' | 'amber' | 'danger' | 'neutral'
  */
 export default function Badge({
   children,
-  variant = 'amber', // 'amber', 'sky', 'mint', 'rose', 'violet', 'neutral'
+  variant = 'lime',
   size = 'md', // 'sm', 'md'
   icon: Icon,
   className = '',
@@ -16,13 +16,23 @@ export default function Badge({
   const renderIcon = (iconToRender) => {
     if (!iconToRender) return null;
     if (React.isValidElement(iconToRender)) return iconToRender;
-    return React.createElement(iconToRender, { size: size === 'sm' ? 12 : 14, strokeWidth: 1.75 });
+    return React.createElement(iconToRender, { size: size === 'sm' ? 12 : 14, strokeWidth: 2 });
   };
 
+  // Map legacy color names
+  let normalizedVariant = variant;
+  if (variant === 'mint' || variant === 'green' || variant === 'gold' || variant === 'success') {
+    normalizedVariant = 'lime';
+  } else if (variant === 'sky' || variant === 'blue' || variant === 'violet') {
+    normalizedVariant = 'lavender';
+  } else if (variant === 'rose') {
+    normalizedVariant = 'danger';
+  }
+
   return (
-    <span className={`badge badge-${variant} badge-${size} ${className}`.trim()} {...props}>
-      {Icon && <span className="badge-icon">{renderIcon(Icon)}</span>}
-      <span>{children}</span>
+    <span className={`flux-badge badge-${normalizedVariant} badge-${size} ${className}`.trim()} {...props}>
+      {Icon && <span className="flux-badge-icon" aria-hidden="true">{renderIcon(Icon)}</span>}
+      <span className="flux-badge-text">{children}</span>
     </span>
   );
 }

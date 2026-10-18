@@ -59,16 +59,16 @@ function MiniConceptTreeIllustration() {
       >
         <defs>
           <linearGradient id="mTreeGold" x1="0" y1="0" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#C4F560" />
-            <stop offset="100%" stopColor="#3E7806" />
+            <stop offset="0%" stopColor="#D7F25C" />
+            <stop offset="100%" stopColor="#B7A9F2" />
           </linearGradient>
           <linearGradient id="mTreeSage" x1="0" y1="0" x2="100%" y2="100%">
             <stop offset="0%" stopColor="#FFFFFF" />
-            <stop offset="100%" stopColor="#3E7806" />
+            <stop offset="100%" stopColor="#D7F25C" />
           </linearGradient>
           <radialGradient id="mTreeGlow" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.45" />
-            <stop offset="100%" stopColor="#C4F560" stopOpacity="0" />
+            <stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.35" />
+            <stop offset="100%" stopColor="#D7F25C" stopOpacity="0" />
           </radialGradient>
         </defs>
 
@@ -100,38 +100,38 @@ function MiniConceptTreeIllustration() {
         {/* Outer sub-branches */}
         <path
           d="M45 64 C 32 70, 26 74, 20 78"
-          stroke="rgba(57, 127, 105, 0.45)"
+          stroke="rgba(183, 169, 242, 0.45)"
           strokeWidth="1.2"
           strokeLinecap="round"
         />
         <path
           d="M175 64 C 188 70, 194 74, 200 78"
-          stroke="rgba(168, 213, 194, 0.45)"
+          stroke="rgba(215, 242, 92, 0.45)"
           strokeWidth="1.2"
           strokeLinecap="round"
         />
 
         {/* Nodes */}
         <g className="mini-tree-node node-root">
-          <circle cx="110" cy="18" r="7" fill="#252D2A" stroke="url(#mTreeGold)" strokeWidth="1.8" />
-          <circle cx="110" cy="18" r="2.8" fill="#397F69" />
+          <circle cx="110" cy="18" r="7" fill="#1B1B1D" stroke="url(#mTreeGold)" strokeWidth="1.8" />
+          <circle cx="110" cy="18" r="2.8" fill="#D7F25C" />
         </g>
         <g className="mini-tree-node node-left">
-          <circle cx="45" cy="64" r="5" fill="#252D2A" stroke="url(#mTreeGold)" strokeWidth="1.4" />
-          <circle cx="45" cy="64" r="2" fill="#397F69" />
+          <circle cx="45" cy="64" r="5" fill="#1B1B1D" stroke="url(#mTreeGold)" strokeWidth="1.4" />
+          <circle cx="45" cy="64" r="2" fill="#B7A9F2" />
         </g>
         <g className="mini-tree-node node-center">
-          <circle cx="110" cy="64" r="5" fill="#252D2A" stroke="url(#mTreeSage)" strokeWidth="1.4" />
-          <circle cx="110" cy="64" r="2" fill="#397F69" />
+          <circle cx="110" cy="64" r="5" fill="#1B1B1D" stroke="url(#mTreeSage)" strokeWidth="1.4" />
+          <circle cx="110" cy="64" r="2" fill="#D7F25C" />
         </g>
         <g className="mini-tree-node node-right">
-          <circle cx="175" cy="64" r="5" fill="#252D2A" stroke="url(#mTreeGold)" strokeWidth="1.4" />
-          <circle cx="175" cy="64" r="2" fill="#397F69" />
+          <circle cx="175" cy="64" r="5" fill="#1B1B1D" stroke="url(#mTreeGold)" strokeWidth="1.4" />
+          <circle cx="175" cy="64" r="2" fill="#B7A9F2" />
         </g>
 
         {/* Subtle leaf dots */}
-        <circle cx="20" cy="78" r="2.5" fill="#397F69" opacity="0.8" />
-        <circle cx="200" cy="78" r="2.5" fill="#397F69" opacity="0.8" />
+        <circle cx="20" cy="78" r="2.5" fill="#D7F25C" opacity="0.8" />
+        <circle cx="200" cy="78" r="2.5" fill="#B7A9F2" opacity="0.8" />
       </svg>
     </div>
   );
