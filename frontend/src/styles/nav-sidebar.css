@@ -11,15 +11,16 @@
   .flux-desktop-sidebar {
     display: flex;
     flex-direction: column;
-    width: 260px;
-    min-width: 260px;
-    height: calc(100vh - 28px);
-    margin: 14px 0 14px 14px;
-    background: var(--dark-surface, #1B1B1D);
-    border-radius: var(--radius-card-lg, 28px);
+    width: 250px;
+    flex: none;
+    min-width: 250px;
+    height: calc(100vh - 32px);
+    margin: 0;
+    background: #1B1B1D;
+    border-radius: 28px;
     box-sizing: border-box;
     position: sticky;
-    top: 14px;
+    top: 16px;
     z-index: 40;
     overflow: hidden;
   }
@@ -29,17 +30,26 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  padding: 24px 18px;
+  padding: 24px 16px;
   box-sizing: border-box;
   justify-content: space-between;
 }
 
 /* Brand Logo at top */
 .flux-sidebar-brand {
-  padding: 6px 10px 20px 10px;
+  padding: 4px 8px 16px 8px;
   cursor: pointer;
   display: flex;
   align-items: center;
+}
+
+.flux-sidebar-brand .flux-word-concept {
+  color: #FFFFFF !important;
+}
+
+.flux-sidebar-brand .flux-word-lens {
+  color: #111113 !important;
+  background: var(--lime, #D7F25C) !important;
 }
 
 /* Navigation items list */
@@ -459,16 +469,18 @@
    ===================================================================== */
 .flux-app-layout {
   display: flex;
+  gap: 16px;
+  padding: 16px;
   width: 100vw;
   min-height: 100vh;
-  background: var(--canvas, #E6E6E8);
+  background: var(--canvas);
   box-sizing: border-box;
   position: relative;
   overflow-x: hidden;
 }
 
 [data-theme='dark'] .flux-app-layout {
-  background: var(--canvas, #121214);
+  background: var(--canvas);
 }
 
 /* Main Panel: Large Rounded Panel on Canvas */
@@ -478,23 +490,29 @@
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
-  background: var(--canvas, #E6E6E8);
+  background: var(--panel);
+  border-radius: 28px;
+  padding: 28px 32px;
+  gap: 22px;
+  overflow-y: auto;
+  height: calc(100vh - 32px);
   transition: all var(--transition-normal);
 }
 
-@media (min-width: 1024px) {
-  .flux-main-panel {
-    height: calc(100vh - 28px);
-    margin: 14px 14px 14px 0;
-    background: var(--card, #FFFFFF);
-    border-radius: var(--radius-card-lg, 28px);
-    overflow-y: auto;
-    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.04);
-  }
+[data-theme='dark'] .flux-main-panel {
+  background: var(--panel);
+}
 
-  [data-theme='dark'] .flux-main-panel {
-    background: var(--card, #1B1B1D);
-    box-shadow: none;
+@media (max-width: 1023px) {
+  .flux-app-layout {
+    padding: 12px;
+    gap: 12px;
+  }
+  .flux-main-panel {
+    padding: 20px 16px;
+    border-radius: 20px;
+    height: auto;
+    min-height: calc(100vh - 24px);
   }
 }
 
@@ -504,25 +522,10 @@
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 16px 24px;
+  padding: 0;
   box-sizing: border-box;
   background: transparent;
-  position: sticky;
-  top: 0;
-  z-index: 30;
-}
-
-@media (max-width: 1023px) {
-  .flux-top-header {
-    background: var(--card, #FFFFFF);
-    border-bottom: 1px solid var(--surface-subtle, #E6E6E8);
-    padding: 12px 16px;
-  }
-
-  [data-theme='dark'] .flux-top-header {
-    background: var(--dark-surface, #1B1B1D);
-    border-bottom-color: rgba(255, 255, 255, 0.06);
-  }
+  width: 100%;
 }
 
 .flux-mobile-brand {
@@ -539,7 +542,15 @@
 
 .flux-header-search-wrap {
   flex: 1;
-  max-width: 460px;
+  max-width: 420px;
+}
+
+.flux-header-search-wrap .search-input-wrap,
+.flux-header-search-wrap input {
+  background: var(--card) !important;
+  border-radius: 999px !important;
+  border: none !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04) !important;
 }
 
 @media (max-width: 640px) {
@@ -551,32 +562,53 @@
 .flux-header-actions {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
 }
 
-.flux-header-bell-btn {
+.flux-header-bell-btn,
+.theme-toggle-btn {
   position: relative;
   width: 40px;
   height: 40px;
+  min-width: 40px;
+  min-height: 40px;
   border-radius: 50%;
   border: none;
-  background: var(--surface-subtle, #F0F0F2);
-  color: var(--text-main, #111113);
+  background: var(--card);
+  color: var(--text);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
   transition: all var(--transition-fast);
 }
 
-.flux-header-bell-btn:hover {
-  background: rgba(215, 242, 92, 0.25);
+.flux-header-bell-btn:hover,
+.theme-toggle-btn:hover {
   transform: translateY(-1px);
+  background: var(--card);
 }
 
-[data-theme='dark'] .flux-header-bell-btn {
-  background: rgba(255, 255, 255, 0.08);
-  color: #FFFFFF;
+.user-avatar-btn {
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  min-height: 40px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+}
+
+.user-avatar-btn .avatar {
+  background-color: var(--lavender, #B7A9F2) !important;
+  color: #111113 !important;
+  font-weight: 700 !important;
+  border: none !important;
+  width: 40px !important;
+  height: 40px !important;
 }
 
 .flux-bell-lime-dot {
@@ -586,15 +618,16 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--accent-lime, #D7F25C);
-  box-shadow: 0 0 6px var(--accent-lime, #D7F25C);
+  background: var(--lime, #D7F25C);
+  box-shadow: 0 0 6px var(--lime, #D7F25C);
 }
 
 .flux-signin-btn {
-  background: var(--accent-lime, #D7F25C) !important;
+  background: var(--lime, #D7F25C) !important;
   color: #111113 !important;
   border-radius: var(--radius-pill, 9999px) !important;
-  font-weight: 600 !important;
+  font-weight: 700 !important;
+  padding: 8px 18px !important;
 }
 
 /* Scrollable Main Content Container */
@@ -607,6 +640,26 @@
 @media (max-width: 640px) {
   .flux-main-content {
     padding: 12px 14px 96px 14px;
+  }
+}
+
+@media (max-width: 480px) {
+  .flux-top-header {
+    gap: 8px;
+  }
+  .flux-header-actions {
+    gap: 6px;
+  }
+  .flux-signin-btn {
+    padding: 6px 12px !important;
+    font-size: 12px !important;
+  }
+  .flux-header-bell-btn,
+  .theme-toggle-btn {
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
+    min-height: 36px;
   }
 }
 

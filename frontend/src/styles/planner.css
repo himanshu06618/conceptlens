@@ -1,165 +1,276 @@
 /* =====================================================================
-   ConceptLens Study Planner Styles
-   Brand Theme: Lime Green (#9AE62E, #C4F560, #6FC21A) + Ink (#10140C) + Glass
-   Greeting: High-contrast brand green (WCAG AA compliant)
-   Fonts: Titles "Berlin Sans FB", Fredoka; Body "Bell MT", Georgia
+   ConceptLens Student Dashboard & Study Planner Styles
+   System: "Flux" Design System with Poppins, Lime, Lavender & Bento Cards
    ===================================================================== */
 
 :root {
-  --planner-mint: var(--brand-deep, #6FC21A);
-  --planner-mint-light: rgba(154, 230, 46, 0.12);
-  --planner-mint-hover: var(--brand-dark, #3E7806);
-  --planner-mint-border: rgba(111, 194, 26, 0.35);
-  --planner-peach: rgba(255, 255, 255, 0.65);
-  --planner-peach-light: rgba(196, 245, 96, 0.10);
-  --planner-peach-border: rgba(154, 230, 46, 0.25);
-  --planner-orange: var(--brand-text, #2E5E04);
-  --planner-orange-light: rgba(154, 230, 46, 0.12);
-  --planner-orange-hover: var(--brand-dark, #3E7806);
-  --planner-orange-border: rgba(154, 230, 46, 0.35);
-  
-  --planner-greeting: var(--brand-text, #2E5E04);
-  --planner-bg: var(--bg, #F7FBF2);
-  --planner-card-bg: var(--glass-surface, rgba(255, 255, 255, 0.72));
-  --planner-card-border: var(--glass-border, rgba(255, 255, 255, 0.85));
-  --planner-text-main: var(--ink, #10140C);
-  --planner-text-muted: var(--text-muted, #596B50);
-  --planner-chip-bg: var(--surface-2, rgba(234, 248, 218, 0.60));
-  --planner-chip-text: var(--brand-text, #2E5E04);
-  
-  --planner-font-title: 'Plus Jakarta Sans', 'Inter', var(--font-nunito, 'Nunito'), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --planner-font-body: 'Inter', var(--font-nunito, 'Nunito'), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  
-  --planner-radius-sm: 8px;
-  --planner-radius-md: 14px;
-  --planner-radius-lg: 18px;
-  --planner-shadow-sm: 0 2px 10px -2px rgba(16, 20, 12, 0.05), 0 1px 3px rgba(16, 20, 12, 0.03);
-  --planner-shadow-md: 0 10px 30px -4px rgba(16, 20, 12, 0.08), 0 2px 8px -1px rgba(16, 20, 12, 0.04);
-  --planner-shadow-hover: 0 16px 38px -6px rgba(111, 194, 26, 0.18), 0 4px 14px rgba(16, 20, 12, 0.06);
+  --planner-mint: var(--lime, #D7F25C);
+  --planner-mint-light: rgba(215, 242, 92, 0.18);
+  --planner-mint-hover: #E2F77D;
+  --planner-mint-border: rgba(215, 242, 92, 0.35);
+  --planner-orange: var(--lavender, #B7A9F2);
+  --planner-greeting: var(--text, #111113);
+  --planner-bg: var(--panel, #F4F4F5);
+  --planner-card-bg: var(--card, #FFFFFF);
+  --planner-card-border: transparent;
+  --planner-text-main: var(--text, #111113);
+  --planner-text-muted: var(--muted, #6B6B73);
+  --planner-chip-bg: var(--canvas, #E6E6E8);
+  --planner-chip-text: var(--text, #111113);
+  --planner-font-title: 'Poppins', system-ui, sans-serif;
+  --planner-font-body: 'Poppins', system-ui, sans-serif;
+  --planner-radius-sm: 12px;
+  --planner-radius-md: 20px;
+  --planner-radius-lg: 24px;
 }
 
-[data-theme="dark"],
-.dark {
-  --planner-mint: var(--brand, #9AE62E);
-  --planner-mint-light: rgba(154, 230, 46, 0.14);
-  --planner-mint-hover: var(--brand-light, #C4F560);
-  --planner-mint-border: rgba(154, 230, 46, 0.30);
-  --planner-peach: rgba(18, 24, 14, 0.72);
-  --planner-peach-light: rgba(154, 230, 46, 0.08);
-  --planner-peach-border: rgba(255, 255, 255, 0.12);
-  --planner-orange: var(--brand, #9AE62E);
-  --planner-orange-light: rgba(154, 230, 46, 0.14);
-  --planner-orange-hover: var(--brand-light, #C4F560);
-  --planner-orange-border: rgba(154, 230, 46, 0.35);
-  
-  --planner-greeting: var(--brand, #9AE62E);
-  --planner-bg: var(--bg, #0C1008);
-  --planner-card-bg: var(--glass-surface, rgba(18, 24, 14, 0.78));
-  --planner-card-border: var(--glass-border, rgba(255, 255, 255, 0.10));
-  --planner-text-main: var(--ink, #F2F5ED);
-  --planner-text-muted: var(--text-muted, #95A187);
-  --planner-chip-bg: var(--surface-2, rgba(28, 38, 23, 0.70));
-  --planner-chip-text: var(--brand, #9AE62E);
-  
-  --planner-shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.35);
-  --planner-shadow-md: 0 8px 30px rgba(0, 0, 0, 0.48);
-  --planner-shadow-hover: 0 14px 40px rgba(0, 0, 0, 0.65);
+[data-theme="dark"] {
+  --planner-mint: var(--lime, #D7F25C);
+  --planner-greeting: var(--text, #FFFFFF);
+  --planner-bg: var(--panel, #1B1B1D);
+  --planner-card-bg: var(--card, #232326);
+  --planner-text-main: var(--text, #FFFFFF);
+  --planner-text-muted: var(--muted, #A8A8B0);
+  --planner-chip-bg: rgba(255, 255, 255, 0.08);
+  --planner-chip-text: var(--text, #FFFFFF);
 }
 
 /* ==================== Layout & Container ==================== */
 
 .planner-container {
   width: 100%;
-  max-width: 1360px;
-  margin: 0 auto;
-  padding: 24px 20px 80px;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
   box-sizing: border-box;
   font-family: var(--planner-font-body);
   color: var(--planner-text-main);
-  text-align: left;
-}
-
-.planner-header-section {
-  margin-bottom: 24px;
-}
-
-.planner-greeting {
-  font-family: var(--planner-font-title);
-  font-size: 2.25rem;
-  font-weight: 700;
-  color: var(--planner-greeting);
-  margin: 0 0 6px;
-  letter-spacing: -0.02em;
-  line-height: 1.2;
-}
-
-.planner-greeting-date {
-  font-size: 0.92rem;
-  color: var(--planner-text-muted);
-  font-weight: 500;
-  margin-bottom: 8px;
   display: flex;
-  align-items: center;
-  gap: 6px;
+  flex-direction: column;
+  gap: 22px;
 }
 
-.planner-status-line {
-  font-size: 0.98rem;
-  color: var(--planner-text-main);
+/* 1. Flux Page Header (Title + Subtitle + Date / Today pills) */
+.flux-page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+.flux-page-header-left {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.flux-page-title {
+  font-family: var(--font-heading);
+  font-size: 40px;
+  font-weight: 700;
+  letter-spacing: -1.5px;
+  line-height: 1.1;
+  color: var(--text);
+  margin: 0;
+}
+
+@media (max-width: 640px) {
+  .flux-page-title {
+    font-size: 28px;
+    letter-spacing: -0.75px;
+  }
+}
+
+.flux-page-subtitle-row {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-weight: 500;
   flex-wrap: wrap;
-  padding: 8px 14px;
-  background: var(--planner-card-bg);
-  border: 1px solid var(--planner-card-border);
-  border-radius: 999px;
-  width: fit-content;
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
-  box-shadow: var(--planner-shadow-sm);
+  margin-top: 6px;
 }
 
-.planner-status-line .badge {
+.flux-page-subtitle {
+  font-size: 14px;
+  color: var(--muted);
+  font-weight: 500;
+  display: block;
+}
+
+.flux-updating-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--muted);
+  background: var(--canvas);
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.flux-page-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.flux-date-pill {
+  background: var(--card);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 3px 10px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  white-space: nowrap;
+}
+
+.flux-today-pill {
+  background: var(--lime);
+  color: #111113;
   border-radius: 999px;
-  font-size: 0.76rem;
+  padding: 8px 16px;
+  font-size: 13px;
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  background: rgba(154, 230, 46, 0.18);
-  color: var(--brand-text, #2E5E04);
-  border: 1px solid rgba(111, 194, 26, 0.35);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
 }
 
-.planner-status-line .badge::before {
-  content: '';
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--brand-deep, #6FC21A);
-  box-shadow: 0 0 6px rgba(111, 194, 26, 0.9);
-  animation: pulseDot 2s ease-in-out infinite;
+.flux-core-curriculum-pill {
+  background: #111113;
+  color: #FFFFFF;
+  border-radius: 999px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity 0.15s ease;
+}
+.flux-core-curriculum-pill:hover {
+  opacity: 0.9;
 }
 
-@keyframes pulseDot {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.4; transform: scale(0.85); }
+/* 2. Stat Grid (Row 1) */
+.flux-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  width: 100%;
 }
 
-[data-theme="dark"] .planner-status-line .badge {
-  background: rgba(154, 230, 46, 0.15);
-  color: var(--brand, #9AE62E);
-  border-color: rgba(154, 230, 46, 0.3);
+@media (max-width: 1023px) {
+  .flux-stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
-[data-theme="dark"] .planner-status-line .badge::before {
-  background: var(--brand, #9AE62E);
-  box-shadow: 0 0 6px var(--brand, #9AE62E);
+@media (max-width: 639px) {
+  .flux-stat-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 3. Row 2 Grid (Mastery Overview + Day 3 of 7) */
+.flux-row-2-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  gap: 16px;
+  width: 100%;
+}
+
+@media (max-width: 1023px) {
+  .flux-row-2-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 4. Row 3 Wrap (Study Consistency) */
+.flux-row-3-wrap {
+  width: 100%;
+}
+
+/* 5. Below Row 3 Grid */
+.planner-main-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 16px;
+  width: 100%;
+}
+
+@media (max-width: 1023px) {
+  .planner-main-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.planner-left-col,
+.planner-right-col {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+/* 6. Section Card Base */
+.planner-section-card {
+  background: var(--card);
+  border-radius: 24px;
+  padding: 20px 24px;
+  min-width: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-sizing: border-box;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.03);
+}
+
+/* 7. Floating Ask Button */
+.floating-ask-btn {
+  position: fixed;
+  bottom: 28px;
+  right: 28px;
+  z-index: 50;
+  background: #111113;
+  color: #FFFFFF;
+  border-radius: 999px;
+  padding: 12px 20px;
+  font-family: var(--font-heading);
+  font-size: 14px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.28);
+  transition: transform var(--transition-fast), background var(--transition-fast);
+}
+
+.floating-ask-btn:hover {
+  background: #25252A;
+  transform: translateY(-2px);
+}
+
+@media (max-width: 639px) {
+  .floating-ask-btn {
+    bottom: 78px;
+    right: 16px;
+    padding: 10px 16px;
+    font-size: 13px;
+  }
 }
 
 /* ==================== Subject Pills ==================== */

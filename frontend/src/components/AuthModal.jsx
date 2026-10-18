@@ -4,17 +4,13 @@ import {
   Eye, 
   EyeOff, 
   Check, 
-  Sparkles, 
   AlertCircle, 
-  ShieldCheck, 
-  Cloud, 
-  Zap,
   Info
 } from 'lucide-react';
 import { GoogleLogin, GoogleOAuthProvider } from '@react-oauth/google';
 import { useAuth } from '../context/AuthContext';
 import { checkUsernameAvailability, getAuthConfig } from '../api/client';
-import { LogoMark, BookshelfLoader, SegmentedTabs } from './ui';
+import { Logo, BookshelfLoader } from './ui';
 import { OverlayPortal, lockBodyScroll, unlockBodyScroll } from './ui/Overlay';
 
 const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID?.trim() || '';
@@ -43,105 +39,33 @@ function evaluatePasswordStrength(password) {
   return { score: 4, label: 'Strong', helper: 'Excellent password' };
 }
 
-/**
- * Animated Mini Concept Tree Illustration for Left Panel
- */
-function MiniConceptTreeIllustration() {
-  return (
-    <div className="mini-concept-tree-wrap" aria-hidden="true">
-      <svg
-        width="220"
-        height="84"
-        viewBox="0 0 220 84"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
-        className="mini-tree-svg"
-      >
-        <defs>
-          <linearGradient id="mTreeGold" x1="0" y1="0" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#D7F25C" />
-            <stop offset="100%" stopColor="#B7A9F2" />
-          </linearGradient>
-          <linearGradient id="mTreeSage" x1="0" y1="0" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#FFFFFF" />
-            <stop offset="100%" stopColor="#D7F25C" />
-          </linearGradient>
-          <radialGradient id="mTreeGlow" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.35" />
-            <stop offset="100%" stopColor="#D7F25C" stopOpacity="0" />
-          </radialGradient>
-        </defs>
-
-        <circle cx="110" cy="18" r="30" fill="url(#mTreeGlow)" />
-
-        {/* Tree branch lines */}
-        <path
-          d="M110 18 C 85 32, 45 42, 45 64"
-          stroke="url(#mTreeGold)"
-          strokeWidth="1.6"
-          strokeLinecap="round"
-          className="mini-tree-branch branch-1"
-        />
-        <path
-          d="M110 18 C 110 36, 110 46, 110 64"
-          stroke="url(#mTreeSage)"
-          strokeWidth="1.6"
-          strokeLinecap="round"
-          className="mini-tree-branch branch-2"
-        />
-        <path
-          d="M110 18 C 135 32, 175 42, 175 64"
-          stroke="url(#mTreeGold)"
-          strokeWidth="1.6"
-          strokeLinecap="round"
-          className="mini-tree-branch branch-3"
-        />
-
-        {/* Outer sub-branches */}
-        <path
-          d="M45 64 C 32 70, 26 74, 20 78"
-          stroke="rgba(183, 169, 242, 0.45)"
-          strokeWidth="1.2"
-          strokeLinecap="round"
-        />
-        <path
-          d="M175 64 C 188 70, 194 74, 200 78"
-          stroke="rgba(215, 242, 92, 0.45)"
-          strokeWidth="1.2"
-          strokeLinecap="round"
-        />
-
-        {/* Nodes */}
-        <g className="mini-tree-node node-root">
-          <circle cx="110" cy="18" r="7" fill="#1B1B1D" stroke="url(#mTreeGold)" strokeWidth="1.8" />
-          <circle cx="110" cy="18" r="2.8" fill="#D7F25C" />
-        </g>
-        <g className="mini-tree-node node-left">
-          <circle cx="45" cy="64" r="5" fill="#1B1B1D" stroke="url(#mTreeGold)" strokeWidth="1.4" />
-          <circle cx="45" cy="64" r="2" fill="#B7A9F2" />
-        </g>
-        <g className="mini-tree-node node-center">
-          <circle cx="110" cy="64" r="5" fill="#1B1B1D" stroke="url(#mTreeSage)" strokeWidth="1.4" />
-          <circle cx="110" cy="64" r="2" fill="#D7F25C" />
-        </g>
-        <g className="mini-tree-node node-right">
-          <circle cx="175" cy="64" r="5" fill="#1B1B1D" stroke="url(#mTreeGold)" strokeWidth="1.4" />
-          <circle cx="175" cy="64" r="2" fill="#B7A9F2" />
-        </g>
-
-        {/* Subtle leaf dots */}
-        <circle cx="20" cy="78" r="2.5" fill="#D7F25C" opacity="0.8" />
-        <circle cx="200" cy="78" r="2.5" fill="#B7A9F2" opacity="0.8" />
-      </svg>
-    </div>
-  );
+function getStrengthSegmentColor(index, score, isDark) {
+  const defaultGrey = isDark ? '#3A3A3E' : '#E6E6E8';
+  if (!score || score <= 0) return defaultGrey;
+  if (score === 1) {
+    return index === 0 ? '#EF4444' : defaultGrey;
+  }
+  if (score === 2) {
+    return index <= 1 ? '#F5C46B' : defaultGrey;
+  }
+  if (score === 3) {
+    if (index <= 1) return '#D7F25C';
+    if (index === 2) return '#F5C46B';
+    return defaultGrey;
+  }
+  if (score >= 4) {
+    return '#D7F25C';
+  }
+  return defaultGrey;
 }
 
 /**
- * Centered Split AuthModal Component
- * Single shared dialog for all entry points across the app.
+ * Centered Split AuthModal Component — Flux Visual System
+ * Left: #1B1B1D dark half with logo, headline, subtitle, and overlapping lime/lavender circles.
+ * Right: White/dark card with pill switcher, pill inputs, 4-bar strength meter, lime submit button.
+ * Mobile: Bottom sheet with drag handle & swipe-down dismiss.
  */
-export default function AuthModal({ onSuccess, guestStatus }) {
+export default function AuthModal({ onSuccess }) {
   const { 
     authModalOpen, 
     authModalTab, 
@@ -189,17 +113,7 @@ export default function AuthModal({ onSuccess, guestStatus }) {
     }
   }, [activeGoogleClientId]);
 
-  // Log clear developer notice if Google client ID is missing
-  useEffect(() => {
-    if (!activeGoogleClientId) {
-      console.warn(
-        '[ConceptLens] Google Sign-In is disabled: VITE_GOOGLE_CLIENT_ID environment variable is missing. ' +
-        'Add VITE_GOOGLE_CLIENT_ID to your environment variables on Vercel to enable "Continue with Google".'
-      );
-    }
-  }, [activeGoogleClientId]);
-
-  // Detect current theme (light or dark) dynamically
+  // Dynamic theme detection
   const [currentTheme, setCurrentTheme] = useState(() => {
     return document.documentElement.getAttribute('data-theme') || 'light';
   });
@@ -220,7 +134,7 @@ export default function AuthModal({ onSuccess, guestStatus }) {
 
   const isDark = currentTheme === 'dark';
 
-  // Responsive Google button width matching popup form up to 400px (Google maximum)
+  // Responsive Google button width
   const [googleBtnWidth, setGoogleBtnWidth] = useState(380);
   const googleBtnRef = useRef(null);
 
@@ -229,7 +143,7 @@ export default function AuthModal({ onSuccess, guestStatus }) {
     const calculateWidth = () => {
       if (googleBtnRef.current) {
         const measured = googleBtnRef.current.offsetWidth || 380;
-        const clamped = Math.max(200, Math.min(400, Math.floor(measured)));
+        const clamped = Math.max(220, Math.min(400, Math.floor(measured)));
         setGoogleBtnWidth(clamped);
       }
     };
@@ -238,12 +152,29 @@ export default function AuthModal({ onSuccess, guestStatus }) {
     return () => window.removeEventListener('resize', calculateWidth);
   }, [activeGoogleClientId, tab]);
 
-  // Username live availability status
+  // Username availability status
   const [usernameStatus, setUsernameStatus] = useState(null);
 
   const dialogRef = useRef(null);
   const firstInputRef = useRef(null);
   const previouslyFocusedRef = useRef(null);
+
+  // Mobile swipe down gesture tracking
+  const touchStartYRef = useRef(null);
+  const handleTouchStart = (e) => {
+    touchStartYRef.current = e.touches[0].clientY;
+  };
+  const handleTouchMove = (e) => {
+    if (touchStartYRef.current === null) return;
+    const currentY = e.touches[0].clientY;
+    if (currentY - touchStartYRef.current > 75) {
+      handleCloseRequest();
+      touchStartYRef.current = null;
+    }
+  };
+  const handleTouchEnd = () => {
+    touchStartYRef.current = null;
+  };
 
   // Sync tab with context when modal opens or tab changes externally
   useEffect(() => {
@@ -254,7 +185,7 @@ export default function AuthModal({ onSuccess, guestStatus }) {
     }
   }, [authModalTab]);
 
-  // Record active element when opened, restore focus on close
+  // Record active element, focus first input, scroll lock
   useEffect(() => {
     if (authModalOpen) {
       previouslyFocusedRef.current = document.activeElement;
@@ -263,17 +194,8 @@ export default function AuthModal({ onSuccess, guestStatus }) {
       setServerError('');
       setFieldErrors({});
 
-      // Scroll lock with scrollbar width compensation to avoid layout shift
-      const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
-      const originalOverflow = document.body.style.overflow;
-      const originalPaddingRight = document.body.style.paddingRight;
+      lockBodyScroll();
 
-      document.body.style.overflow = 'hidden';
-      if (scrollbarWidth > 0) {
-        document.body.style.paddingRight = `${scrollbarWidth}px`;
-      }
-
-      // Focus first input
       const timer = setTimeout(() => {
         if (firstInputRef.current) {
           firstInputRef.current.focus();
@@ -282,36 +204,12 @@ export default function AuthModal({ onSuccess, guestStatus }) {
 
       return () => {
         clearTimeout(timer);
-        document.body.style.overflow = originalOverflow;
-        document.body.style.paddingRight = originalPaddingRight;
+        unlockBodyScroll();
         if (previouslyFocusedRef.current && previouslyFocusedRef.current.focus) {
           previouslyFocusedRef.current.focus();
         }
       };
     }
-  }, [authModalOpen]);
-
-  // Adjust max-height and scroll on mobile virtual keyboard changes
-  useEffect(() => {
-    if (!authModalOpen || !window.visualViewport) return;
-
-    const handleVisualViewport = () => {
-      if (!dialogRef.current) return;
-      const vpHeight = window.visualViewport.height;
-      dialogRef.current.style.maxHeight = `${Math.min(vpHeight * 0.92, 600)}px`;
-      if (document.activeElement && dialogRef.current.contains(document.activeElement)) {
-        document.activeElement.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-      }
-    };
-
-    window.visualViewport.addEventListener('resize', handleVisualViewport);
-    window.visualViewport.addEventListener('scroll', handleVisualViewport);
-    handleVisualViewport();
-
-    return () => {
-      window.visualViewport.removeEventListener('resize', handleVisualViewport);
-      window.visualViewport.removeEventListener('scroll', handleVisualViewport);
-    };
   }, [authModalOpen]);
 
   // Trigger error shake animation
@@ -321,7 +219,7 @@ export default function AuthModal({ onSuccess, guestStatus }) {
     return () => clearTimeout(timer);
   }, []);
 
-  // Safe close request with confirmation if user typed signup data
+  // Safe close request
   const handleCloseRequest = useCallback(() => {
     if (tab === 'signup' && (username || password || confirmPassword || displayName)) {
       if (!window.confirm('Discard unsaved registration details?')) {
@@ -332,7 +230,6 @@ export default function AuthModal({ onSuccess, guestStatus }) {
     setTimeout(() => {
       closeAuthModal();
       setIsClosing(false);
-      // Reset sensitive form fields
       setPassword('');
       setConfirmPassword('');
       setServerError('');
@@ -380,13 +277,6 @@ export default function AuthModal({ onSuccess, guestStatus }) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [authModalOpen, handleCloseRequest]);
 
-  // Lock body scroll when auth modal is open
-  useEffect(() => {
-    if (!authModalOpen) return;
-    lockBodyScroll();
-    return () => unlockBodyScroll();
-  }, [authModalOpen]);
-
   // Live password strength calculation
   const strength = evaluatePasswordStrength(password);
 
@@ -413,7 +303,6 @@ export default function AuthModal({ onSuccess, guestStatus }) {
       return;
     }
     if (clean.includes('@')) {
-      // Email entered in username field
       if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean)) {
         setUsernameStatus({ available: true, message: 'Valid email' });
       } else {
@@ -451,7 +340,7 @@ export default function AuthModal({ onSuccess, guestStatus }) {
 
     const cleanInput = username.trim();
     if (!cleanInput) {
-      errors.username = tab === 'signin' ? 'Please enter your email or username.' : 'Please enter an email or username.';
+      errors.username = tab === 'signin' ? 'Please enter your username or email.' : 'Please enter a username or email.';
     }
 
     if (!password) {
@@ -530,7 +419,7 @@ export default function AuthModal({ onSuccess, guestStatus }) {
     if (err?.type === 'popup_closed') {
       friendly = 'The Google sign-in window was closed before completing.';
     } else if (err?.type === 'popup_blocked_by_browser') {
-      friendly = 'The Google sign-in window was blocked by your browser. Please allow popups for ConceptLens.';
+      friendly = 'The Google sign-in window was blocked by your browser.';
     }
     setServerError(friendly);
     triggerShake();
@@ -550,7 +439,6 @@ export default function AuthModal({ onSuccess, guestStatus }) {
       const resp = await signInWithGoogle(credentialResponse.credential);
       const userObj = resp?.user || resp;
 
-      // New Google user with no role -> prompt role selection step
       if (resp?.needs_role || resp?.requires_role || !userObj?.role) {
         setGooglePendingUser(resp);
         setGoogleNeedsRole(true);
@@ -567,18 +455,10 @@ export default function AuthModal({ onSuccess, guestStatus }) {
     } catch (err) {
       let friendlyMessage = 'We could not sign you in with Google right now. Please try again.';
       const raw = (err?.message || '').toLowerCase();
-      if (raw.includes('network') || raw.includes('failed to fetch') || raw.includes('connection')) {
-        friendlyMessage = 'Network connection problem. Please check your internet connection and try again.';
-      } else if (raw.includes('popup') || raw.includes('closed') || raw.includes('blocked')) {
-        friendlyMessage = 'The Google sign-in window was closed or blocked. Please allow popups and try again.';
-      } else if (raw.includes('audience mismatch') || raw.includes('invalid') || raw.includes('expired')) {
-        friendlyMessage = 'Google authentication session expired. Please try signing in again.';
-      } else if (raw.includes('not verified')) {
-        friendlyMessage = 'Your Google account email is not verified. Please verify your email with Google first.';
-      } else if (raw.includes('rate limit') || raw.includes('too many attempts')) {
-        friendlyMessage = 'Too many sign-in attempts. Please wait a minute before trying again.';
-      } else if (raw.includes('not configured')) {
-        friendlyMessage = 'Google sign-in is currently not configured on this server.';
+      if (raw.includes('network') || raw.includes('failed to fetch')) {
+        friendlyMessage = 'Network connection problem. Please try again.';
+      } else if (raw.includes('popup')) {
+        friendlyMessage = 'Google sign-in popup was closed or blocked.';
       }
       setServerError(friendlyMessage);
       triggerShake();
@@ -595,7 +475,7 @@ export default function AuthModal({ onSuccess, guestStatus }) {
     try {
       await setRole(chosenGoogleRole);
       const finalUser = {
-        ...(googlePendingUser?.user || googlePendingUser || {}),
+        ...(googlePendingUser?.user || googlePendingUser),
         role: chosenGoogleRole,
       };
       setIsSuccess(true);
@@ -607,12 +487,7 @@ export default function AuthModal({ onSuccess, guestStatus }) {
         if (onSuccess) onSuccess(finalUser, 'google');
       }, 500);
     } catch (err) {
-      let friendly = 'Failed to set account role. Please try again.';
-      const raw = (err?.message || '').toLowerCase();
-      if (raw.includes('network') || raw.includes('failed to fetch')) {
-        friendly = 'Network connection issue. Please check your internet connection and try again.';
-      }
-      setServerError(friendly);
+      setServerError(err?.message || 'Failed to set account role.');
       triggerShake();
     } finally {
       setLoading(false);
@@ -620,11 +495,6 @@ export default function AuthModal({ onSuccess, guestStatus }) {
   };
 
   if (!authModalOpen) return null;
-
-  const tabsData = [
-    { id: 'signin', label: 'Sign in' },
-    { id: 'signup', label: 'Create account' }
-  ];
 
   return (
     <OverlayPortal>
@@ -637,506 +507,402 @@ export default function AuthModal({ onSuccess, guestStatus }) {
         }}
         role="presentation"
       >
-      <div
-        ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="auth-dialog-title"
-        aria-describedby="auth-dialog-desc"
-        className={`auth-modal-dialog ${isClosing ? 'dialog-closing' : ''} ${isShaking ? 'auth-form-shake' : ''}`}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Top-Right Close Button */}
-        <button
-          type="button"
-          className="auth-modal-close-btn"
-          onClick={handleCloseRequest}
-          aria-label="Close dialog"
+        <div
+          ref={dialogRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="auth-dialog-title"
+          aria-describedby="auth-dialog-desc"
+          className={`auth-modal-dialog ${isClosing ? 'dialog-closing' : ''} ${isShaking ? 'auth-form-shake' : ''}`}
+          onClick={(e) => e.stopPropagation()}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
         >
-          <X size={20} strokeWidth={1.8} />
-        </button>
+          {/* Subtle Top-Right Close Button */}
+          <button
+            type="button"
+            className="auth-modal-close-btn"
+            onClick={handleCloseRequest}
+            aria-label="Close dialog"
+          >
+            <X size={18} strokeWidth={2} />
+          </button>
 
-        {/* =================================================================
-            LEFT PANEL (Desktop/Tablet >= 768px): Midnight Stage
-            ================================================================= */}
-        <div className="auth-panel-left">
-          <div className="auth-left-ambient-glow" aria-hidden="true" />
-          
-          <div className="auth-left-top">
-            <div className="auth-left-logo-wrap">
-              <LogoMark size={36} idPrefix="auth-modal" />
+          {/* =================================================================
+              LEFT PANEL (Desktop >= 768px): Solid Dark (#1B1B1D)
+              ================================================================= */}
+          <div className="auth-panel-left">
+            <div className="auth-left-top">
+              <div className="auth-left-brand">
+                <Logo size={32} />
+              </div>
             </div>
 
-            <h2 className="auth-left-headline">
-              Your notes, organized and saved.
-            </h2>
-
-            {/* Exactly 3 short benefits */}
-            <ul className="auth-benefits-list">
-              <li className="benefit-item">
-                <span className="benefit-icon-badge">
-                  <Cloud size={16} strokeWidth={2} />
-                </span>
-                <span className="benefit-text">Save notes across devices</span>
-              </li>
-              <li className="benefit-item">
-                <span className="benefit-icon-badge">
-                  <ShieldCheck size={16} strokeWidth={2} />
-                </span>
-                <span className="benefit-text">Keep your concept trees private</span>
-              </li>
-              <li className="benefit-item">
-                <span className="benefit-icon-badge">
-                  <Zap size={16} strokeWidth={2} />
-                </span>
-                <span className="benefit-text">Unlimited uploads</span>
-              </li>
-            </ul>
-          </div>
-
-          <div className="auth-left-bottom">
-            {/* Animated mini concept tree illustration */}
-            <MiniConceptTreeIllustration />
-
-            {/* Quiet guest status line if guest */}
-            {guestStatus && !guestStatus.is_authenticated && (
-              <p className="auth-guest-usage-line">
-                Guest: {guestStatus.uploads_count || 0} of {guestStatus.upload_limit || 5} uploads used
+            <div className="auth-left-middle">
+              <h2 id="auth-dialog-title" className="auth-left-headline">
+                {tab === 'signin' ? 'Sign in to your' : 'Create your'}{' '}
+                <span className="auth-headline-highlight">workspace</span>
+              </h2>
+              <p id="auth-dialog-desc" className="auth-left-subtitle">
+                Your notes, concepts and study plan stay private to you.
               </p>
-            )}
-          </div>
-        </div>
+            </div>
 
-        {/* =================================================================
-            RIGHT PANEL: Form Area on Normal Surface
-            ================================================================= */}
-        <div className="auth-panel-right">
-          {/* Mobile Header (Shown on < 768px when Left Panel is hidden) */}
-          <div className="auth-mobile-header">
-            <LogoMark size={30} idPrefix="auth-mobile" />
-            <div>
-              <h2 className="auth-mobile-title">ConceptLens</h2>
-              <p className="auth-mobile-subtitle">Your notes, organized and saved.</p>
+            <div className="auth-left-bottom">
+              <div className="auth-overlapping-circles" aria-hidden="true">
+                <div className="auth-circle auth-circle--lime" />
+                <div className="auth-circle auth-circle--lavender" />
+              </div>
             </div>
           </div>
 
-          {googleNeedsRole ? (
-            /* First-time Google OAuth Role Selection Step */
-            <form onSubmit={handleCompleteGoogleRole} className="auth-fields-form" noValidate>
-              <div className="auth-heading-block">
-                <h1 id="auth-dialog-title" className="auth-form-title">
-                  Choose your role
-                </h1>
-                <p id="auth-dialog-desc" className="auth-form-subtitle">
-                  Welcome to ConceptLens! Choose your role to customize your workspace dashboard.
-                </p>
-              </div>
+          {/* =================================================================
+              RIGHT PANEL: White / var(--card)
+              ================================================================= */}
+          <div className="auth-panel-right">
+            {/* Mobile Bottom Sheet Drag Handle (<768px) */}
+            <div className="auth-mobile-handle" aria-hidden="true" />
 
-              {serverError && (
-                <div className="auth-error-banner" role="alert" aria-live="polite">
-                  <AlertCircle size={16} strokeWidth={2} className="error-icon" />
-                  <span>{serverError}</span>
-                </div>
-              )}
+            {/* Mobile Condensed Header (<768px) */}
+            <div className="auth-mobile-header">
+              <Logo size={28} />
+            </div>
 
-              <div className="google-role-picker-container">
-                <div
-                  className={`google-role-card ${chosenGoogleRole === 'student' ? 'selected' : ''}`}
-                  onClick={() => setChosenGoogleRole('student')}
-                  role="button"
-                  tabIndex={0}
-                >
-                  <span className="google-role-icon">🎓</span>
-                  <div>
-                    <div className="google-role-title">Student</div>
-                    <div className="google-role-desc">
-                      Personal study planner, chapter progress tracking, and concept tree notes.
-                    </div>
-                  </div>
+            {googleNeedsRole ? (
+              /* First-time Google OAuth Role Selection Step */
+              <form onSubmit={handleCompleteGoogleRole} className="auth-fields-form" noValidate>
+                <div className="auth-heading-block">
+                  <h3 className="auth-form-title">Choose your role</h3>
+                  <p className="auth-form-subtitle">
+                    Select your workspace mode to customize your dashboard.
+                  </p>
                 </div>
 
-                <div
-                  className={`google-role-card ${chosenGoogleRole === 'teacher' ? 'selected' : ''}`}
-                  onClick={() => setChosenGoogleRole('teacher')}
-                  role="button"
-                  tabIndex={0}
-                >
-                  <span className="google-role-icon">👨‍🏫</span>
-                  <div>
-                    <div className="google-role-title">Teacher / Professor</div>
-                    <div className="google-role-desc">
-                      Class syllabus mapping, structured concept guides, and student learning insights.
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="auth-submit-wrap">
-                <button
-                  type="submit"
-                  disabled={loading || isSuccess}
-                  className={`auth-submit-btn ${isSuccess ? 'auth-submit-success' : ''}`}
-                >
-                  {isSuccess ? (
-                    <span className="auth-btn-content success-content">
-                      <Check size={18} strokeWidth={2.4} />
-                      <span>Role selected!</span>
-                      <Sparkles size={16} className="sparkle-success" />
-                    </span>
-                  ) : loading ? (
-                    <span className="auth-btn-content">
-                      <BookshelfLoader size="sm" label="Setting up..." />
-                      <span>Setting up dashboard...</span>
-                    </span>
-                  ) : (
-                    <span className="auth-btn-content">
-                      <span>Continue to Dashboard</span>
-                    </span>
-                  )}
-                </button>
-              </div>
-            </form>
-          ) : (
-            <>
-              {/* Segmented Sliding-Pill Tabs */}
-              <div className="auth-tabs-wrap">
-                <SegmentedTabs
-                  tabs={tabsData}
-                  activeTab={tab}
-                  onChange={handleTabChange}
-                  layoutId="authModalTabPill"
-                  className="auth-segmented-pill"
-                />
-              </div>
-
-              {/* Headings that change with tab */}
-              <div className="auth-heading-block">
-                <h1 id="auth-dialog-title" className="auth-form-title">
-                  {tab === 'signin' ? 'Welcome back' : 'Create your workspace'}
-                </h1>
-                <p id="auth-dialog-desc" className="auth-form-subtitle">
-                  {tab === 'signin' ? 'Sign in to open your workspace' : 'It takes less than a minute'}
-                </p>
-              </div>
-
-              {/* Prompt banner (if opened by limit, session expiration, etc.) */}
-              {authModalPrompt && (
-                <div className="auth-prompt-banner" role="status">
-                  <Info size={16} strokeWidth={2} className="prompt-icon" />
-                  <span>{authModalPrompt}</span>
-                </div>
-              )}
-
-              {/* Top-Level Server Error Banner */}
-              {serverError && (
-                <div className="auth-error-banner" role="alert" aria-live="polite">
-                  <AlertCircle size={16} strokeWidth={2} className="error-icon" />
-                  <span>{serverError}</span>
-                </div>
-              )}
-
-
-
-              {/* Real Form with onSubmit */}
-              <form onSubmit={handleSubmit} className="auth-fields-form" noValidate>
-                {/* Create Account: Role Selector */}
-                {tab === 'signup' && (
-                  <div className="auth-role-group">
-                    <label className="auth-label">I am a</label>
-                    <div className="role-selector-pills">
-                      <button
-                        type="button"
-                        className={`role-pill-btn ${role === 'student' ? 'selected' : ''}`}
-                        onClick={() => setRoleState('student')}
-                      >
-                        <span>🎓</span>
-                        <span>Student</span>
-                      </button>
-                      <button
-                        type="button"
-                        className={`role-pill-btn ${role === 'teacher' ? 'selected' : ''}`}
-                        onClick={() => setRoleState('teacher')}
-                      >
-                        <span>👨‍🏫</span>
-                        <span>Teacher / Professor</span>
-                      </button>
-                    </div>
+                {serverError && (
+                  <div className="auth-error-pill" role="alert" aria-live="polite">
+                    <AlertCircle size={14} />
+                    <span>{serverError}</span>
                   </div>
                 )}
 
-                {/* Create Account: Optional Display Name */}
-                {tab === 'signup' && (
+                <div className="auth-role-cards-col">
+                  <div
+                    className={`auth-role-card ${chosenGoogleRole === 'student' ? 'selected' : ''}`}
+                    onClick={() => setChosenGoogleRole('student')}
+                    role="button"
+                    tabIndex={0}
+                  >
+                    <span className="auth-role-icon">🎓</span>
+                    <div>
+                      <div className="auth-role-title">Student</div>
+                      <div className="auth-role-desc">
+                        Personal study planner, chapters progress, and concept tree notes.
+                      </div>
+                    </div>
+                  </div>
+
+                  <div
+                    className={`auth-role-card ${chosenGoogleRole === 'teacher' ? 'selected' : ''}`}
+                    onClick={() => setChosenGoogleRole('teacher')}
+                    role="button"
+                    tabIndex={0}
+                  >
+                    <span className="auth-role-icon">👨‍🏫</span>
+                    <div>
+                      <div className="auth-role-title">Teacher / Professor</div>
+                      <div className="auth-role-desc">
+                        Syllabus mapping, structured guides, and student learning analytics.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="auth-submit-wrap">
+                  <button
+                    type="submit"
+                    disabled={loading || isSuccess}
+                    className="auth-btn-lime"
+                  >
+                    {loading ? (
+                      <span className="auth-btn-content">
+                        <BookshelfLoader size="sm" label="Setting up..." />
+                        <span>Setting up...</span>
+                      </span>
+                    ) : (
+                      <span>Continue to Dashboard</span>
+                    )}
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <>
+                {/* Pill Tab Switcher: [ Sign in | Create account ] */}
+                <div className="auth-pill-switcher" role="tablist">
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={tab === 'signin'}
+                    className={`auth-switcher-pill ${tab === 'signin' ? 'active' : ''}`}
+                    onClick={() => handleTabChange('signin')}
+                  >
+                    Sign in
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={tab === 'signup'}
+                    className={`auth-switcher-pill ${tab === 'signup' ? 'active' : ''}`}
+                    onClick={() => handleTabChange('signup')}
+                  >
+                    Create account
+                  </button>
+                </div>
+
+                {/* Prompt banner (if opened by limit, expiration, etc.) */}
+                {authModalPrompt && (
+                  <div className="auth-prompt-pill" role="status">
+                    <Info size={14} />
+                    <span>{authModalPrompt}</span>
+                  </div>
+                )}
+
+                {/* Server Error Soft Red Pill */}
+                {serverError && (
+                  <div className="auth-error-pill" role="alert" aria-live="polite">
+                    <AlertCircle size={14} />
+                    <span>{serverError}</span>
+                  </div>
+                )}
+
+                {/* Form */}
+                <form onSubmit={handleSubmit} className="auth-fields-form" noValidate>
+                  {/* Create Account: Role Selector */}
+                  {tab === 'signup' && (
+                    <div className="auth-field-group">
+                      <label className="auth-field-label">I am a</label>
+                      <div className="auth-role-pills">
+                        <button
+                          type="button"
+                          className={`auth-role-pill-btn ${role === 'student' ? 'active' : ''}`}
+                          onClick={() => setRoleState('student')}
+                        >
+                          <span>🎓</span>
+                          <span>Student</span>
+                        </button>
+                        <button
+                          type="button"
+                          className={`auth-role-pill-btn ${role === 'teacher' ? 'active' : ''}`}
+                          onClick={() => setRoleState('teacher')}
+                        >
+                          <span>👨‍🏫</span>
+                          <span>Teacher</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Create Account: Optional Display Name */}
+                  {tab === 'signup' && (
+                    <div className="auth-field-group">
+                      <label htmlFor="auth-display-name" className="auth-field-label">
+                        Display name <span className="auth-optional-tag">(optional)</span>
+                      </label>
+                      <input
+                        id="auth-display-name"
+                        type="text"
+                        autoComplete="name"
+                        placeholder="e.g. Himanshu"
+                        value={displayName}
+                        onChange={(e) => setDisplayName(e.target.value)}
+                        className="auth-pill-input"
+                        disabled={loading || isSuccess}
+                      />
+                    </div>
+                  )}
+
+                  {/* Username or Email Field */}
                   <div className="auth-field-group">
-                    <label htmlFor="auth-display-name" className="auth-label">
-                      Display name <span className="auth-optional-tag">(optional)</span>
+                    <label htmlFor="auth-username-field" className="auth-field-label">
+                      {tab === 'signin' ? 'Username' : 'Username or Email'}
                     </label>
                     <input
-                      id="auth-display-name"
+                      ref={firstInputRef}
+                      id="auth-username-field"
                       type="text"
-                      autoComplete="name"
-                      placeholder="e.g. Ada Lovelace"
-                      value={displayName}
-                      onChange={(e) => setDisplayName(e.target.value)}
-                      className="auth-input-control"
-                      disabled={loading || isSuccess}
-                    />
-                  </div>
-                )}
-
-                {/* Username or Email Field */}
-                <div className="auth-field-group">
-                  <label htmlFor="auth-username-field" className="auth-label">
-                    {tab === 'signin' ? 'Email or Username' : 'Username or Email'}
-                  </label>
-                  <input
-                    ref={firstInputRef}
-                    id="auth-username-field"
-                    type="text"
-                    autoComplete={tab === 'signin' ? 'username email' : 'username'}
-                    autoFocus
-                    placeholder={tab === 'signin' ? 'name@example.com or username' : 'Choose a username or enter email'}
-                    value={username}
-                    onChange={(e) => {
-                      setUsername(e.target.value);
-                      if (fieldErrors.username) {
-                        setFieldErrors((prev) => ({ ...prev, username: null }));
-                      }
-                    }}
-                    onBlur={handleUsernameBlur}
-                    className={`auth-input-control ${fieldErrors.username ? 'has-field-error' : ''}`}
-                    aria-invalid={!!fieldErrors.username}
-                    aria-describedby={
-                      fieldErrors.username 
-                        ? 'username-err' 
-                        : tab === 'signup' 
-                        ? 'username-rules' 
-                        : undefined
-                    }
-                    disabled={loading || isSuccess}
-                  />
-
-                  {fieldErrors.username && (
-                    <span id="username-err" className="auth-field-error-msg" role="alert">
-                      {fieldErrors.username}
-                    </span>
-                  )}
-
-                  {/* Helper rules and availability status for signup */}
-                  {tab === 'signup' && (
-                    <div id="username-rules" className="username-feedback-row">
-                      <span className="username-helper-rules">
-                        3–24 characters: letters, numbers, underscore, dot or valid email
-                      </span>
-                      {usernameStatus && (
-                        <span 
-                          className={`username-status-badge ${
-                            usernameStatus.checking
-                              ? 'checking'
-                              : usernameStatus.available
-                              ? 'available'
-                              : 'taken'
-                          }`}
-                          aria-live="polite"
-                        >
-                          {usernameStatus.checking ? (
-                            'Checking...'
-                          ) : usernameStatus.available ? (
-                            '✓ Available'
-                          ) : (
-                            `✕ ${usernameStatus.message}`
-                          )}
-                        </span>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {/* Password Field with Show/Hide toggle */}
-                <div className="auth-field-group">
-                  <label htmlFor="auth-password-field" className="auth-label">
-                    Password
-                  </label>
-                  <div className="auth-input-wrap">
-                    <input
-                      id="auth-password-field"
-                      type={showPassword ? 'text' : 'password'}
-                      autoComplete={tab === 'signup' ? 'new-password' : 'current-password'}
-                      placeholder="••••••••"
-                      value={password}
+                      autoComplete={tab === 'signin' ? 'username email' : 'username'}
+                      autoFocus
+                      placeholder={tab === 'signin' ? 'your username' : 'Choose a username or enter email'}
+                      value={username}
                       onChange={(e) => {
-                        setPassword(e.target.value);
-                        if (fieldErrors.password) {
-                          setFieldErrors((prev) => ({ ...prev, password: null }));
+                        setUsername(e.target.value);
+                        if (fieldErrors.username) {
+                          setFieldErrors((prev) => ({ ...prev, username: null }));
                         }
                       }}
-                      className={`auth-input-control ${fieldErrors.password ? 'has-field-error' : ''}`}
-                      aria-invalid={!!fieldErrors.password}
-                      aria-describedby={fieldErrors.password ? 'password-err' : undefined}
+                      onBlur={handleUsernameBlur}
+                      className={`auth-pill-input ${fieldErrors.username ? 'has-field-error' : ''}`}
+                      aria-invalid={!!fieldErrors.username}
                       disabled={loading || isSuccess}
                     />
-                    <button
-                      type="button"
-                      className="auth-eye-btn"
-                      onClick={() => setShowPassword(!showPassword)}
-                      aria-label={showPassword ? 'Hide password' : 'Show password'}
-                      tabIndex={-1}
-                    >
-                      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                    </button>
+
+                    {fieldErrors.username && (
+                      <span className="auth-field-error-pill" role="alert">
+                        {fieldErrors.username}
+                      </span>
+                    )}
+
+                    {tab === 'signup' && usernameStatus && (
+                      <span 
+                        className={`auth-username-status ${usernameStatus.available ? 'available' : 'taken'}`}
+                      >
+                        {usernameStatus.checking ? 'Checking...' : usernameStatus.available ? '✓ Available' : `✕ ${usernameStatus.message}`}
+                      </span>
+                    )}
                   </div>
 
-                  {fieldErrors.password && (
-                    <span id="password-err" className="auth-field-error-msg" role="alert">
-                      {fieldErrors.password}
-                    </span>
-                  )}
-
-                  {/* Live Password Strength Meter for signup */}
-                  {tab === 'signup' && password && (
-                    <div className="password-strength-wrap" aria-live="polite">
-                      <div className="strength-bars-row">
-                        {[1, 2, 3, 4].map((level) => (
-                          <span
-                            key={level}
-                            className={`strength-bar-seg ${level <= strength.score ? `active-score-${strength.score}` : ''}`}
-                          />
-                        ))}
-                      </div>
-                      <div className="strength-meta-row">
-                        <span className={`strength-label strength-label-${strength.score}`}>
-                          {strength.label}
-                        </span>
-                        <span className="strength-helper-text">{strength.helper}</span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Create Account: Confirm Password */}
-                {tab === 'signup' && (
+                  {/* Password Field */}
                   <div className="auth-field-group">
-                    <label htmlFor="auth-confirm-password-field" className="auth-label">
-                      Confirm password
+                    <label htmlFor="auth-password-field" className="auth-field-label">
+                      Password
                     </label>
                     <div className="auth-input-wrap">
                       <input
-                        id="auth-confirm-password-field"
-                        type={showConfirmPassword ? 'text' : 'password'}
-                        autoComplete="new-password"
-                        placeholder="••••••••"
-                        value={confirmPassword}
+                        id="auth-password-field"
+                        type={showPassword ? 'text' : 'password'}
+                        autoComplete={tab === 'signup' ? 'new-password' : 'current-password'}
+                        placeholder="Enter password"
+                        value={password}
                         onChange={(e) => {
-                          setConfirmPassword(e.target.value);
-                          if (fieldErrors.confirmPassword) {
-                            setFieldErrors((prev) => ({ ...prev, confirmPassword: null }));
+                          setPassword(e.target.value);
+                          if (fieldErrors.password) {
+                            setFieldErrors((prev) => ({ ...prev, password: null }));
                           }
                         }}
-                        className={`auth-input-control ${fieldErrors.confirmPassword ? 'has-field-error' : ''}`}
-                        aria-invalid={!!fieldErrors.confirmPassword}
-                        aria-describedby={fieldErrors.confirmPassword ? 'confirm-password-err' : undefined}
+                        className={`auth-pill-input ${fieldErrors.password ? 'has-field-error' : ''}`}
+                        aria-invalid={!!fieldErrors.password}
                         disabled={loading || isSuccess}
                       />
                       <button
                         type="button"
                         className="auth-eye-btn"
-                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                        aria-label={showConfirmPassword ? 'Hide password confirmation' : 'Show password confirmation'}
+                        onClick={() => setShowPassword(!showPassword)}
+                        aria-label={showPassword ? 'Hide password' : 'Show password'}
                         tabIndex={-1}
                       >
-                        {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                        {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                       </button>
                     </div>
 
-                    {fieldErrors.confirmPassword && (
-                      <span id="confirm-password-err" className="auth-field-error-msg" role="alert">
-                        {fieldErrors.confirmPassword}
+                    {fieldErrors.password && (
+                      <span className="auth-field-error-pill" role="alert">
+                        {fieldErrors.password}
                       </span>
                     )}
-                  </div>
-                )}
 
-                {/* Full-Width Champagne Gold Submit Button */}
-                <div className="auth-submit-wrap">
-                  <button
-                    type="submit"
-                    disabled={loading || isSuccess}
-                    className={`auth-submit-btn ${isSuccess ? 'auth-submit-success' : ''}`}
-                  >
-                    {isSuccess ? (
-                      <span className="auth-btn-content success-content">
-                        <Check size={18} strokeWidth={2.4} />
-                        <span>Welcome!</span>
-                        <Sparkles size={16} className="sparkle-success" />
-                      </span>
-                    ) : loading ? (
-                      <span className="auth-btn-content">
-                        <BookshelfLoader size="sm" label="Authenticating..." />
-                        <span>{tab === 'signin' ? 'Signing in...' : 'Creating workspace...'}</span>
-                      </span>
-                    ) : (
-                      <span className="auth-btn-content">
-                        <span>{tab === 'signin' ? 'Sign in' : 'Create account'}</span>
-                      </span>
-                    )}
-                  </button>
-                </div>
-
-                {/* Quiet Switch Line Below Button */}
-                <div className="auth-switch-line">
-                  {tab === 'signin' ? (
-                    <span>
-                      New here?{' '}
-                      <button
-                        type="button"
-                        className="auth-switch-link"
-                        onClick={() => handleTabChange('signup')}
-                      >
-                        Create an account
-                      </button>
-                    </span>
-                  ) : (
-                    <span>
-                      Already have an account?{' '}
-                      <button
-                        type="button"
-                        className="auth-switch-link"
-                        onClick={() => handleTabChange('signin')}
-                      >
-                        Sign in
-                      </button>
-                    </span>
-                  )}
-                </div>
-
-                {/* Continue with Google Section (Shown on BOTH tabs) */}
-                {activeGoogleClientId ? (
-                  <div className="auth-google-section">
-                    <div className="auth-or-divider" aria-hidden="true">
-                      <span className="divider-line" />
-                      <span className="divider-text">or</span>
-                      <span className="divider-line" />
-                    </div>
-                    <div ref={googleBtnRef} className="google-btn-wrapper">
-                      <GoogleOAuthProvider clientId={activeGoogleClientId}>
-                        <GoogleLogin
-                          onSuccess={handleGoogleSuccess}
-                          onError={handleGoogleError}
-                          theme={isDark ? 'filled_black' : 'outline'}
-                          size="large"
-                          text="continue_with"
-                          shape="rectangular"
-                          width={googleBtnWidth ? `${googleBtnWidth}` : '380'}
+                    {/* 4-segment Password Strength Meter matching exact design */}
+                    <div className="auth-strength-meter" aria-label="Password strength meter">
+                      {[0, 1, 2, 3].map((idx) => (
+                        <span
+                          key={idx}
+                          className="auth-strength-bar"
+                          style={{
+                            backgroundColor: getStrengthSegmentColor(idx, password ? (strength.score || 1) : 0, isDark)
+                          }}
                         />
-                      </GoogleOAuthProvider>
+                      ))}
                     </div>
                   </div>
-                ) : null}
-              </form>
-            </>
-          )}
+
+                  {/* Create Account: Confirm Password */}
+                  {tab === 'signup' && (
+                    <div className="auth-field-group">
+                      <label htmlFor="auth-confirm-password-field" className="auth-field-label">
+                        Confirm password
+                      </label>
+                      <div className="auth-input-wrap">
+                        <input
+                          id="auth-confirm-password-field"
+                          type={showConfirmPassword ? 'text' : 'password'}
+                          autoComplete="new-password"
+                          placeholder="Confirm password"
+                          value={confirmPassword}
+                          onChange={(e) => {
+                            setConfirmPassword(e.target.value);
+                            if (fieldErrors.confirmPassword) {
+                              setFieldErrors((prev) => ({ ...prev, confirmPassword: null }));
+                            }
+                          }}
+                          className={`auth-pill-input ${fieldErrors.confirmPassword ? 'has-field-error' : ''}`}
+                          aria-invalid={!!fieldErrors.confirmPassword}
+                          disabled={loading || isSuccess}
+                        />
+                        <button
+                          type="button"
+                          className="auth-eye-btn"
+                          onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                          aria-label={showConfirmPassword ? 'Hide password confirmation' : 'Show password confirmation'}
+                          tabIndex={-1}
+                        >
+                          {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                        </button>
+                      </div>
+
+                      {fieldErrors.confirmPassword && (
+                        <span className="auth-field-error-pill" role="alert">
+                          {fieldErrors.confirmPassword}
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Primary Lime Action Button */}
+                  <div className="auth-submit-wrap">
+                    <button
+                      type="submit"
+                      disabled={loading || isSuccess}
+                      className="auth-btn-lime"
+                    >
+                      {isSuccess ? (
+                        <span className="auth-btn-content">
+                          <Check size={18} strokeWidth={2.4} />
+                          <span>{tab === 'signin' ? 'Welcome back!' : 'Account created!'}</span>
+                        </span>
+                      ) : loading ? (
+                        <span className="auth-btn-content">
+                          <BookshelfLoader size="sm" label="Authenticating..." />
+                          <span>{tab === 'signin' ? 'Signing in...' : 'Creating account...'}</span>
+                        </span>
+                      ) : (
+                        <span>{tab === 'signin' ? 'Sign in' : 'Create account'}</span>
+                      )}
+                    </button>
+                  </div>
+
+                  {/* Continue with Google Button (Hidden when VITE_GOOGLE_CLIENT_ID is empty) */}
+                  {activeGoogleClientId ? (
+                    <div className="auth-google-section">
+                      <div ref={googleBtnRef} className="google-btn-wrapper">
+                        <GoogleOAuthProvider clientId={activeGoogleClientId}>
+                          <GoogleLogin
+                            onSuccess={handleGoogleSuccess}
+                            onError={handleGoogleError}
+                            theme={isDark ? 'filled_black' : 'outline'}
+                            size="large"
+                            text="continue_with"
+                            shape="pill"
+                            width={googleBtnWidth ? `${googleBtnWidth}` : '380'}
+                          />
+                        </GoogleOAuthProvider>
+                      </div>
+                    </div>
+                  ) : null}
+                </form>
+              </>
+            )}
+          </div>
         </div>
       </div>
-    </div>
-  </OverlayPortal>
+    </OverlayPortal>
   );
 }

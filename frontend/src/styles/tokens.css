@@ -8,32 +8,41 @@
 
 :root {
   /* =====================================================================
-     1. Color Palette: Light Theme (Default)
+     1. Exact STEP 2 Tokens (Light Theme)
      ===================================================================== */
   --canvas: #E6E6E8;
   --card: #FFFFFF;
+  --panel: #F4F4F5;
+  --text: #111113;
+  --muted: #6B6B73;
+  --lime: #D7F25C;
+  --lavender: #B7A9F2;
+  --dark: #1B1B1D;
+  --amber: #F5C46B;
+
+  /* Aliases & Complementary Tokens */
   --card-elevated: #FFFFFF;
-  --dark-surface: #1B1B1D;
+  --dark-surface: var(--dark);
   --dark-surface-elevated: #262629;
   --surface-subtle: #F0F0F2;
   --surface-active: #F5F5F7;
 
   /* Accents */
-  --accent-lime: #D7F25C;
+  --accent-lime: var(--lime);
   --accent-lime-hover: #E2F77D;
   --accent-lime-active: #CBE94C;
   --accent-lime-soft: rgba(215, 242, 92, 0.18);
   --accent-lime-dim: rgba(215, 242, 92, 0.35);
 
-  --accent-lavender: #B7A9F2;
+  --accent-lavender: var(--lavender);
   --accent-lavender-hover: #C6BAF7;
   --accent-lavender-soft: rgba(183, 169, 242, 0.18);
   --accent-lavender-dim: rgba(183, 169, 242, 0.35);
 
   /* Typography Colors */
-  --text-main: #111113;
+  --text-main: var(--text);
   --text-secondary: #3D3D44;
-  --text-muted: #6B6B73;
+  --text-muted: var(--muted);
   --text-dim: #92929B;
   --text-inverse: #FFFFFF;
 
@@ -142,19 +151,31 @@
    ===================================================================== */
 [data-theme="dark"] {
   --canvas: #121214;
-  --card: #1B1B1D;
-  --card-elevated: #242428;
+  --panel: #1B1B1D;
+  --card: #232326;
+  --text: #ffffff;
+  --muted: #A8A8B0;
+  --lime: #D7F25C;
+  --lavender: #B7A9F2;
+  --dark: #121214;
+  --amber: #F5C46B;
+
+  --card-elevated: #28282D;
   --dark-surface: #121214;
   --dark-surface-elevated: #1F1F23;
   --surface-subtle: #242428;
   --surface-active: #2C2C32;
 
   /* Typography */
-  --text-main: #FFFFFF;
+  --text-main: var(--text);
   --text-secondary: #D4D4D8;
-  --text-muted: #A8A8B0;
+  --text-muted: var(--muted);
   --text-dim: #71717A;
   --text-inverse: #111113;
+
+  /* Accents */
+  --accent-lime: var(--lime);
+  --accent-lavender: var(--lavender);
 
   /* Dark Surface Typography */
   --text-on-dark: #FFFFFF;

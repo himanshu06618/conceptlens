@@ -111,13 +111,29 @@ export default function App() {
   });
 
   // Theme state: light or dark
+  // Theme state: light or dark (supports ?theme=light / ?theme=dark in URL for verification)
   const [theme, setTheme] = useState(() => {
+    try {
+      const p = new URLSearchParams(window.location.search).get('theme');
+      if (p === 'light' || p === 'dark') return p;
+    } catch (_) {}
     const saved = localStorage.getItem('conceptlens_theme');
     if (saved) return saved;
     return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
       ? 'dark'
       : 'light';
   });
+
+  useEffect(() => {
+    try {
+      const authParam = new URLSearchParams(window.location.search).get('auth');
+      if (authParam === 'open' || authParam === 'signin') {
+        openAuthModal('signin');
+      } else if (authParam === 'signup') {
+        openAuthModal('signup');
+      }
+    } catch (_) {}
+  }, [openAuthModal]);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -675,13 +691,10 @@ export default function App() {
     if (authLoading) {
       return <NeutralSkeleton />;
     }
-    if (isAuthenticated) {
-      if (user?.role === 'teacher') {
-        return <TeacherDashboard />;
-      }
-      return <StudentDashboard onToast={addToast} />;
+    if (isAuthenticated && user?.role === 'teacher') {
+      return <TeacherDashboard />;
     }
-    return workspaceDashboard;
+    return <StudentDashboard onToast={addToast} />;
   };
 
   return (

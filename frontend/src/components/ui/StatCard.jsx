@@ -1,31 +1,29 @@
 import React, { useState, useEffect } from 'react';
-import { MoreHorizontal } from 'lucide-react';
 
 /**
  * StatCard — "Flux" Health-Dashboard Inspired KPI Card
- * - White card (or dark surface in dark mode)
- * - Icon chip top-left
- * - 3-dot menu top-right
- * - Big semi-bold number (36-48px) + small grey unit label
- * - Tiny lime growth badge
- * - Thick rounded progress bar with animated count-up
+ * Matches Image 2:
+ * - Card wrapper: .card
+ * - 40x40 icon chip (radius 14px)
+ * - Lime growth badge
+ * - Label: 13px muted
+ * - Value: 38px/700
+ * - Sub: 12px muted
+ * - 8px rounded progress bar
  */
 export default function StatCard({
   label,
   value,
   unit = '',
   icon: Icon,
-  iconColor = 'var(--accent-lime)',
-  iconBg = 'rgba(215, 242, 92, 0.16)',
-  growth = '+12%',
-  growthType = 'positive', // 'positive' | 'neutral'
-  progress = 65,
-  progressColor = 'var(--accent-lime)',
+  iconColor = '#111113',
+  iconBg = '#D7F25C',
+  growth = null,
+  progress = 50,
+  progressColor = '#111113',
   contextText = '',
-  className = '',
-  onClickMenu = null
+  className = ''
 }) {
-  // Count-up animation for numeric values
   const [displayValue, setDisplayValue] = useState(0);
   const numericValue = typeof value === 'number' ? value : parseFloat(value) || 0;
   const isFraction = typeof value === 'string' && value.includes('/');
@@ -33,7 +31,7 @@ export default function StatCard({
   useEffect(() => {
     if (isFraction) return;
     let startTime = null;
-    const duration = 600; // ms
+    const duration = 500;
     const startVal = 0;
     const endVal = numericValue;
 
@@ -41,7 +39,6 @@ export default function StatCard({
       if (!startTime) startTime = timestamp;
       const elapsed = timestamp - startTime;
       const progressRatio = Math.min(elapsed / duration, 1);
-      // Ease out quad
       const eased = 1 - (1 - progressRatio) * (1 - progressRatio);
       setDisplayValue(Math.round(startVal + (endVal - startVal) * eased));
 
@@ -59,48 +56,91 @@ export default function StatCard({
   const renderedNumber = isFraction ? value : displayValue;
 
   return (
-    <div className={`flux-stat-card ${className}`.trim()}>
-      <div className="flux-stat-header">
-        <div 
-          className="flux-stat-icon-chip"
-          style={{ background: iconBg, color: iconColor }}
+    <div className={`card ${className}`.trim()} style={{ gap: '10px' }}>
+      {/* Top Row: Icon Chip + Growth Badge */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div
+          style={{
+            width: '40px',
+            height: '40px',
+            minWidth: '40px',
+            minHeight: '40px',
+            borderRadius: '14px',
+            backgroundColor: iconBg,
+            color: iconColor,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0
+          }}
           aria-hidden="true"
         >
           {Icon && <Icon size={20} strokeWidth={2} />}
         </div>
 
-        <div className="flux-stat-header-actions">
-          {growth && (
-            <span className={`flux-growth-badge ${growthType}`}>
-              {growth}
-            </span>
-          )}
-          <button
-            type="button"
-            className="flux-stat-menu-btn"
-            onClick={onClickMenu}
-            aria-label={`Options for ${label}`}
+        {growth && (
+          <span
+            className="pill"
+            style={{
+              background: 'var(--lime)',
+              color: '#111113',
+              fontSize: '11px',
+              fontWeight: 700,
+              padding: '2px 8px',
+              marginLeft: 'auto'
+            }}
           >
-            <MoreHorizontal size={17} />
-          </button>
+            {growth}
+          </span>
+        )}
+      </div>
+
+      {/* Label */}
+      <div style={{ fontSize: '13px', color: 'var(--muted)', fontWeight: 500 }}>
+        {label}
+      </div>
+
+      {/* Big Value Number */}
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
+        <span style={{ fontSize: '38px', fontWeight: 700, color: 'var(--text)', lineHeight: 1 }}>
+          {renderedNumber}
+        </span>
+        {unit && (
+          <span style={{ fontSize: '20px', fontWeight: 600, color: 'var(--text)' }}>
+            {unit}
+          </span>
+        )}
+      </div>
+
+      {/* Sub Context Text */}
+      {contextText && (
+        <div style={{ fontSize: '12px', color: 'var(--muted)', minHeight: '16px' }}>
+          {contextText}
         </div>
-      </div>
+      )}
 
-      <div className="flux-stat-label">{label}</div>
-
-      <div className="flux-stat-number-row">
-        <span className="flux-stat-big-number">{renderedNumber}</span>
-        {unit && <span className="flux-stat-unit">{unit}</span>}
-      </div>
-
-      {contextText && <div className="flux-stat-context">{contextText}</div>}
-
-      <div className="flux-stat-progress-track" role="progressbar" aria-valuenow={progress} aria-valuemin={0} aria-valuemax={100}>
+      {/* 8px Rounded Progress Bar */}
+      <div
+        style={{
+          width: '100%',
+          height: '8px',
+          borderRadius: '999px',
+          backgroundColor: 'rgba(0, 0, 0, 0.06)',
+          overflow: 'hidden',
+          marginTop: 'auto'
+        }}
+        role="progressbar"
+        aria-valuenow={progress}
+        aria-valuemin={0}
+        aria-valuemax={100}
+      >
         <div
-          className="flux-stat-progress-fill"
           style={{
-            width: `${Math.min(100, Math.max(4, progress))}%`,
-            background: progressColor
+            height: '100%',
+            borderRadius: '999px',
+            backgroundColor: progressColor,
+            width: `${Math.min(100, Math.max(0, progress))}%`,
+            transition: 'width 0.6s cubic-bezier(0.16, 1, 0.3, 1)'
           }}
         />
       </div>

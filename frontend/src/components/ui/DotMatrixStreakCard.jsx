@@ -1,90 +1,89 @@
 import React from 'react';
-import { MoreHorizontal, Flame, Sparkles } from 'lucide-react';
-
-const WEEKDAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
 /**
  * DotMatrixStreakCard — "Flux" Health-Dashboard Inspired Activity & Momentum Matrix
- * Inspired by the "Wellness Index" card with score + dot-matrix activity grid.
+ * Matches Image 2:
+ * - Full-width white card (.card)
+ * - Header: "Study Consistency" + "5-day streak active"
+ * - Big score: "9.2 / 10"
+ * - Dot-matrix: 12px dots, 8px gap, lavender shades, responsive flex-wrap
  */
 export default function DotMatrixStreakCard({
   score = 9.2,
   maxScore = 10,
   streakDays = 5,
-  growth = '+18%',
-  className = '',
-  onClickMenu = null
+  className = ''
 }) {
-  // 4 rows x 7 days dot matrix: 0=rest, 1=light (lavender), 2=high (lime)
-  const matrixData = [
-    [1, 2, 2, 1, 2, 0, 1],
-    [2, 2, 1, 2, 2, 2, 0],
-    [1, 1, 2, 2, 1, 1, 2],
-    [2, 2, 2, 2, 2, 1, 2], // Current week
+  // 4 rows x 15 dots in shades of lavender
+  const rows = [
+    ['#B7A9F2', '#C8BEF7', '#A492EE', '#B7A9F2', '#ECE8FC', '#B7A9F2', '#C8BEF7', '#A492EE', '#B7A9F2', '#DCD5F9', '#B7A9F2', '#C8BEF7', '#A492EE', '#B7A9F2', '#DCD5F9'],
+    ['#A492EE', '#B7A9F2', '#C8BEF7', '#B7A9F2', '#B7A9F2', '#C8BEF7', '#B7A9F2', '#A492EE', '#C8BEF7', '#B7A9F2', '#ECE8FC', '#B7A9F2', '#C8BEF7', '#A492EE', '#ECE8FC'],
+    ['#B7A9F2', '#C8BEF7', '#B7A9F2', '#A492EE', '#B7A9F2', '#DCD5F9', '#B7A9F2', '#C8BEF7', '#A492EE', '#B7A9F2', '#C8BEF7', '#B7A9F2', '#A492EE', '#B7A9F2', '#DCD5F9'],
+    ['#C8BEF7', '#B7A9F2', '#A492EE', '#B7A9F2', '#B7A9F2', '#C8BEF7', '#B7A9F2', '#A492EE', '#C8BEF7', '#ECE8FC', '#B7A9F2', '#C8BEF7', '#B7A9F2', '#A492EE', '#B7A9F2'],
   ];
 
   return (
-    <div className={`flux-bento-card flux-dot-matrix-card ${className}`.trim()}>
-      <div className="flux-card-header">
-        <div className="flux-card-title-group">
-          <div className="flux-card-icon-chip" style={{ background: 'rgba(183, 169, 242, 0.20)', color: 'var(--accent-lavender)' }}>
-            <Flame size={18} strokeWidth={2} />
-          </div>
-          <div>
-            <h3 className="flux-card-title">Study Consistency</h3>
-            <span className="flux-card-subtitle">{streakDays}-day streak active</span>
-          </div>
-        </div>
-
-        <button
-          type="button"
-          className="flux-stat-menu-btn"
-          onClick={onClickMenu}
-          aria-label="Study consistency options"
-        >
-          <MoreHorizontal size={17} />
-        </button>
+    <div className={`card ${className}`.trim()}>
+      {/* Card Header */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+        <h3 style={{ fontSize: '18px', fontWeight: 700, margin: 0, color: 'var(--text)' }}>
+          Study Consistency
+        </h3>
+        <p style={{ fontSize: '13px', color: 'var(--muted)', margin: 0 }}>
+          {streakDays}-day streak active
+        </p>
       </div>
 
-      <div className="flux-matrix-content">
-        <div className="flux-matrix-score-block">
-          <div className="flux-matrix-num-row">
-            <span className="flux-matrix-big-num">{score}</span>
-            <span className="flux-stat-unit">/ {maxScore}</span>
-            <span className="flux-growth-badge positive">{growth}</span>
-          </div>
-          <div className="flux-matrix-tagline">
-            <Sparkles size={13} style={{ display: 'inline', marginRight: 4, verticalAlign: 'middle' }} />
-            Consistent recall increases long-term retention
-          </div>
+      {/* Content Row: Score Left, Dot Matrix Right */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '24px',
+          flexWrap: 'wrap',
+          marginTop: '6px'
+        }}
+      >
+        {/* Big Score */}
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
+          <span style={{ fontSize: '38px', fontWeight: 700, color: 'var(--text)', lineHeight: 1 }}>
+            {score}
+          </span>
+          <span style={{ fontSize: '16px', color: 'var(--muted)', fontWeight: 500 }}>
+            / {maxScore}
+          </span>
         </div>
 
-        {/* 7-column Dot-Matrix Grid */}
-        <div className="flux-dot-matrix-grid" role="img" aria-label="Study consistency activity matrix">
-          {/* Weekday labels */}
-          <div className="flux-matrix-weekday-row">
-            {WEEKDAYS.map((day, idx) => (
-              <span key={idx} className="flux-matrix-day-label">{day}</span>
-            ))}
-          </div>
-
-          {/* Dots */}
-          <div className="flux-matrix-dots-body">
-            {matrixData.map((week, wIdx) => (
-              <div key={wIdx} className="flux-matrix-row">
-                {week.map((level, dIdx) => {
-                  const levelClass = level === 2 ? 'dot-high' : level === 1 ? 'dot-med' : 'dot-rest';
-                  return (
-                    <span
-                      key={dIdx}
-                      className={`flux-matrix-dot ${levelClass}`}
-                      title={level === 2 ? 'Heavy study session' : level === 1 ? 'Review & flashcards' : 'Rest day'}
-                    />
-                  );
-                })}
-              </div>
-            ))}
-          </div>
+        {/* 4-row Dot Matrix in Lavender Shades */}
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '8px',
+            maxWidth: '100%',
+            overflowX: 'auto',
+            padding: '2px 0'
+          }}
+          role="img"
+          aria-label="Consistency dot matrix"
+        >
+          {rows.map((row, rIdx) => (
+            <div key={rIdx} style={{ display: 'flex', gap: '8px' }}>
+              {row.map((color, dIdx) => (
+                <span
+                  key={dIdx}
+                  style={{
+                    width: '12px',
+                    height: '12px',
+                    borderRadius: '50%',
+                    backgroundColor: color,
+                    flexShrink: 0
+                  }}
+                />
+              ))}
+            </div>
+          ))}
         </div>
       </div>
     </div>

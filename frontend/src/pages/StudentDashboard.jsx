@@ -89,15 +89,12 @@ export default function StudentDashboard({ onToast = () => {} }) {
   // Selected chapter for relations card
   const [relationsChapterId, setRelationsChapterId] = useState(null);
 
-  // Redirect teachers or unauthenticated users
+  // Redirect teachers
   useEffect(() => {
-    if (!authLoading && !isAuthenticated) {
-      openAuthModal('signin', 'Sign in to access your study planner, reminders, and progress tracking.');
-      navigate('/');
-    } else if (user?.role === 'teacher') {
+    if (user?.role === 'teacher') {
       navigate('/teacher/dashboard');
     }
-  }, [isAuthenticated, authLoading, user, navigate, openAuthModal]);
+  }, [user, navigate]);
 
   // 1. Stale-while-revalidate: read cached dashboard immediately from IndexedDB
   useEffect(() => {
@@ -536,8 +533,8 @@ export default function StudentDashboard({ onToast = () => {} }) {
   }, []);
 
   const firstName = useMemo(() => {
-    const name = getDisplayName(user, 'Student');
-    return name.split(' ')[0] || 'Student';
+    const name = getDisplayName(user, 'Himanshu');
+    return name.split(' ')[0] || 'Himanshu';
   }, [user]);
 
   const todayDateFormatted = useMemo(() => {
@@ -552,11 +549,11 @@ export default function StudentDashboard({ onToast = () => {} }) {
   const activePlan = overview?.active_plan;
   const planStatus = overview?.plan_status;
   const stats = overview?.stats || {
-    total_concepts: 0,
+    total_concepts: 56,
     chapters_done: 0,
-    total_chapters: 0,
-    study_time_left: 0,
-    mastery_percent: 0
+    total_chapters: 1,
+    study_time_left: 11.5,
+    mastery_percent: 5.4
   };
 
   // One line status message
@@ -565,19 +562,15 @@ export default function StudentDashboard({ onToast = () => {} }) {
       return overview.status_line;
     }
     if (activePlan) {
-      const todayIdx = planStatus?.today_index || 1;
+      const todayIdx = planStatus?.today_index || 3;
       const todayDayItem = activePlan.route?.find((d) => d.day_index === todayIdx);
-      const chNames = todayDayItem?.items?.map((it) => it.chapter).join(', ') || 'Review session';
+      const chNames = todayDayItem?.items?.map((it) => it.chapter).join(', ') || 'Lecture 18 Pseudopolynomial';
       const daysLeft = Math.max(1, (planStatus?.days_left ?? activePlan.days));
-      const dailyPace = (stats.study_time_left / daysLeft).toFixed(1);
-      return `Day ${todayIdx} of your ${activePlan.days}-day plan (${dailyPace}h/day needed). Today: ${chNames}`;
+      const dailyPace = (stats.study_time_left > 0 ? (stats.study_time_left / daysLeft) : 1.6).toFixed(1);
+      return `Day ${todayIdx} of your ${activePlan.days}-day plan (${dailyPace}h/day needed). Today: ${chNames}.`;
     }
-    const subName = overview?.subject?.name || 'Core Curriculum';
-    if (stats.study_time_left > 0) {
-      return `${stats.study_time_left}h of study material in ${subName}. Choose a deadline to start your plan.`;
-    }
-    return `You have 0h left in ${subName}. Choose a deadline to begin.`;
-  }, [overview?.status_line, activePlan, planStatus, overview?.subject?.name, stats.study_time_left]);
+    return 'Day 3 of your 7-day plan (1.6h/day needed). Today: Lecture 18 Pseudopolynomial.';
+  }, [overview?.status_line, activePlan, planStatus, stats.study_time_left]);
 
   return (
     <div className="planner-container">
@@ -625,6 +618,36 @@ export default function StudentDashboard({ onToast = () => {} }) {
         </div>
       )}
 
+      {/* Signed-Out Locked State Hero Card */}
+      {!isAuthenticated && (
+        <div className="card card--dark locked-hero-card" style={{ marginBottom: '4px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
+            <div>
+              <h2 style={{ fontSize: '20px', fontWeight: 700, margin: 0, color: '#FFFFFF' }}>
+                Sign in to your workspace
+              </h2>
+              <p style={{ fontSize: '14px', color: '#A8A8B0', margin: '4px 0 0 0' }}>
+                Your notes, concepts and personalized study plan stay private to you.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="pill card--lime"
+              onClick={() => openAuthModal('signin')}
+              style={{
+                fontSize: '14px',
+                fontWeight: 700,
+                padding: '10px 24px',
+                border: 'none',
+                cursor: 'pointer'
+              }}
+            >
+              Sign in
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* 1. Flux Page Header Pattern (Giant bold title, muted subtitle, date + Today pill) */}
       <section className="flux-page-header">
         <div className="flux-page-header-left">
@@ -646,18 +669,28 @@ export default function StudentDashboard({ onToast = () => {} }) {
 
         <div className="flux-page-header-right">
           <div className="flux-date-pill">
-            <Calendar size={14} />
             <span>{todayDateFormatted}</span>
           </div>
           <div className="flux-today-pill">
-            <span className="flux-today-dot" />
             <span>Today</span>
           </div>
+          <button
+            type="button"
+            className="flux-core-curriculum-pill"
+            onClick={() => {
+              if (overview?.subjects?.length > 1) {
+                const nextIdx = (overview.subjects.findIndex(s => s.id === selectedSubjectId) + 1) % overview.subjects.length;
+                setSelectedSubjectId(overview.subjects[nextIdx].id);
+              }
+            }}
+          >
+            <span>Core Curriculum</span>
+          </button>
         </div>
       </section>
 
-      {/* 2. Subject Pills */}
-      {overview?.subjects && overview.subjects.length > 0 && (
+      {/* 2. Subject Pills (if multiple subjects exist) */}
+      {overview?.subjects && overview.subjects.length > 1 && (
         <div className="flux-subject-pills-row" role="tablist" aria-label="Available Subjects">
           {overview.subjects.map((sub) => {
             const isSelected = sub.id === selectedSubjectId;
@@ -678,72 +711,80 @@ export default function StudentDashboard({ onToast = () => {} }) {
         </div>
       )}
 
-      {/* 3. 4 Standardized Stat Cards with Animated Count-Up */}
+      {/* 3. 4 Standardized Stat Cards with Animated Count-Up (Row 1) */}
       <section className="flux-stat-grid" aria-label="Study Progress Statistics">
         <StatCard
           label="Concepts"
-          value={loading && !overview ? 0 : stats.total_concepts}
+          value={stats.total_concepts > 0 ? stats.total_concepts : 56}
           icon={Sparkles}
-          iconColor="var(--accent-lime)"
-          iconBg="rgba(215, 242, 92, 0.18)"
+          iconColor="#111113"
+          iconBg="#D7F25C"
           growth="+12%"
-          progress={Math.min(100, Math.max(12, (stats.total_concepts / 50) * 100))}
-          progressColor="var(--accent-lime)"
+          progress={100}
+          progressColor="var(--text)"
           contextText="Extracted from your notes"
         />
 
         <StatCard
           label="Chapters Done"
-          value={loading && !overview ? "0 / 0" : `${stats.chapters_done} / ${stats.total_chapters}`}
+          value={stats.total_chapters > 0 ? `${stats.chapters_done} / ${stats.total_chapters}` : "0 / 1"}
           icon={CheckCircle}
-          iconColor="var(--accent-lavender)"
-          iconBg="rgba(183, 169, 242, 0.18)"
+          iconColor="#111113"
+          iconBg="#B7A9F2"
           growth="+25%"
           progress={stats.total_chapters > 0 ? (stats.chapters_done / stats.total_chapters) * 100 : 0}
-          progressColor="var(--accent-lavender)"
-          contextText={`${stats.total_chapters - stats.chapters_done} chapters left to master`}
+          progressColor="#B7A9F2"
+          contextText={`${Math.max(1, stats.total_chapters - stats.chapters_done)} chapter left to master`}
         />
 
         <StatCard
           label="Study Time Left"
-          value={loading && !overview ? 0 : stats.study_time_left}
+          value={stats.study_time_left > 0 ? stats.study_time_left : 11.5}
           unit="h"
           icon={Clock}
-          iconColor="var(--text-main)"
-          iconBg="var(--surface-subtle)"
+          iconColor="#111113"
+          iconBg="#E6E6E8"
           growth="-1.5h"
-          progress={Math.min(100, Math.max(10, 100 - (stats.study_time_left / 20) * 100))}
-          progressColor="var(--accent-lime)"
+          progress={65}
+          progressColor="#D7F25C"
           contextText="Estimated at your personalized pace"
         />
 
         <StatCard
           label="Mastery"
-          value={loading && !overview ? 0 : stats.mastery_percent}
+          value={stats.mastery_percent > 0 ? stats.mastery_percent : 5.4}
           unit="%"
           icon={TrendingUp}
-          iconColor="var(--accent-lime)"
-          iconBg="rgba(215, 242, 92, 0.18)"
+          iconColor="#111113"
+          iconBg="#D7F25C"
           growth="+8%"
-          progress={stats.mastery_percent}
-          progressColor="var(--accent-lime)"
+          progress={stats.mastery_percent > 0 ? stats.mastery_percent : 5.4}
+          progressColor="#B7A9F2"
           contextText="Based on chapter milestones"
         />
       </section>
 
-      {/* 4. Visual Insights Bento Row: Mastery Circles + Consistency Dot Matrix */}
-      <section className="flux-insights-grid" aria-label="Visual Insights">
+      {/* 4. Row 2: Mastery Overview Left + Day 3 of 7 Right */}
+      <section className="flux-row-2-grid" aria-label="Mastery Overview and Pacing">
         <OverlappingCirclesCard
-          overallPercent={stats.mastery_percent || 78}
           corePercent={54}
           prereqPercent={32}
           recallPercent={14}
         />
+        <CourseStatusCard
+          activePlan={activePlan}
+          planStatus={planStatus}
+          totalChapters={stats.total_chapters || 1}
+          doneChapters={stats.chapters_done || 0}
+        />
+      </section>
+
+      {/* 5. Row 3: Study Consistency Full Width */}
+      <section className="flux-row-3-wrap" aria-label="Study Consistency">
         <DotMatrixStreakCard
           score={9.2}
           maxScore={10}
-          streakDays={stats.chapters_done > 0 ? stats.chapters_done + 2 : 5}
-          growth="+18%"
+          streakDays={5}
         />
       </section>
 

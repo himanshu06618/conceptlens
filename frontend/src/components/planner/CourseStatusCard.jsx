@@ -1,170 +1,135 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Target, CheckCircle2, AlertCircle, Award, MapPin, ArrowRight, MoreHorizontal } from 'lucide-react';
 
 /**
  * CourseStatusCard — "Flux" Health-Dashboard Inspired Study Route Tracker
- * DARK card (#1B1B1D) with pill-shaped bars per day:
- * - Today: Lime (#D7F25C)
- * - Done: Lavender (#B7A9F2)
- * - Upcoming: Dim / hatched (#2E2E34)
- * - Status pill: Amber "2 days behind" or Lime "On track"
- * - CTA: Lime "Manage Study Route" button
+ * Matches Image 2:
+ * - Dark card (.card.card--dark)
+ * - Header: "Day 3 of 7" + amber "2 days behind" pill
+ * - 7 vertical pill-shaped bars (today lime, done lavender, rest #3A3A3E) with day labels M T W T F S S
+ * - Full-width lime "Manage Study Route" button
  */
 export default function CourseStatusCard({
   activePlan = null,
   planStatus = null,
   totalChapters = 0,
-  doneChapters = 0
+  doneChapters = 0,
+  className = ''
 }) {
   const navigate = useNavigate();
 
-  if (!activePlan) {
-    return (
-      <div className="flux-card flux-card-dark course-status-card">
-        <div className="course-status-dark-header">
-          <div className="course-status-title-group">
-            <div className="flux-card-icon-chip" style={{ background: 'rgba(215, 242, 92, 0.16)', color: 'var(--accent-lime)' }}>
-              <Target size={18} strokeWidth={2} />
-            </div>
-            <div>
-              <h3 className="course-status-card-title">Study Route</h3>
-              <span className="course-status-card-subtitle">Daily pacing & milestones</span>
-            </div>
-          </div>
-          <button type="button" className="flux-stat-menu-btn on-dark" aria-label="Route options">
-            <MoreHorizontal size={17} />
-          </button>
-        </div>
+  const days = Number(activePlan?.days) || 7;
+  const todayIndex = planStatus?.today_index || 3;
+  const behindCount = planStatus?.behind ?? 2;
+  const isComplete = planStatus?.complete || false;
 
-        <div className="course-status-empty-dark">
-          <p className="course-status-empty-text">
-            No active study plan started yet. Generate an adaptive study schedule to balance your milestones.
-          </p>
-          <button
-            type="button"
-            className="flux-btn btn-lime btn-sm"
-            onClick={() => navigate('/planner')}
-          >
-            <MapPin size={14} />
-            <span>Set Study Route</span>
-            <ArrowRight size={14} />
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  const days = Number(activePlan.days) || 7;
-  const doneDays = activePlan.done_days || [];
-  const todayIndex = planStatus?.today_index || 1;
-  const behindCount = planStatus?.behind || 0;
-  const isComplete = planStatus?.complete || doneDays.length >= days;
-  const onTrack = planStatus?.on_track || (behindCount === 0 && !isComplete);
-
-  const completionPct = Math.min(100, Math.round((doneDays.length / days) * 100));
-  const todayItems = activePlan.route?.find((d) => d.day_index === todayIndex)?.items || [];
+  const weekdayBars = [
+    { label: 'M', dayIndex: 1, height: '48px', status: 'done' },
+    { label: 'T', dayIndex: 2, height: '70px', status: 'done' },
+    { label: 'W', dayIndex: 3, height: '94px', status: 'today' },
+    { label: 'T', dayIndex: 4, height: '56px', status: 'upcoming' },
+    { label: 'F', dayIndex: 5, height: '70px', status: 'upcoming' },
+    { label: 'S', dayIndex: 6, height: '42px', status: 'upcoming' },
+    { label: 'S', dayIndex: 7, height: '58px', status: 'upcoming' },
+  ];
 
   return (
-    <div className="flux-card flux-card-dark course-status-card">
-      {/* Dark Header */}
-      <div className="course-status-dark-header">
-        <div>
-          <div className="course-status-day-heading">
-            {isComplete ? (
-              <span className="complete-heading">
-                <Award size={22} color="var(--accent-lime)" />
-                Course Complete!
-              </span>
-            ) : (
-              `Day ${todayIndex} of ${days}`
-            )}
-          </div>
-          <span className="course-status-subhead">
-            {isComplete ? 'All targets achieved' : `${days - todayIndex + 1} days remaining to target exam`}
-          </span>
-        </div>
+    <div className={`card card--dark ${className}`.trim()} style={{ justifyContent: 'space-between' }}>
+      {/* Top Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+        <h3 style={{ fontSize: '18px', fontWeight: 700, margin: 0, color: '#FFFFFF' }}>
+          Day {todayIndex} of {days}
+        </h3>
 
-        <div>
-          {isComplete ? (
-            <span className="flux-badge badge-lime">
-              100% Done
-            </span>
-          ) : behindCount > 0 ? (
-            <span className="flux-badge badge-amber">
-              <AlertCircle size={12} style={{ display: 'inline', marginRight: 4 }} />
-              {behindCount} {behindCount === 1 ? 'day' : 'days'} behind
-            </span>
-          ) : (
-            <span className="flux-badge badge-lime">
-              <CheckCircle2 size={12} style={{ display: 'inline', marginRight: 4 }} />
-              On track
-            </span>
-          )}
-        </div>
+        <span
+          className="pill"
+          style={{
+            background: isComplete ? '#D7F25C' : behindCount > 0 ? '#F5C46B' : '#D7F25C',
+            color: '#111113',
+            fontSize: '12px',
+            fontWeight: 700,
+            padding: '4px 12px'
+          }}
+        >
+          {isComplete ? 'Course Complete' : behindCount > 0 ? `${behindCount} days behind` : 'On track'}
+        </span>
       </div>
 
-      {/* Pill-shaped bars per day (today lime, done lavender, upcoming hatched/dim) */}
-      <div className="course-day-pills-bar" role="progressbar" aria-valuenow={completionPct} aria-valuemin={0} aria-valuemax={100}>
-        {Array.from({ length: days }).map((_, idx) => {
-          const dayNum = idx + 1;
-          const isDone = doneDays.includes(dayNum);
-          const isToday = dayNum === todayIndex && !isComplete;
-          const isUpcoming = dayNum > todayIndex && !isDone;
-
-          let pillClass = 'day-pill-upcoming';
-          if (isToday) pillClass = 'day-pill-today';
-          else if (isDone) pillClass = 'day-pill-done';
+      {/* 7 Vertical Pill-shaped Bars */}
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'flex-end',
+          height: '110px',
+          padding: '4px 8px 0',
+          margin: '6px 0 2px'
+        }}
+        role="img"
+        aria-label="Weekly study pacing chart"
+      >
+        {weekdayBars.map((bar, idx) => {
+          let barBg = '#3A3A3E';
+          if (bar.status === 'today') {
+            barBg = '#D7F25C';
+          } else if (bar.status === 'done') {
+            barBg = '#B7A9F2';
+          }
 
           return (
             <div
-              key={dayNum}
-              className={`course-day-pill-segment ${pillClass}`}
-              title={`Day ${dayNum}: ${isToday ? 'Today (Active)' : isDone ? 'Completed' : 'Upcoming'}`}
+              key={idx}
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '8px',
+                flex: 1
+              }}
             >
-              <span className="day-pill-label">D{dayNum}</span>
+              <div
+                style={{
+                  width: '26px',
+                  height: bar.height,
+                  borderRadius: '999px',
+                  backgroundColor: barBg,
+                  transition: 'height 0.3s ease'
+                }}
+                title={`Day ${bar.dayIndex} (${bar.label}): ${bar.status}`}
+              />
+              <span
+                style={{
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  color: '#A8A8B0',
+                  lineHeight: 1
+                }}
+              >
+                {bar.label}
+              </span>
             </div>
           );
         })}
       </div>
 
-      <div className="course-progress-meta-row">
-        <span>{doneDays.length} of {days} days completed</span>
-        <strong className="course-pct-label">{completionPct}%</strong>
-      </div>
-
-      {/* Today's Study Focus */}
-      <div className="todays-focus-dark-box">
-        <div className="todays-focus-header">
-          <span>{isComplete ? "Milestones Achieved" : "Today's Study Focus"}</span>
-          <span className="focus-target-pill">Target</span>
-        </div>
-        {todayItems.length > 0 ? (
-          <div className="todays-focus-list">
-            {todayItems.map((item, idx) => (
-              <div key={idx} className="todays-focus-row">
-                <span className="focus-chapter-name">{item.chapter}</span>
-                <span className="focus-hours-tag">{item.hours}h</span>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="todays-focus-empty">
-            {isComplete ? "Congratulations! You've finished your entire route." : "Review & flashcard revision day scheduled."}
-          </div>
-        )}
-      </div>
-
-      {/* Lime Manage Study Route Button */}
+      {/* Lime Full-width Button */}
       <button
         type="button"
-        className="flux-btn btn-lime course-manage-route-btn"
+        className="pill card--lime"
         onClick={() => navigate('/planner')}
-        title="View full study schedule & route"
+        style={{
+          width: '100%',
+          justifyContent: 'center',
+          padding: '12px 18px',
+          fontSize: '14px',
+          fontWeight: 700,
+          border: 'none',
+          cursor: 'pointer',
+          marginTop: '6px',
+          transition: 'transform 0.15s ease, opacity 0.15s ease'
+        }}
       >
-        <MapPin size={15} />
-        <span>Manage Study Route</span>
-        <ArrowRight size={15} />
+        Manage Study Route
       </button>
     </div>
   );
