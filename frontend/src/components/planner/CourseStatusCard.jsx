@@ -125,6 +125,17 @@ export default function CourseStatusCard({
           </div>
         )}
       </div>
+
+      <button
+        type="button"
+        className="course-status-view-plan-btn"
+        onClick={() => navigate('/planner')}
+        title="View full study schedule & route"
+      >
+        <MapPin size={14} />
+        <span>Manage Study Route</span>
+        <ArrowRight size={14} />
+      </button>
     </div>
   );
 }

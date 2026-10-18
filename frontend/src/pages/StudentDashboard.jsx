@@ -677,7 +677,7 @@ export default function StudentDashboard({ onToast = () => {} }) {
         <div className="planner-stat-card">
           <div className="planner-stat-top">
             <span className="planner-stat-label">Concepts</span>
-            <div className="planner-stat-icon-wrap">
+            <div className="planner-stat-icon-wrap stat-icon-concepts">
               <Sparkles size={18} />
             </div>
           </div>
@@ -689,13 +689,21 @@ export default function StudentDashboard({ onToast = () => {} }) {
             )}
           </div>
           <div className="planner-stat-context">Extracted from your notes & readings</div>
+          <div className="planner-stat-footer-bar">
+            <div className="planner-stat-progress-track">
+              <div
+                className="planner-stat-progress-fill stat-fill-concepts"
+                style={{ width: `${Math.min(100, Math.max(12, (stats.total_concepts / 50) * 100))}%` }}
+              />
+            </div>
+          </div>
         </div>
 
         {/* Chapters Done */}
         <div className="planner-stat-card">
           <div className="planner-stat-top">
             <span className="planner-stat-label">Chapters Done</span>
-            <div className="planner-stat-icon-wrap" style={{ background: 'var(--planner-peach-light)', color: 'var(--planner-orange)' }}>
+            <div className="planner-stat-icon-wrap stat-icon-chapters">
               <CheckCircle size={18} />
             </div>
           </div>
@@ -713,13 +721,21 @@ export default function StudentDashboard({ onToast = () => {} }) {
               `${stats.total_chapters - stats.chapters_done} remaining to master`
             )}
           </div>
+          <div className="planner-stat-footer-bar">
+            <div className="planner-stat-progress-track">
+              <div
+                className="planner-stat-progress-fill stat-fill-chapters"
+                style={{ width: `${stats.total_chapters > 0 ? (stats.chapters_done / stats.total_chapters) * 100 : 0}%` }}
+              />
+            </div>
+          </div>
         </div>
 
         {/* Study Time Left */}
         <div className="planner-stat-card">
           <div className="planner-stat-top">
             <span className="planner-stat-label">Study Time Left</span>
-            <div className="planner-stat-icon-wrap">
+            <div className="planner-stat-icon-wrap stat-icon-time">
               <Clock size={18} />
             </div>
           </div>
@@ -731,13 +747,21 @@ export default function StudentDashboard({ onToast = () => {} }) {
             )}
           </div>
           <div className="planner-stat-context">Estimated at your personalized pace</div>
+          <div className="planner-stat-footer-bar">
+            <div className="planner-stat-progress-track">
+              <div
+                className="planner-stat-progress-fill stat-fill-time"
+                style={{ width: `${Math.min(100, Math.max(10, 100 - (stats.study_time_left / 20) * 100))}%` }}
+              />
+            </div>
+          </div>
         </div>
 
         {/* Mastery */}
         <div className="planner-stat-card">
           <div className="planner-stat-top">
             <span className="planner-stat-label">Mastery</span>
-            <div className="planner-stat-icon-wrap" style={{ background: 'var(--planner-peach-light)', color: 'var(--planner-orange)' }}>
+            <div className="planner-stat-icon-wrap stat-icon-mastery">
               <TrendingUp size={18} />
             </div>
           </div>
@@ -749,37 +773,16 @@ export default function StudentDashboard({ onToast = () => {} }) {
             )}
           </div>
           <div className="planner-stat-context">Based on completed chapter milestones</div>
+          <div className="planner-stat-footer-bar">
+            <div className="planner-stat-progress-track">
+              <div
+                className="planner-stat-progress-fill stat-fill-mastery"
+                style={{ width: `${stats.mastery_percent}%` }}
+              />
+            </div>
+          </div>
         </div>
       </section>
-
-      {/* Compact In-Dashboard Upload Card */}
-      <CompactUploadCard
-        onUpload={handleUpload}
-        isUploading={isUploading}
-        processingDoc={processingDoc}
-        processingStage={processingStage}
-        processingProgress={processingProgress}
-        processingMessage={processingMessage}
-        processingError={processingError}
-        onRetryUpload={handleRetryUpload}
-        onCancelProcessing={handleCancelProcessing}
-        onToast={onToast}
-      />
-
-      {/* Dedicated Uploaded Files Section: See, Switch & Delete Notes */}
-      {isAuthenticated && (
-        <UploadedFilesSection
-          documents={documentsList}
-          activeDocId={activeDocId}
-          onSelectDoc={(docId) => {
-            setActiveBookId(docId);
-            loadDocResults(docId);
-          }}
-          onDeleteDoc={handleDeleteDocument}
-          isLoading={isDocumentsLoading}
-          onRefresh={loadDocumentsList}
-        />
-      )}
 
       {/* In-Dashboard Results Panel: Loading State */}
       {activeDocId && isResultsLoading && !activeDocData && !resultsError && (
@@ -904,11 +907,11 @@ export default function StudentDashboard({ onToast = () => {} }) {
         </React.Suspense>
       )}
 
-      {/* Main Layout: Left Column (Chapters & Notes Analysis) / Right Column (Course Status & Relations) */}
+      {/* Main Balanced Layout: Left Column (Study Materials & Library) / Right Column (Pacing & Quick Actions) */}
       <div className="planner-main-layout">
-        {/* Left Column */}
+        {/* Left Column: Learning Center & Library */}
         <div className="planner-left-col">
-          {/* Notes & Chapters Analysis Section */}
+          {/* 1. Notes & Chapters Analysis Section */}
           <NotesAnalysisSection
             books={overview?.books || []}
             activeBookId={activeBookId}
@@ -924,11 +927,26 @@ export default function StudentDashboard({ onToast = () => {} }) {
             onUpdateChapterStatus={handleUpdateChapterStatus}
             onUpdateChapterMeta={handleUpdateChapterMeta}
           />
+
+          {/* 2. Dedicated Uploaded Files Library Section */}
+          {isAuthenticated && (
+            <UploadedFilesSection
+              documents={documentsList}
+              activeDocId={activeDocId}
+              onSelectDoc={(docId) => {
+                setActiveBookId(docId);
+                loadDocResults(docId);
+              }}
+              onDeleteDoc={handleDeleteDocument}
+              isLoading={isDocumentsLoading}
+              onRefresh={loadDocumentsList}
+            />
+          )}
         </div>
 
-        {/* Right Column */}
+        {/* Right Column: Course Pacing, Quick Upload & Graph Discovery */}
         <div className="planner-right-col">
-          {/* Course Status Card */}
+          {/* 1. Course Status & Daily Targets Card */}
           <CourseStatusCard
             activePlan={activePlan}
             planStatus={planStatus}
@@ -936,7 +954,21 @@ export default function StudentDashboard({ onToast = () => {} }) {
             doneChapters={stats.chapters_done}
           />
 
-          {/* Related Topics Card */}
+          {/* 2. Quick Upload / Document Intake Card */}
+          <CompactUploadCard
+            onUpload={handleUpload}
+            isUploading={isUploading}
+            processingDoc={processingDoc}
+            processingStage={processingStage}
+            processingProgress={processingProgress}
+            processingMessage={processingMessage}
+            processingError={processingError}
+            onRetryUpload={handleRetryUpload}
+            onCancelProcessing={handleCancelProcessing}
+            onToast={onToast}
+          />
+
+          {/* 3. Related Topics & Knowledge Connections Card */}
           <RelatedTopicsCard
             chapters={allChapters}
             selectedChapterId={relationsChapterId}
