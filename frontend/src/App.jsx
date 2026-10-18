@@ -8,6 +8,7 @@ import {
   Bell
 } from 'lucide-react';
 import StudentDashboard from './pages/StudentDashboard';
+import GuestHomeScreen from './pages/GuestHomeScreen';
 import NeutralSkeleton from './components/planner/NeutralSkeleton';
 import Sidebar from './components/Sidebar';
 import FluxNavigation from './components/FluxNavigation';
@@ -696,6 +697,37 @@ export default function App() {
     }
     return <StudentDashboard onToast={addToast} />;
   };
+
+  if (authLoading) {
+    return <NeutralSkeleton />;
+  }
+
+  if (!isAuthenticated && ['/', '/app', '/dashboard', '/student/dashboard'].includes(location.pathname)) {
+    return (
+      <div className="guest-page-wrapper" ref={appRootRef}>
+        {newVersionAvailable && (
+          <div className="version-update-banner" role="alert">
+            <span>A new version of ConceptLens is available.</span>
+            <button type="button" className="version-update-btn" onClick={handleApplyUpdate}>
+              Refresh to update
+            </button>
+          </div>
+        )}
+
+        <GuestHomeScreen 
+          onOpenAuth={openAuthModal}
+          theme={theme}
+          onToggleTheme={toggleTheme}
+        />
+
+        {/* Global In-Dashboard Auth Modal */}
+        <AuthModal onSuccess={handleAuthSuccess} guestStatus={guestStatus} />
+
+        {/* Toast Notifications */}
+        <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+      </div>
+    );
+  }
 
   return (
     <div className="flux-app-layout" ref={appRootRef}>

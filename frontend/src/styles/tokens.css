@@ -122,7 +122,6 @@
   --ink: var(--text-main);
   --white: #FFFFFF;
   --midnight: var(--dark-surface);
-  --text: var(--text-main);
   --text-2: var(--text-secondary);
   --muted-text: var(--text-muted);
   --border: var(--border-subtle);
@@ -195,7 +194,6 @@
   --surface-2: var(--surface-subtle);
   --surface-hover: var(--surface-active);
   --ink: var(--text-main);
-  --text: var(--text-main);
   --text-2: var(--text-secondary);
   --muted-text: var(--text-muted);
   --border: var(--border-subtle);
