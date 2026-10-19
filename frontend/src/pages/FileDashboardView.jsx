@@ -491,7 +491,7 @@ export default function FileDashboardView({ onToast = () => {} }) {
           icon={Sparkles}
           iconColor="#111113"
           iconBg="#D7F25C"
-          progress={100}
+          progress={fileConceptsCount > 0 ? Math.round((studiedConceptsCount / fileConceptsCount) * 100) : 0}
           progressColor="var(--text)"
           contextText="Extracted from this file"
         />
@@ -518,7 +518,7 @@ export default function FileDashboardView({ onToast = () => {} }) {
           icon={Clock}
           iconColor="#111113"
           iconBg="#E6E6E8"
-          progress={fileMastery}
+          progress={totalFilesCount > 0 ? Math.round((completedChaptersCount / totalFilesCount) * 100) : 0}
           progressColor="#D7F25C"
           contextText="For this file only"
         />

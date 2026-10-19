@@ -19,7 +19,7 @@ export default function StatCard({
   iconColor = '#111113',
   iconBg = '#D7F25C',
   growth = null,
-  progress = 50,
+  progress = 0,
   progressColor = '#111113',
   contextText = '',
   className = ''
@@ -27,6 +27,8 @@ export default function StatCard({
   const [displayValue, setDisplayValue] = useState(0);
   const numericValue = typeof value === 'number' ? value : parseFloat(value) || 0;
   const isFraction = typeof value === 'string' && value.includes('/');
+  const numericProgress = Number(progress) || 0;
+  const safeProgress = Math.min(100, Math.max(0, numericProgress));
 
   useEffect(() => {
     if (isFraction) return;
@@ -130,19 +132,21 @@ export default function StatCard({
           marginTop: 'auto'
         }}
         role="progressbar"
-        aria-valuenow={progress}
+        aria-valuenow={safeProgress}
         aria-valuemin={0}
         aria-valuemax={100}
       >
-        <div
-          style={{
-            height: '100%',
-            borderRadius: '999px',
-            backgroundColor: progressColor,
-            width: `${Math.min(100, Math.max(0, progress))}%`,
-            transition: 'width 0.6s cubic-bezier(0.16, 1, 0.3, 1)'
-          }}
-        />
+        {safeProgress > 0 && (
+          <div
+            style={{
+              height: '100%',
+              borderRadius: '999px',
+              backgroundColor: progressColor,
+              width: `${safeProgress}%`,
+              transition: 'width 0.6s cubic-bezier(0.16, 1, 0.3, 1)'
+            }}
+          />
+        )}
       </div>
     </div>
   );
