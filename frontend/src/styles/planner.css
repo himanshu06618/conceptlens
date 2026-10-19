@@ -19,6 +19,8 @@
   --planner-chip-text: var(--text, #111113);
   --planner-font-title: 'Poppins', system-ui, sans-serif;
   --planner-font-body: 'Poppins', system-ui, sans-serif;
+  --font-lilita: 'Poppins', system-ui, sans-serif;
+  --font-nunito: 'Poppins', system-ui, sans-serif;
   --planner-radius-sm: 12px;
   --planner-radius-md: 20px;
   --planner-radius-lg: 24px;
@@ -1298,10 +1300,10 @@
 }
 
 .related-topics-title {
-  font-family: var(--font-lilita, 'Lilita One', cursive, sans-serif);
+  font-family: 'Poppins', system-ui, sans-serif;
   font-size: 1.25rem;
   line-height: 1.25;
-  font-weight: 500;
+  font-weight: 600;
   color: var(--planner-text-main, var(--ink, #10140C));
   margin: 0;
   word-break: break-word;
@@ -1320,7 +1322,7 @@
   background: var(--surface-solid, #FFFFFF);
   border: 1px solid var(--planner-card-border, rgba(16, 20, 12, 0.15));
   color: var(--planner-text-main, var(--ink, #10140C));
-  font-family: var(--font-nunito, 'Nunito', sans-serif);
+  font-family: 'Poppins', system-ui, sans-serif;
   font-size: 0.88rem;
   font-weight: 600;
   outline: none;
@@ -1381,7 +1383,7 @@
   border: none;
   background: transparent;
   color: var(--muted-text, #44502F);
-  font-family: var(--font-nunito, 'Nunito', sans-serif);
+  font-family: 'Poppins', system-ui, sans-serif;
   font-size: 0.88rem;
   font-weight: 700;
   border-radius: 9px;
@@ -1551,15 +1553,15 @@
 }
 
 .cluster-sticky-title {
-  font-family: var(--font-lilita, 'Lilita One', cursive, sans-serif);
+  font-family: 'Poppins', system-ui, sans-serif;
   font-size: 0.92rem;
-  font-weight: 500;
+  font-weight: 600;
   color: var(--planner-text-main, var(--ink, #10140C));
   letter-spacing: 0.02em;
 }
 
 .cluster-sticky-count {
-  font-family: var(--font-nunito, 'Nunito', sans-serif);
+  font-family: 'Poppins', system-ui, sans-serif;
   font-size: 0.76rem;
   font-weight: 700;
   color: var(--muted-text, #44502F);
@@ -1632,7 +1634,7 @@
 }
 
 .concept-row-name {
-  font-family: var(--font-nunito, 'Nunito', sans-serif);
+  font-family: 'Poppins', system-ui, sans-serif;
   font-size: 14px;
   font-weight: 700;
   color: var(--planner-text-main, var(--ink, #10140C));
@@ -1659,7 +1661,7 @@
   gap: 5px;
   padding: 3px 9px;
   border-radius: 999px;
-  font-family: var(--font-nunito, 'Nunito', sans-serif);
+  font-family: 'Poppins', system-ui, sans-serif;
   font-size: 12px;
   font-weight: 700;
   line-height: 1;
@@ -1755,7 +1757,7 @@
   gap: 6px;
   padding: 6px 12px;
   border-radius: 999px;
-  font-family: var(--font-nunito, 'Nunito', sans-serif);
+  font-family: 'Poppins', system-ui, sans-serif;
   font-size: 0.82rem;
   font-weight: 700;
   line-height: 1.2;
@@ -1824,7 +1826,7 @@
   color: var(--ink, #10140C);
   border: 1px solid var(--brand-mid, #6FB41A);
   border-radius: 10px;
-  font-family: var(--font-nunito, 'Nunito', sans-serif);
+  font-family: 'Poppins', system-ui, sans-serif;
   font-size: 0.85rem;
   font-weight: 700;
   cursor: pointer;
@@ -1953,7 +1955,7 @@
 }
 
 .related-error-title {
-  font-family: var(--font-nunito, 'Nunito', sans-serif);
+  font-family: 'Poppins', system-ui, sans-serif;
   font-weight: 700;
   font-size: 0.92rem;
   color: var(--planner-text-main, var(--ink, #10140C));
@@ -2704,7 +2706,7 @@
 }
 
 .compact-upload-title {
-  font-family: var(--planner-font-title, var(--font-nunito, 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif));
+  font-family: 'Poppins', system-ui, sans-serif;
   font-size: 1.25rem;
   font-weight: 600;
   color: var(--planner-text-main);
@@ -2712,7 +2714,7 @@
 }
 
 .compact-upload-hint {
-  font-family: var(--font-nunito, 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif);
+  font-family: 'Poppins', system-ui, sans-serif;
   font-size: 0.88rem;
   color: var(--planner-text-muted);
   margin: 0;
@@ -2733,7 +2735,7 @@
   min-height: 44px;
   padding: 0 18px;
   border-radius: 999px;
-  font-family: var(--planner-font-title, var(--font-nunito, 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif));
+  font-family: 'Poppins', system-ui, sans-serif;
   font-size: 0.92rem;
   font-weight: 600;
   cursor: pointer;
@@ -2800,7 +2802,7 @@
 }
 
 .compact-progress-filename {
-  font-family: var(--planner-font-title, var(--font-nunito, 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif));
+  font-family: 'Poppins', system-ui, sans-serif;
   font-size: 1rem;
   font-weight: 600;
   color: var(--planner-text-main);
@@ -2811,7 +2813,7 @@
 }
 
 .compact-progress-pct {
-  font-family: var(--planner-font-title, var(--font-nunito, 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif));
+  font-family: 'Poppins', system-ui, sans-serif;
   font-weight: 700;
   color: var(--brand-text, #2E5E04);
 }
@@ -2837,7 +2839,7 @@
 }
 
 .compact-progress-status-msg {
-  font-family: var(--font-nunito, 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif);
+  font-family: 'Poppins', system-ui, sans-serif;
   font-size: 0.84rem;
   color: var(--planner-text-muted);
   font-style: italic;
@@ -2880,14 +2882,14 @@
 }
 
 .compact-error-title {
-  font-family: var(--planner-font-title, var(--font-nunito, 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif));
+  font-family: 'Poppins', system-ui, sans-serif;
   font-weight: 600;
   color: #DC2626;
   margin-bottom: 2px;
 }
 
 .compact-error-msg {
-  font-family: var(--font-nunito, 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif);
+  font-family: 'Poppins', system-ui, sans-serif;
   font-size: 0.86rem;
   color: var(--planner-text-muted);
 }
@@ -2911,7 +2913,7 @@
   background: var(--surface-2);
   color: var(--text);
   font-size: 0.88rem;
-  font-family: var(--font-nunito, 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif);
+  font-family: 'Poppins', system-ui, sans-serif;
 }
 
 @media (max-width: 640px) {
@@ -3032,7 +3034,7 @@
 .uploaded-files-search-input.compact {
   padding: 4px 8px 4px 26px;
   font-size: 0.78rem;
-  font-family: var(--font-nunito, 'Nunito', sans-serif);
+  font-family: 'Poppins', system-ui, sans-serif;
   height: 28px;
   border-radius: 6px;
   border: 1px solid var(--planner-card-border);

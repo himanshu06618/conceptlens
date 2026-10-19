@@ -556,7 +556,6 @@ export default function UnifiedResultsPanel({
             }}
             title="Ask your notes with Graph RAG"
             aria-label="Ask your notes with Graph RAG"
-            style={{ color: 'var(--brand-deep, #46790C)' }}
           >
             <Sparkles size={14} />
             <span className="hide-on-mobile">Ask Notes</span>
@@ -595,7 +594,7 @@ export default function UnifiedResultsPanel({
             <button
               ref={exportBtnRef}
               type="button"
-              className="panel-action-btn"
+              className="panel-action-btn export-btn"
               onClick={() => setIsExportMenuOpen((prev) => !prev)}
               aria-expanded={isExportMenuOpen}
               aria-haspopup="true"
@@ -655,10 +654,12 @@ export default function UnifiedResultsPanel({
             </DropdownPortal>
           </div>
 
+          <div className="panel-actions-divider" />
+
           {/* Fullscreen Toggle */}
           <button
             type="button"
-            className="panel-action-btn"
+            className="panel-icon-btn"
             onClick={() => setIsFullscreen((prev) => !prev)}
             title={isFullscreen ? 'Exit fullscreen' : 'View diagram in fullscreen'}
             aria-label={isFullscreen ? 'Exit fullscreen' : 'View diagram in fullscreen'}
@@ -669,7 +670,7 @@ export default function UnifiedResultsPanel({
           {/* Collapse Toggle */}
           <button
             type="button"
-            className="panel-action-btn"
+            className="panel-icon-btn"
             onClick={() => setIsCollapsed((prev) => !prev)}
             title={isCollapsed ? 'Expand results panel' : 'Collapse results panel'}
             aria-label={isCollapsed ? 'Expand results panel' : 'Collapse results panel'}
@@ -681,7 +682,7 @@ export default function UnifiedResultsPanel({
           {onDeleteDocument && (
             <button
               type="button"
-              className="panel-action-btn panel-delete-btn"
+              className="panel-icon-btn panel-delete-btn"
               onClick={() => {
                 if (window.confirm(`Are you sure you want to delete "${documentData.filename}"?`)) {
                   onDeleteDocument(documentData.id);
@@ -698,7 +699,7 @@ export default function UnifiedResultsPanel({
           {onClose && (
             <button
               type="button"
-              className="panel-action-btn panel-close-btn"
+              className="panel-icon-btn panel-close-btn"
               onClick={onClose}
               title="Close results panel"
               aria-label="Close results panel"

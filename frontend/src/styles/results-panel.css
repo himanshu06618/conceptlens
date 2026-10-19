@@ -3,6 +3,13 @@
    Lime & White Glass Theme Tokens
    ===================================================================== */
 
+:root {
+  --font-lilita: 'Poppins', system-ui, sans-serif;
+  --font-nunito: 'Poppins', system-ui, sans-serif;
+  --planner-font-title: 'Poppins', system-ui, sans-serif;
+  --planner-font-body: 'Poppins', system-ui, sans-serif;
+}
+
 /* ==================== Compact Upload Card ==================== */
 .compact-upload-card {
   width: 100%;
@@ -77,7 +84,7 @@
 }
 
 .compact-upload-title {
-  font-family: var(--planner-font-title, var(--font-nunito, 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif));
+  font-family: 'Poppins', system-ui, sans-serif;
   font-size: 1.25rem;
   font-weight: 600;
   color: var(--planner-text-main);
@@ -85,7 +92,7 @@
 }
 
 .compact-upload-hint {
-  font-family: var(--font-nunito, 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif);
+  font-family: 'Poppins', system-ui, sans-serif;
   font-size: 0.88rem;
   color: var(--planner-text-muted);
   margin: 0;
@@ -106,7 +113,7 @@
   min-height: 44px;
   padding: 0 18px;
   border-radius: 999px;
-  font-family: var(--planner-font-title, var(--font-nunito, 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif));
+  font-family: 'Poppins', system-ui, sans-serif;
   font-size: 0.92rem;
   font-weight: 600;
   cursor: pointer;
@@ -367,24 +374,28 @@
 
 /* Results Panel Header */
 .results-panel-header {
-  padding: 18px 24px;
+  padding: 16px 24px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  border-bottom: 1px solid var(--planner-card-border);
-  background: rgba(255, 255, 255, 0.15);
+  flex-wrap: wrap;
+  border-bottom: 1px solid rgba(17, 17, 19, 0.08);
+  background: var(--card, #FFFFFF);
 }
 
 [data-theme="dark"] .results-panel-header {
-  background: rgba(0, 0, 0, 0.15);
+  background: var(--card, #232326);
+  border-bottom-color: rgba(255, 255, 255, 0.08);
 }
 
 .results-panel-title-group {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
   flex-wrap: wrap;
+  min-width: 0;
+  flex: 1;
 }
 
 .panel-title-display-wrap {
@@ -394,10 +405,10 @@
 }
 
 .panel-doc-title {
-  font-family: var(--planner-font-title);
-  font-size: 1.35rem;
-  font-weight: 600;
-  color: var(--planner-text-main);
+  font-family: 'Poppins', system-ui, sans-serif;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text, #111113);
   margin: 0;
   max-width: 440px;
   overflow: hidden;
@@ -405,20 +416,30 @@
   white-space: nowrap;
 }
 
+[data-theme="dark"] .panel-doc-title {
+  color: #FFFFFF;
+}
+
 .panel-edit-title-btn {
   background: transparent;
   border: none;
   cursor: pointer;
-  color: var(--planner-text-muted);
+  color: var(--muted, #6B6B73);
   padding: 4px;
-  border-radius: 4px;
+  border-radius: 6px;
   display: flex;
   align-items: center;
-  transition: color 0.15s ease;
+  transition: all 0.15s ease;
 }
 
 .panel-edit-title-btn:hover {
-  color: var(--brand-text, #2E5E04);
+  color: var(--text, #111113);
+  background: rgba(0, 0, 0, 0.05);
+}
+
+[data-theme="dark"] .panel-edit-title-btn:hover {
+  color: #FFFFFF;
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .panel-title-edit-wrap {
@@ -428,14 +449,14 @@
 }
 
 .panel-title-input {
-  font-family: var(--planner-font-title);
+  font-family: 'Poppins', system-ui, sans-serif;
   font-size: 1.15rem;
   font-weight: 600;
-  padding: 4px 8px;
-  border-radius: 6px;
+  padding: 4px 10px;
+  border-radius: 8px;
   border: 1.5px solid var(--brand, #9AE62E);
-  background: var(--surface);
-  color: var(--planner-text-main);
+  background: var(--surface, #FFFFFF);
+  color: var(--text, #111113);
   outline: none;
 }
 
@@ -443,8 +464,8 @@
   background: var(--brand, #9AE62E);
   color: var(--ink, #10140C);
   border: none;
-  border-radius: 6px;
-  padding: 6px;
+  border-radius: 8px;
+  padding: 6px 8px;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -454,40 +475,54 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .panel-badge-lime {
-  background: rgba(154, 230, 46, 0.18);
-  border: 1px solid rgba(154, 230, 46, 0.45);
-  color: var(--brand-text, #2E5E04);
+  background: rgba(215, 242, 92, 0.35);
+  border: 1px solid rgba(215, 242, 92, 0.7);
+  color: #111113;
   font-size: 0.78rem;
-  font-weight: 600;
-  padding: 3px 10px;
-  border-radius: 999px;
-  font-family: var(--planner-font-title);
+  font-weight: 700;
+  padding: 4px 12px;
+  border-radius: 9999px;
+  font-family: 'Poppins', system-ui, sans-serif;
 }
 
 [data-theme="dark"] .panel-badge-lime {
-  color: var(--brand, #9AE62E);
+  background: rgba(215, 242, 92, 0.25);
+  border-color: rgba(215, 242, 92, 0.5);
+  color: #D7F25C;
 }
 
 .panel-badge-glass {
-  background: var(--surface-2);
-  border: 1px solid var(--planner-card-border);
-  color: var(--planner-text-main);
+  background: #F4F4F5;
+  border: 1px solid rgba(17, 17, 19, 0.08);
+  color: #52525B;
   font-size: 0.78rem;
   font-weight: 600;
-  padding: 3px 10px;
-  border-radius: 999px;
-  font-family: var(--planner-font-title);
+  padding: 4px 12px;
+  border-radius: 9999px;
+  font-family: 'Poppins', system-ui, sans-serif;
+}
+
+[data-theme="dark"] .panel-badge-glass {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: #D4D4D8;
 }
 
 .panel-badge-muted {
-  font-size: 0.72rem;
-  color: var(--planner-text-muted);
+  font-size: 0.74rem;
+  color: #71717A;
   text-transform: uppercase;
-  font-weight: 600;
+  font-weight: 700;
   letter-spacing: 0.04em;
+  font-family: 'Poppins', system-ui, sans-serif;
+}
+
+[data-theme="dark"] .panel-badge-muted {
+  color: #A1A1AA;
 }
 
 /* Header Action Controls */
@@ -496,37 +531,162 @@
   align-items: center;
   gap: 8px;
   position: relative;
+  flex-shrink: 0;
+  flex-wrap: nowrap;
 }
 
 .panel-action-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 7px 12px;
-  border-radius: 8px;
-  background: var(--surface-2);
-  border: 1px solid var(--planner-card-border);
-  color: var(--planner-text-main);
-  font-family: var(--planner-font-title);
-  font-size: 0.85rem;
+  justify-content: center;
+  gap: 7px;
+  height: 38px;
+  padding: 0 16px;
+  border-radius: 9999px;
+  background: #FFFFFF;
+  border: 1px solid rgba(17, 17, 19, 0.1);
+  color: #111113;
+  font-family: 'Poppins', system-ui, sans-serif;
+  font-size: 0.84rem;
   font-weight: 600;
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
   cursor: pointer;
   transition: all 0.15s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  text-decoration: none;
+  box-sizing: border-box;
 }
 
 .panel-action-btn:hover {
-  border-color: var(--brand, #9AE62E);
-  background: rgba(154, 230, 46, 0.12);
+  background: #F4F4F5;
+  border-color: rgba(17, 17, 19, 0.2);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
 }
 
-.panel-delete-btn:hover {
-  border-color: #EF4444;
+.panel-action-btn.ask-notes-btn {
+  background: var(--lime, #D7F25C);
+  color: #111113 !important;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  font-weight: 700;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.panel-action-btn.ask-notes-btn:hover {
+  background: #E2F77D;
+  border-color: rgba(0, 0, 0, 0.14);
+  transform: translateY(-1px);
+  box-shadow: 0 3px 10px rgba(215, 242, 92, 0.4);
+}
+
+.panel-action-btn.coverage-btn,
+.panel-action-btn.reanalyze-btn,
+.panel-action-btn.export-btn {
+  background: #FFFFFF;
+  color: #111113;
+  border: 1px solid rgba(17, 17, 19, 0.1);
+}
+
+.panel-actions-divider {
+  width: 1px;
+  height: 22px;
+  background: rgba(17, 17, 19, 0.12);
+  margin: 0 4px;
+  flex-shrink: 0;
+}
+
+.panel-icon-btn {
+  width: 38px;
+  height: 38px;
+  min-width: 38px;
+  padding: 0;
+  border-radius: 9999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #FFFFFF;
+  border: 1px solid rgba(17, 17, 19, 0.1);
+  color: #52525B;
+  flex-shrink: 0 !important;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  box-sizing: border-box;
+}
+
+.panel-icon-btn:hover {
+  background: #F4F4F5;
+  color: #111113;
+  border-color: rgba(17, 17, 19, 0.2);
+  transform: translateY(-1px);
+}
+
+.panel-icon-btn.panel-delete-btn:hover {
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.3);
   color: #EF4444;
-  background: rgba(239, 68, 68, 0.1);
 }
 
-.panel-close-btn:hover {
-  background: rgba(0, 0, 0, 0.08);
+.panel-icon-btn.panel-close-btn:hover {
+  background: #F4F4F5;
+  color: #111113;
+}
+
+[data-theme="dark"] .panel-action-btn {
+  background: #2A2A2E;
+  border-color: rgba(255, 255, 255, 0.12);
+  color: #F4F4F5;
+  box-shadow: none;
+}
+
+[data-theme="dark"] .panel-action-btn:hover {
+  background: #333338;
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+[data-theme="dark"] .panel-action-btn.ask-notes-btn {
+  background: var(--lime, #D7F25C);
+  color: #111113 !important;
+  border-color: rgba(0, 0, 0, 0.2);
+}
+
+[data-theme="dark"] .panel-action-btn.ask-notes-btn:hover {
+  background: #E2F77D;
+}
+
+[data-theme="dark"] .panel-icon-btn {
+  background: #2A2A2E;
+  border-color: rgba(255, 255, 255, 0.12);
+  color: #A1A1AA;
+  box-shadow: none;
+}
+
+[data-theme="dark"] .panel-icon-btn:hover {
+  background: #333338;
+  color: #FFFFFF;
+}
+
+[data-theme="dark"] .panel-actions-divider {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+@media (max-width: 640px) {
+  .results-panel-actions .hide-on-mobile {
+    display: none;
+  }
+  .results-panel-actions {
+    gap: 6px;
+  }
+  .panel-action-btn {
+    padding: 0 10px;
+    height: 34px;
+  }
+  .panel-icon-btn {
+    width: 34px;
+    height: 34px;
+    min-width: 34px;
+  }
 }
 
 /* Export Menu Dropdown */
@@ -993,7 +1153,7 @@
 .unified-results-panel {
   display: flex;
   flex-direction: column;
-  font-family: var(--font-nunito, 'Nunito', -apple-system, BlinkMacSystemFont, sans-serif);
+  font-family: 'Poppins', system-ui, sans-serif;
   background: var(--glass-card-bg, rgba(255, 255, 255, 0.62));
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
@@ -1105,7 +1265,7 @@
   border-radius: 999px;
   border: 1.5px solid rgba(16, 20, 12, 0.14);
   background: rgba(255, 255, 255, 0.85);
-  font-family: var(--font-nunito, 'Nunito', sans-serif);
+  font-family: 'Poppins', system-ui, sans-serif;
   font-size: 0.88rem;
   color: var(--ink, #10140C);
   outline: none;
@@ -1215,7 +1375,8 @@
 }
 
 .detail-concept-title {
-  font-family: var(--font-lilita, 'Lilita One', cursive, sans-serif);
+  font-family: 'Poppins', system-ui, sans-serif;
+  font-weight: 700;
   font-size: 1.35rem;
   color: var(--ink, #10140C);
   margin: 0;
@@ -1297,7 +1458,7 @@
   justify-content: center;
   gap: 10px;
   border-radius: 12px;
-  font-family: var(--font-nunito, 'Nunito', sans-serif);
+  font-family: 'Poppins', system-ui, sans-serif;
   font-weight: 700;
   font-size: 0.95rem;
   cursor: pointer;
@@ -1337,7 +1498,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  font-family: var(--font-nunito, 'Nunito', sans-serif);
+  font-family: 'Poppins', system-ui, sans-serif;
   font-size: 0.88rem;
   font-weight: 800;
   color: var(--ink, #10140C);
@@ -1376,7 +1537,7 @@
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.8);
   border: 1px solid rgba(16, 20, 12, 0.14);
-  font-family: var(--font-nunito, 'Nunito', sans-serif);
+  font-family: 'Poppins', system-ui, sans-serif;
   font-size: 0.84rem;
   font-weight: 600;
   color: var(--ink, #10140C);
@@ -1418,7 +1579,7 @@
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.65);
   border: 1.5px solid var(--ink, #10140C);
-  font-family: var(--font-nunito, 'Nunito', sans-serif);
+  font-family: 'Poppins', system-ui, sans-serif;
   font-size: 0.86rem;
   font-weight: 700;
   color: var(--ink, #10140C);
@@ -1796,7 +1957,8 @@
 }
 
 .roadmap-progress-value {
-  font-family: var(--font-lilita, 'Lilita One', cursive, sans-serif);
+  font-family: 'Poppins', system-ui, sans-serif;
+  font-weight: 700;
   font-size: 1.25rem;
   color: var(--ink, #10140C);
 }
@@ -1887,7 +2049,7 @@
   border-radius: 999px;
   background: var(--brand, #9AE62E);
   color: #10140C;
-  font-family: var(--font-nunito, 'Nunito', sans-serif);
+  font-family: 'Poppins', system-ui, sans-serif;
   font-size: 0.92rem;
   font-weight: 800;
   border: none;
@@ -1967,7 +2129,8 @@
 }
 
 .stage-chapter-title {
-  font-family: var(--font-lilita, 'Lilita One', cursive, sans-serif);
+  font-family: 'Poppins', system-ui, sans-serif;
+  font-weight: 600;
   font-size: 1.15rem;
   color: var(--ink, #10140C);
   margin: 0 0 6px;
@@ -2143,7 +2306,7 @@
   border-radius: 999px;
   background: var(--brand, #9AE62E);
   color: #10140C;
-  font-family: var(--font-nunito, 'Nunito', sans-serif);
+  font-family: 'Poppins', system-ui, sans-serif;
   font-weight: 800;
   font-size: 0.84rem;
   border: none;
@@ -2192,7 +2355,7 @@
   border: 1.5px solid rgba(16, 20, 12, 0.14);
   background: rgba(255, 255, 255, 0.85);
   font-size: 0.92rem;
-  font-family: var(--font-nunito, 'Nunito', sans-serif);
+  font-family: 'Poppins', system-ui, sans-serif;
   color: var(--ink, #10140C);
   outline: none;
 }
@@ -2223,7 +2386,7 @@
   border: 1px solid rgba(16, 20, 12, 0.14);
   background: rgba(255, 255, 255, 0.85);
   font-size: 0.84rem;
-  font-family: var(--font-nunito, 'Nunito', sans-serif);
+  font-family: 'Poppins', system-ui, sans-serif;
   font-weight: 600;
   color: var(--ink, #10140C);
   outline: none;
@@ -2262,7 +2425,7 @@
   border: 1px solid rgba(16, 20, 12, 0.14);
   background: rgba(255, 255, 255, 0.85);
   font-size: 0.82rem;
-  font-family: var(--font-nunito, 'Nunito', sans-serif);
+  font-family: 'Poppins', system-ui, sans-serif;
   font-weight: 600;
   color: var(--ink, #10140C);
   text-align: center;
@@ -2418,10 +2581,11 @@
 }
 
 .page-group-title {
-  font-family: var(--font-lilita, 'Lilita One', cursive, sans-serif);
-  font-size: 1.12rem;
+  font-family: 'Poppins', system-ui, sans-serif;
+  font-weight: 700;
+  font-size: 1.15rem;
   color: var(--ink, #10140C);
-  letter-spacing: 0.02em;
+  letter-spacing: -0.01em;
 }
 
 [data-theme='dark'] .page-group-title {
@@ -2604,11 +2768,12 @@
 }
 
 .card-concept-title {
-  font-family: var(--font-lilita, 'Lilita One', cursive, sans-serif);
+  font-family: 'Poppins', system-ui, sans-serif;
+  font-weight: 700;
   font-size: 1.15rem;
   color: var(--ink, #10140C);
   margin: 0;
-  line-height: 1.25;
+  line-height: 1.3;
 }
 
 [data-theme='dark'] .card-concept-title {
@@ -2792,7 +2957,7 @@
   background: rgba(18, 30, 15, 0.7);
   padding: 6px 12px;
   border-radius: 20px;
-  font-family: var(--font-nunito, sans-serif);
+  font-family: 'Poppins', system-ui, sans-serif;
   font-size: 0.82rem;
   font-weight: 700;
   color: #E2F0D9;
@@ -2867,7 +3032,7 @@
   border-radius: 20px;
   border: 1px solid rgba(154, 230, 46, 0.2);
   background: rgba(18, 30, 15, 0.85);
-  font-family: var(--font-nunito, sans-serif);
+  font-family: 'Poppins', system-ui, sans-serif;
   font-size: 0.82rem;
   color: #FFFFFF;
   min-height: 36px;
@@ -2905,7 +3070,7 @@
   border: 1px solid rgba(154, 230, 46, 0.2);
   background: rgba(18, 30, 15, 0.7);
   color: #E2F0D9;
-  font-family: var(--font-nunito, sans-serif);
+  font-family: 'Poppins', system-ui, sans-serif;
   font-size: 0.82rem;
   font-weight: 700;
   cursor: pointer;
@@ -3201,7 +3366,7 @@
 }
 
 .kg-panel-title {
-  font-family: var(--font-nunito, sans-serif);
+  font-family: 'Poppins', system-ui, sans-serif;
   font-size: 1.15rem;
   font-weight: 800;
   color: #FFFFFF;
@@ -3388,7 +3553,7 @@
   border: none;
   padding: 10px 16px;
   border-radius: 12px;
-  font-family: var(--font-nunito, sans-serif);
+  font-family: 'Poppins', system-ui, sans-serif;
   font-size: 0.88rem;
   font-weight: 800;
   cursor: pointer;
@@ -3688,7 +3853,7 @@
   border-radius: 18px;
   border: 1px solid var(--border-subtle, rgba(16, 20, 12, 0.12));
   background: var(--surface-solid, #FFFFFF);
-  font-family: var(--font-nunito, sans-serif);
+  font-family: 'Poppins', system-ui, sans-serif;
   font-size: 0.84rem;
   font-weight: 700;
   color: var(--text, #10140C);
@@ -3754,7 +3919,8 @@
 }
 
 .flow-path-title {
-  font-family: var(--font-lilita, 'Lilita One', sans-serif);
+  font-family: 'Poppins', system-ui, sans-serif;
+  font-weight: 700;
   font-size: 1.2rem;
   margin: 4px 0 12px;
   color: var(--text, #10140C);
@@ -3806,7 +3972,7 @@
   border: none;
   padding: 10px 14px;
   border-radius: 10px;
-  font-family: var(--font-nunito, sans-serif);
+  font-family: 'Poppins', system-ui, sans-serif;
   font-size: 0.86rem;
   cursor: pointer;
   min-height: 44px;
@@ -3979,7 +4145,7 @@
   border-radius: 14px;
   border: 1.5px solid var(--border-subtle, rgba(16, 20, 12, 0.15));
   background: var(--surface-solid, #FFFFFF);
-  font-family: var(--font-nunito, sans-serif);
+  font-family: 'Poppins', system-ui, sans-serif;
   font-size: 0.94rem;
   color: var(--text, #10140C);
   min-height: 44px;
@@ -4005,7 +4171,7 @@
   background: transparent;
   padding: 8px 12px;
   border-radius: 10px;
-  font-family: var(--font-nunito, sans-serif);
+  font-family: 'Poppins', system-ui, sans-serif;
   font-size: 0.8rem;
   font-weight: 700;
   color: var(--text-secondary, #384531);
@@ -4025,7 +4191,7 @@
   border: none;
   padding: 10px 22px;
   border-radius: 12px;
-  font-family: var(--font-nunito, sans-serif);
+  font-family: 'Poppins', system-ui, sans-serif;
   font-size: 0.9rem;
   font-weight: 800;
   cursor: pointer;
@@ -4262,7 +4428,8 @@
 }
 
 .mastery-headline {
-  font-family: var(--font-lilita, 'Lilita One', sans-serif);
+  font-family: 'Poppins', system-ui, sans-serif;
+  font-weight: 700;
   font-size: 1.7rem;
   margin: 2px 0 6px;
   color: var(--text, #10140C);
@@ -4287,7 +4454,8 @@
 }
 
 .mastery-stat-num {
-  font-family: var(--font-lilita, 'Lilita One', sans-serif);
+  font-family: 'Poppins', system-ui, sans-serif;
+  font-weight: 700;
   font-size: 1.6rem;
   color: var(--text, #10140C);
 }
@@ -4325,7 +4493,8 @@
 }
 
 .mastery-ready-title-group h3 {
-  font-family: var(--font-lilita, 'Lilita One', sans-serif);
+  font-family: 'Poppins', system-ui, sans-serif;
+  font-weight: 700;
   font-size: 1.25rem;
   margin: 0;
 }
@@ -4411,7 +4580,8 @@
 }
 
 .mastery-lecture-title {
-  font-family: var(--font-lilita, 'Lilita One', sans-serif);
+  font-family: 'Poppins', system-ui, sans-serif;
+  font-weight: 700;
   font-size: 1.15rem;
   margin: 0;
   color: var(--text, #10140C);
@@ -4475,7 +4645,8 @@
 }
 
 .mastery-chapter-name {
-  font-family: var(--font-lilita, 'Lilita One', sans-serif);
+  font-family: 'Poppins', system-ui, sans-serif;
+  font-weight: 600;
   font-size: 1.05rem;
   margin: 0;
   color: var(--text, #10140C);
@@ -4533,7 +4704,7 @@
   border: 1px solid var(--border-subtle, rgba(16, 20, 12, 0.08));
   padding: 8px 12px;
   border-radius: 8px;
-  font-family: var(--font-nunito, sans-serif);
+  font-family: 'Poppins', system-ui, sans-serif;
   font-size: 0.8rem;
   font-weight: 700;
   color: var(--text, #10140C);
@@ -4625,7 +4796,7 @@
   border: 1.5px solid var(--ink, #10140C);
   border-radius: 28px;
   padding: 12px 20px;
-  font-family: var(--font-nunito, sans-serif);
+  font-family: 'Poppins', system-ui, sans-serif;
   font-size: 0.92rem;
   font-weight: 800;
   box-shadow: 0 8px 24px rgba(16, 20, 12, 0.18);
@@ -4680,7 +4851,8 @@
 }
 
 .floating-ask-title h3 {
-  font-family: var(--font-lilita, 'Lilita One', sans-serif);
+  font-family: 'Poppins', system-ui, sans-serif;
+  font-weight: 700;
   font-size: 1.3rem;
   margin: 0;
   color: var(--text, #10140C);
@@ -4790,7 +4962,7 @@
   border: 1px solid rgba(16, 20, 12, 0.14);
   background: rgba(255, 255, 255, 0.9);
   font-size: 0.82rem;
-  font-family: var(--font-nunito, 'Nunito', sans-serif);
+  font-family: 'Poppins', system-ui, sans-serif;
   font-weight: 600;
   color: var(--ink, #10140C);
   outline: none;
@@ -4833,7 +5005,8 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  font-family: var(--font-lilita, 'Lilita One', cursive, sans-serif);
+  font-family: 'Poppins', system-ui, sans-serif;
+  font-weight: 700;
   font-size: 1.05rem;
   color: var(--ink, #10140C);
 }
@@ -5077,7 +5250,8 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  font-family: var(--font-lilita, 'Lilita One', cursive, sans-serif);
+  font-family: 'Poppins', system-ui, sans-serif;
+  font-weight: 700;
   font-size: 1.25rem;
   color: var(--ink, #10140C);
 }
@@ -5129,7 +5303,8 @@
 }
 
 .coverage-metric-card .metric-num {
-  font-family: var(--font-lilita, 'Lilita One', cursive, sans-serif);
+  font-family: 'Poppins', system-ui, sans-serif;
+  font-weight: 700;
   font-size: 1.35rem;
   color: var(--brand-deep, #4C8F0F);
 }
