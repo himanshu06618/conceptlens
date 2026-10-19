@@ -27,6 +27,7 @@ const DocumentViewer = React.lazy(() => import('./pages/DocumentViewer'));
 const StudyPlannerView = React.lazy(() => import('./pages/StudyPlannerView'));
 const NotesAnalysisView = React.lazy(() => import('./pages/NotesAnalysisView'));
 const MyFilesView = React.lazy(() => import('./pages/MyFilesView'));
+const FileDashboardView = React.lazy(() => import('./pages/FileDashboardView'));
 const LoaderShowcase = React.lazy(() => import('./components/dev/LoaderShowcase'));
 import { useAuth } from './context/AuthContext';
 import { 
@@ -908,6 +909,16 @@ export default function App() {
               <Route 
                 path="/my-files" 
                 element={<MyFilesView onToast={addToast} />} 
+              />
+
+              <Route 
+                path="/files/:fileId" 
+                element={<FileDashboardView onToast={addToast} />} 
+              />
+
+              <Route 
+                path="/files" 
+                element={<Navigate to="/my-files" replace />} 
               />
 
               <Route 

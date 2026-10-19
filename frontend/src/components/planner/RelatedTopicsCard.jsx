@@ -49,6 +49,7 @@ export const ChainIcon = ({ size = 14, className = '', strokeWidth = 2.4 }) => (
 
 export default function RelatedTopicsCard({
   chapters = [],
+  files = [],
   selectedChapterId = null,
   onSelectChapter = () => {},
   onOpenConceptInResults = () => {},
@@ -56,7 +57,7 @@ export default function RelatedTopicsCard({
   initialRelationsData = null
 }) {
   const [currentChapterId, setCurrentChapterId] = useState(
-    selectedChapterId || (chapters[0]?.id || '')
+    selectedChapterId || (files.length > 0 ? 'all' : (chapters[0]?.id || 'all'))
   );
   const [relationsData, setRelationsData] = useState(initialRelationsData || null);
   const [loading, setLoading] = useState(false);
@@ -77,14 +78,16 @@ export default function RelatedTopicsCard({
   useEffect(() => {
     if (selectedChapterId) {
       setCurrentChapterId(selectedChapterId);
+    } else if (files.length > 0 && !currentChapterId) {
+      setCurrentChapterId('all');
     } else if (chapters.length > 0 && !currentChapterId) {
-      setCurrentChapterId(chapters[0].id);
+      setCurrentChapterId('all');
     }
-  }, [selectedChapterId, chapters]);
+  }, [selectedChapterId, chapters, files]);
 
   // Sync with initialRelationsData if available
   useEffect(() => {
-    if (initialRelationsData && (!relationsData || initialRelationsData.chapter?.id === currentChapterId)) {
+    if (initialRelationsData && (!relationsData || initialRelationsData.chapter?.id === currentChapterId || currentChapterId === 'all')) {
       setRelationsData(initialRelationsData);
     }
   }, [initialRelationsData, currentChapterId]);
@@ -92,6 +95,26 @@ export default function RelatedTopicsCard({
   // Fetch relations for currentChapterId with 15s timeout
   useEffect(() => {
     if (!currentChapterId) return;
+
+    if (currentChapterId === 'all') {
+      if (initialRelationsData) {
+        setRelationsData(initialRelationsData);
+        setLoading(false);
+        setError(null);
+        return;
+      }
+      // If we have chapters, load the first one for cluster data
+      if (chapters.length > 0) {
+        getChapterRelations(chapters[0].id)
+          .then((data) => {
+            setRelationsData(data);
+            setLoading(false);
+            setError(null);
+          })
+          .catch(() => setLoading(false));
+      }
+      return;
+    }
 
     if (initialRelationsData?.chapter?.id === currentChapterId && initialRelationsData?.clusters?.length > 0) {
       setRelationsData(initialRelationsData);
@@ -274,8 +297,8 @@ export default function RelatedTopicsCard({
           </h3>
         </div>
 
-        {chapters.length > 0 && (
-          <div style={{ maxWidth: '150px' }}>
+        {(files.length > 0 || chapters.length > 0) && (
+          <div style={{ maxWidth: '180px' }}>
             <select
               value={currentChapterId}
               onChange={(e) => {
@@ -292,7 +315,7 @@ export default function RelatedTopicsCard({
                 fontSize: '12px',
                 fontWeight: 600,
                 border: 'none',
-                maxWidth: '150px',
+                maxWidth: '180px',
                 textOverflow: 'ellipsis',
                 whiteSpace: 'nowrap',
                 overflow: 'hidden',
@@ -302,6 +325,14 @@ export default function RelatedTopicsCard({
               }}
               aria-label="Select document or chapter"
             >
+              <option value="all">
+                All files ({files.length || chapters.length || 0})
+              </option>
+              {files.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.filename}
+                </option>
+              ))}
               {chapters.map((ch) => (
                 <option key={ch.id} value={ch.id}>
                   {ch.bookFilename && ch.name !== ch.bookFilename

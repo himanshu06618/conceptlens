@@ -12,6 +12,7 @@ export default function DotMatrixStreakCard({
   score = 9.2,
   maxScore = 10,
   streakDays = 5,
+  subtitle = null,
   className = ''
 }) {
   // 4 rows x 12 dots in shades of lavender
@@ -44,7 +45,7 @@ export default function DotMatrixStreakCard({
             Study Consistency
           </h3>
           <p style={{ fontSize: '13px', color: 'var(--muted)', margin: 0 }}>
-            {streakDays}-day streak active
+            {subtitle || `${streakDays}-day streak active`}
           </p>
         </div>
 

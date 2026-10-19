@@ -13,7 +13,8 @@ import {
   Search,
   CheckCircle2,
   AlertCircle,
-  Plus
+  Plus,
+  ChevronRight
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { listDocuments, deleteDocument } from '../api/client';
@@ -279,7 +280,16 @@ export default function MyFilesView({ onToast = () => {} }) {
               return (
                 <div
                   key={doc.id}
-                  role="listitem"
+                  role="button"
+                  tabIndex={0}
+                  className="my-files-row"
+                  onClick={() => navigate(`/files/${doc.id}`)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      navigate(`/files/${doc.id}`);
+                    }
+                  }}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -290,8 +300,10 @@ export default function MyFilesView({ onToast = () => {} }) {
                     background: 'var(--surface-subtle, #F0F0F2)',
                     minHeight: '44px',
                     flexWrap: 'wrap',
-                    transition: 'all 0.15s ease'
+                    cursor: 'pointer',
+                    transition: 'transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease'
                   }}
+                  aria-label={`Open file dashboard for ${doc.filename}`}
                 >
                   {/* Left: File-type Icon + Filename with ellipsis */}
                   <div
@@ -300,11 +312,8 @@ export default function MyFilesView({ onToast = () => {} }) {
                       alignItems: 'center',
                       gap: '12px',
                       flex: '1 1 240px',
-                      minWidth: 0,
-                      cursor: 'pointer'
+                      minWidth: 0
                     }}
-                    onClick={() => navigate(`/?tab=tree&docId=${doc.id}`)}
-                    title={`Open "${doc.filename}"`}
                   >
                     {getFileIcon(doc.file_type, doc.filename)}
                     <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '2px' }}>
@@ -341,7 +350,7 @@ export default function MyFilesView({ onToast = () => {} }) {
                     </div>
                   </div>
 
-                  {/* Right: Status Pill & Delete Button */}
+                  {/* Right: Status Pill, Delete Button & Chevron */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
                     {isProcessing ? (
                       <span
@@ -416,11 +425,15 @@ export default function MyFilesView({ onToast = () => {} }) {
                       <div
                         style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
                         onClick={(e) => e.stopPropagation()}
+                        onKeyDown={(e) => e.stopPropagation()}
                       >
                         <button
                           type="button"
                           className="pill"
-                          onClick={() => handleDelete(doc.id)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDelete(doc.id);
+                          }}
                           style={{
                             background: '#EF4444',
                             color: '#FFFFFF',
@@ -435,7 +448,10 @@ export default function MyFilesView({ onToast = () => {} }) {
                         </button>
                         <button
                           type="button"
-                          onClick={() => setConfirmDeleteId(null)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setConfirmDeleteId(null);
+                          }}
                           style={{
                             background: 'none',
                             border: 'none',
@@ -448,6 +464,8 @@ export default function MyFilesView({ onToast = () => {} }) {
                         </button>
                       </div>
                     )}
+
+                    <ChevronRight size={18} color="var(--muted)" style={{ flexShrink: 0, marginLeft: '2px' }} />
                   </div>
                 </div>
               );

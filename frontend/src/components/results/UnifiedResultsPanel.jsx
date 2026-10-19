@@ -88,7 +88,7 @@ function resolveInitialTab() {
   } catch (_) {
     // Safe fallback
   }
-  return 'tree';
+  return 'concepts';
 }
 
 export default function UnifiedResultsPanel({
@@ -101,6 +101,7 @@ export default function UnifiedResultsPanel({
   isLoading = false,
   isAuthenticated = true,
   selectedConceptName = null,
+  initialTab,
   onClose,
   onDeleteDocument,
   onRenameDocument,
@@ -108,7 +109,7 @@ export default function UnifiedResultsPanel({
   onToast = () => {}
 }) {
   // Tabs: 'concepts' | 'tree' | 'roadmap' | 'graph'
-  const [activeTab, setActiveTab] = useState(resolveInitialTab);
+  const [activeTab, setActiveTab] = useState(() => initialTab || resolveInitialTab());
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);

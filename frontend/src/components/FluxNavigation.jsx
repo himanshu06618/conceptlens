@@ -240,7 +240,7 @@ export default function FluxNavigation({
     const path = location.pathname;
     const search = location.search;
     if (path === '/notes-analysis') return 'analysis';
-    if (path === '/my-files') return 'files';
+    if (path === '/my-files' || path.startsWith('/files')) return 'files';
     if (path.startsWith('/notes')) return 'notes';
     if (path.startsWith('/planner')) return 'planner';
     if (search.includes('tab=tree') || search.includes('view=tree')) return 'tree';

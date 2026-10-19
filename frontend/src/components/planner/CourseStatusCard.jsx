@@ -14,6 +14,7 @@ export default function CourseStatusCard({
   planStatus = null,
   totalChapters = 0,
   doneChapters = 0,
+  subtitle = null,
   className = ''
 }) {
   const navigate = useNavigate();
@@ -49,23 +50,30 @@ export default function CourseStatusCard({
       }}
     >
       {/* Top Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
-        <h3 style={{ fontSize: '18px', fontWeight: 700, margin: 0, color: '#FFFFFF' }}>
-          Day {todayIndex} of {days}
-        </h3>
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+          <h3 style={{ fontSize: '18px', fontWeight: 700, margin: 0, color: '#FFFFFF' }}>
+            Day {todayIndex} of {days}
+          </h3>
 
-        <span
-          className="pill"
-          style={{
-            background: isComplete ? '#D7F25C' : behindCount > 0 ? '#F5C46B' : '#D7F25C',
-            color: '#111113',
-            fontSize: '12px',
-            fontWeight: 700,
-            padding: '4px 12px'
-          }}
-        >
-          {isComplete ? 'Course Complete' : behindCount > 0 ? `${behindCount} days behind` : 'On track'}
-        </span>
+          <span
+            className="pill"
+            style={{
+              background: isComplete ? '#D7F25C' : behindCount > 0 ? '#F5C46B' : '#D7F25C',
+              color: '#111113',
+              fontSize: '12px',
+              fontWeight: 700,
+              padding: '4px 12px'
+            }}
+          >
+            {isComplete ? 'Course Complete' : behindCount > 0 ? `${behindCount} days behind` : 'On track'}
+          </span>
+        </div>
+        {subtitle && (
+          <p style={{ fontSize: '13px', color: '#A8A8B0', margin: '4px 0 0 0' }}>
+            {subtitle}
+          </p>
+        )}
       </div>
 
       {/* 7 Vertical Pill-shaped Bars */}
