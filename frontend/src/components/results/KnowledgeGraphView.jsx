@@ -422,11 +422,18 @@ export default function KnowledgeGraphView({
     // Complement with local concept prerequisites if backend edges not yet available
     if (list.length === 0) {
       const nameToId = new Map();
-      allConceptNodes.forEach(c => nameToId.set(c.name.toLowerCase().trim(), c.id));
+      allConceptNodes.forEach(c => {
+        const cName = typeof c?.name === 'string' ? c.name : (c?.name?.name || '');
+        if (cName) {
+          nameToId.set(cName.toLowerCase().trim(), c.id);
+        }
+      });
 
       allConceptNodes.forEach(c => {
         (c.prerequisites || []).forEach((pName, pIdx) => {
-          const targetId = nameToId.get(pName.toLowerCase().trim());
+          const pStr = typeof pName === 'string' ? pName : (pName?.name || pName?.concept || '');
+          if (!pStr) return;
+          const targetId = nameToId.get(pStr.toLowerCase().trim());
           if (targetId && targetId !== c.id) {
             const sNode = nodeMap[c.id];
             const tNode = nodeMap[targetId];
@@ -1052,7 +1059,7 @@ export default function KnowledgeGraphView({
                           fontWeight="800"
                           letterSpacing="0.02em"
                         >
-                          {node.name.length > 18 ? `${node.name.slice(0, 16)}…` : node.name}
+                          {(node.name || 'Document').length > 18 ? `${(node.name || 'Document').slice(0, 16)}…` : (node.name || 'Document')}
                         </text>
                       </g>
                     );
@@ -1071,7 +1078,7 @@ export default function KnowledgeGraphView({
                           transition: 'all 0.2s ease'
                         }}
                         role="button"
-                        aria-label={`Topic: ${node.name}, ${node.count} concepts`}
+                        aria-label={`Topic: ${node.name || 'Topic'}, ${node.count || 0} concepts`}
                       >
                         <rect
                           x={-node.width / 2}
@@ -1094,7 +1101,7 @@ export default function KnowledgeGraphView({
                           fontSize="13"
                           fontWeight="700"
                         >
-                          {node.name.length > 14 ? `${node.name.slice(0, 13)}…` : node.name}
+                          {(node.name || 'Topic').length > 14 ? `${(node.name || 'Topic').slice(0, 13)}…` : (node.name || 'Topic')}
                         </text>
                         {/* Expand/Collapse count pill */}
                         <g
@@ -1106,7 +1113,7 @@ export default function KnowledgeGraphView({
                         >
                           <circle cx="0" cy="0" r="11" fill="rgba(154, 230, 46, 0.2)" stroke="#9AE62E" strokeWidth="1" />
                           <text x="0" y="3.5" textAnchor="middle" fill="#9AE62E" fontSize="10" fontWeight="800">
-                            {node.isExpanded ? '-' : `+${node.count}`}
+                            {node.isExpanded ? '-' : `+${node.count || 0}`}
                           </text>
                         </g>
                       </g>
@@ -1125,7 +1132,7 @@ export default function KnowledgeGraphView({
                         transition: 'all 0.2s ease'
                       }}
                       role="button"
-                      aria-label={`Concept: ${node.name}, page ${node.page}`}
+                      aria-label={`Concept: ${node.name || 'Concept'}, page ${node.page || 1}`}
                     >
                       <rect
                         x={-node.width / 2}
@@ -1148,7 +1155,7 @@ export default function KnowledgeGraphView({
                         fontSize="13"
                         fontWeight="600"
                       >
-                        {node.name.length > 15 ? `${node.name.slice(0, 14)}…` : node.name}
+                        {(node.name || 'Concept').length > 15 ? `${(node.name || 'Concept').slice(0, 14)}…` : (node.name || 'Concept')}
                       </text>
                       {/* Studied mark */}
                       {node.studied && (
@@ -1162,7 +1169,7 @@ export default function KnowledgeGraphView({
 
             {/* Minimap preview in corner */}
             <div className="kg-minimap-card" aria-hidden="true">
-              <svg width="110" height="75" viewBox={`${layout.minX} ${layout.minY} ${layout.maxX - layout.minX} ${layout.maxY - layout.minY}`}>
+              <svg width="110" height="75" viewBox={`${layout.minX || -300} ${layout.minY || -200} ${Math.max(1, (layout.maxX || 300) - (layout.minX || -300))} ${Math.max(1, (layout.maxY || 200) - (layout.minY || -200))}`}>
                 <rect x={layout.minX} y={layout.minY} width={layout.maxX - layout.minX} height={layout.maxY - layout.minY} fill="#090E08" />
                 {Object.values(layout.nodes).map(n => (
                   <circle

@@ -168,6 +168,16 @@ export default function UnifiedResultsPanel({
     setDocTitle(documentData?.filename || 'Document Results');
   }, [documentData?.filename]);
 
+  // Validate selected chapter against current concepts
+  useEffect(() => {
+    if (selectedChapter !== 'ALL' && concepts.length > 0) {
+      const exists = concepts.some((c) => (c.chapter || c.topic || 'General') === selectedChapter);
+      if (!exists) {
+        setSelectedChapter('ALL');
+      }
+    }
+  }, [concepts, selectedChapter]);
+
   // Sync current document, tab, and chapter to URL search parameters
   useEffect(() => {
     if (typeof window === 'undefined' || !documentData?.id) return;

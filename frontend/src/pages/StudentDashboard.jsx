@@ -328,6 +328,7 @@ export default function StudentDashboard({ onToast = () => {} }) {
                 type: 'success',
                 message: 'Concepts successfully extracted!'
               });
+              navigate(`/files/${docId}`);
             }, 300);
           }
         } else if (doc.status === 'failed') {
@@ -342,7 +343,7 @@ export default function StudentDashboard({ onToast = () => {} }) {
         pollInFlight = false;
       }
     }, 1500);
-  }, [loadDocResults, loadOverview, selectedSubjectId, onToast]);
+  }, [loadDocResults, loadOverview, selectedSubjectId, onToast, navigate]);
 
   // Start document upload from dashboard
   const handleUpload = async (file, options = {}) => {
@@ -374,6 +375,7 @@ export default function StudentDashboard({ onToast = () => {} }) {
             type: 'success',
             message: 'Document loaded successfully!'
           });
+          navigate(`/files/${resp.id}`);
         }
       } else {
         startPolling(resp.id);

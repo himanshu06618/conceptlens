@@ -64,10 +64,15 @@ export default function FileDashboardView({ onToast = () => {} }) {
         return;
       }
 
-      if (conceptsRes.status === 'fulfilled' && Array.isArray(conceptsRes.value)) {
-        setConcepts(conceptsRes.value);
+      if (conceptsRes.status === 'fulfilled' && conceptsRes.value) {
+        const cVal = conceptsRes.value;
+        const loadedConcepts = Array.isArray(cVal) ? cVal : (cVal.concepts || []);
+        const loadedTopics = Array.isArray(cVal.topics) ? cVal.topics : [];
+        setConcepts(loadedConcepts);
+        setTopics(loadedTopics);
       } else {
         setConcepts([]);
+        setTopics([]);
       }
 
       if (docsRes.status === 'fulfilled' && Array.isArray(docsRes.value)) {
@@ -129,13 +134,14 @@ export default function FileDashboardView({ onToast = () => {} }) {
   // Chapter count for this file
   const chapterCount = useMemo(() => {
     if (documentData?.chapter_count) return documentData.chapter_count;
+    if (topics && topics.length > 0) return topics.length;
     const chSet = new Set();
     concepts.forEach((c) => {
       const ch = c.chapter || c.topic;
       if (ch) chSet.add(ch);
     });
-    return chSet.size || 5;
-  }, [documentData, concepts]);
+    return chSet.size || (concepts.length > 0 ? 1 : 0);
+  }, [documentData, concepts, topics]);
 
   // Study time left for this file only
   const studyTimeLeft = useMemo(() => {

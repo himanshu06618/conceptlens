@@ -53,7 +53,9 @@ export default function StudyRoadmapView({
     concepts.forEach(c => {
       const prereqs = Array.isArray(c.prerequisites) ? c.prerequisites : [];
       prereqs.forEach(pName => {
-        const pObj = nameMap.get(String(pName).toLowerCase().trim());
+        const pStr = typeof pName === 'string' ? pName : (pName?.name || pName?.concept || '');
+        if (!pStr) return;
+        const pObj = nameMap.get(pStr.toLowerCase().trim());
         if (pObj && pObj.id !== c.id && inDegree.has(c.id)) {
           inDegree.set(c.id, inDegree.get(c.id) + 1);
           adj.get(pObj.id).push(c.id);
