@@ -3,6 +3,8 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard,
   FileText,
+  BarChart3,
+  Folder,
   GitBranch,
   ArrowRight,
   List,
@@ -15,7 +17,8 @@ import {
   X,
   Clock,
   Sparkles,
-  Volume2
+  Volume2,
+  MoreHorizontal
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { Logo, Button } from './ui';
@@ -66,6 +69,7 @@ export default function FluxNavigation({
   // PWA install prompt support
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [isAppInstalled, setIsAppInstalled] = useState(false);
+  const [isMoreSheetOpen, setIsMoreSheetOpen] = useState(false);
 
   useEffect(() => {
     const handleBeforeInstall = (e) => {
@@ -235,14 +239,20 @@ export default function FluxNavigation({
   const activeNavKey = useMemo(() => {
     const path = location.pathname;
     const search = location.search;
+    if (path === '/notes-analysis') return 'analysis';
+    if (path === '/my-files') return 'files';
     if (path.startsWith('/notes')) return 'notes';
     if (path.startsWith('/planner')) return 'planner';
     if (search.includes('tab=tree') || search.includes('view=tree')) return 'tree';
     if (search.includes('tab=roadmap') || search.includes('view=roadmap')) return 'roadmap';
     if (search.includes('tab=concepts') || search.includes('view=concepts')) return 'concepts';
-    return 'dashboard';
+    if (path === '/' || path === '/dashboard' || path === '/app') return 'dashboard';
+    return '';
   }, [location.pathname, location.search]);
 
+  // All 9 items visible at once in exact order per spec:
+  // Dashboard, Notes & Upload, Notes Analysis (bar-chart), My Files (folder),
+  // Concept Tree, Roadmap, Concepts, Study Planner, Reminders
   const navItems = [
     {
       id: 'dashboard',
@@ -261,6 +271,26 @@ export default function FluxNavigation({
       badge: chapterCount > 0 ? chapterCount : null,
       onClick: () => {
         navigate('/notes');
+        onCloseSidebar();
+      }
+    },
+    {
+      id: 'analysis',
+      label: 'Notes Analysis',
+      icon: BarChart3,
+      badge: null,
+      onClick: () => {
+        navigate('/notes-analysis');
+        onCloseSidebar();
+      }
+    },
+    {
+      id: 'files',
+      label: 'My Files',
+      icon: Folder,
+      badge: null,
+      onClick: () => {
+        navigate('/my-files');
         onCloseSidebar();
       }
     },
@@ -305,7 +335,7 @@ export default function FluxNavigation({
       }
     },
     {
-      id: 'settings',
+      id: 'reminders',
       label: 'Reminders',
       icon: Bell,
       badge: reminders.filter(r => r.enabled).length > 0 ? reminders.filter(r => r.enabled).length : null,
@@ -318,12 +348,31 @@ export default function FluxNavigation({
 
   return (
     <>
-      {/* 1. Desktop Inset Rounded Dark Left Sidebar (>=1024px) */}
+      {/* Drawer backdrop for <1024px */}
+      {isSidebarOpen && (
+        <div
+          className="flux-sidebar-drawer-backdrop"
+          onClick={onCloseSidebar}
+          aria-hidden="true"
+        />
+      )}
+
+      {/* 1. Desktop Inset Rounded Dark Left Sidebar (>=1024px) / Drawer (<1024px) */}
       <aside className={`flux-desktop-sidebar ${isSidebarOpen ? 'drawer-mobile-open' : ''}`} aria-label="Main Navigation">
         <div className="flux-sidebar-inner">
-          {/* Logo Top */}
-          <div className="flux-sidebar-brand" onClick={() => navigate('/')}>
-            <Logo size={32} />
+          {/* Logo Top with close button for mobile drawer */}
+          <div className="flux-sidebar-brand-row">
+            <div className="flux-sidebar-brand" onClick={() => { navigate('/'); onCloseSidebar(); }}>
+              <Logo size={32} />
+            </div>
+            <button
+              type="button"
+              className="flux-drawer-close-btn"
+              onClick={onCloseSidebar}
+              aria-label="Close navigation"
+            >
+              <X size={20} />
+            </button>
           </div>
 
           {/* Navigation Items */}
@@ -385,7 +434,7 @@ export default function FluxNavigation({
           <button
             type="button"
             className={`flux-bottom-nav-btn ${activeNavKey === 'dashboard' ? 'active' : ''}`}
-            onClick={() => navigate('/')}
+            onClick={() => { navigate('/'); setIsMoreSheetOpen(false); }}
             aria-label="Dashboard"
           >
             <LayoutDashboard size={20} />
@@ -394,7 +443,7 @@ export default function FluxNavigation({
           <button
             type="button"
             className={`flux-bottom-nav-btn ${activeNavKey === 'notes' ? 'active' : ''}`}
-            onClick={() => navigate('/notes')}
+            onClick={() => { navigate('/notes'); setIsMoreSheetOpen(false); }}
             aria-label="Notes"
           >
             <FileText size={20} />
@@ -402,17 +451,8 @@ export default function FluxNavigation({
           </button>
           <button
             type="button"
-            className={`flux-bottom-nav-btn ${['tree', 'roadmap', 'concepts'].includes(activeNavKey) ? 'active' : ''}`}
-            onClick={() => navigate('/?tab=tree')}
-            aria-label="Concepts"
-          >
-            <GitBranch size={20} />
-            <span>Graph</span>
-          </button>
-          <button
-            type="button"
             className={`flux-bottom-nav-btn ${activeNavKey === 'planner' ? 'active' : ''}`}
-            onClick={() => navigate('/planner')}
+            onClick={() => { navigate('/planner'); setIsMoreSheetOpen(false); }}
             aria-label="Study Planner"
           >
             <Compass size={20} />
@@ -421,14 +461,153 @@ export default function FluxNavigation({
           <button
             type="button"
             className={`flux-bottom-nav-btn ${isRemindersOpen ? 'active' : ''}`}
-            onClick={onToggleReminders}
+            onClick={() => { onToggleReminders(); setIsMoreSheetOpen(false); }}
             aria-label="Reminders"
           >
             <Bell size={20} />
             <span>Remind</span>
           </button>
+          <button
+            type="button"
+            className={`flux-bottom-nav-btn ${isMoreSheetOpen ? 'active' : ''}`}
+            onClick={() => setIsMoreSheetOpen((prev) => !prev)}
+            aria-label="More navigation items"
+            aria-expanded={isMoreSheetOpen}
+          >
+            <MoreHorizontal size={20} />
+            <span>More</span>
+          </button>
         </div>
       </nav>
+
+      {/* 2b. Mobile "More" Sheet (<640px) */}
+      {isMoreSheetOpen && (
+        <OverlayPortal>
+          <div className="flux-more-sheet-backdrop" onClick={() => setIsMoreSheetOpen(false)}>
+            <div
+              className="flux-more-sheet"
+              onClick={(e) => e.stopPropagation()}
+              role="dialog"
+              aria-label="More navigation options"
+            >
+              <div className="flux-more-sheet-header">
+                <span className="flux-more-sheet-handle" />
+                <div className="flux-more-sheet-title-row">
+                  <h3 className="flux-more-sheet-title">More Options</h3>
+                  <button
+                    type="button"
+                    className="flux-more-close-btn"
+                    onClick={() => setIsMoreSheetOpen(false)}
+                    aria-label="Close menu"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+              </div>
+
+              <div className="flux-more-grid">
+                <button
+                  type="button"
+                  className={`flux-more-item ${activeNavKey === 'analysis' ? 'active' : ''}`}
+                  onClick={() => {
+                    navigate('/notes-analysis');
+                    setIsMoreSheetOpen(false);
+                  }}
+                >
+                  <div className="flux-more-icon-box">
+                    <BarChart3 size={20} />
+                  </div>
+                  <span>Notes Analysis</span>
+                </button>
+
+                <button
+                  type="button"
+                  className={`flux-more-item ${activeNavKey === 'files' ? 'active' : ''}`}
+                  onClick={() => {
+                    navigate('/my-files');
+                    setIsMoreSheetOpen(false);
+                  }}
+                >
+                  <div className="flux-more-icon-box">
+                    <Folder size={20} />
+                  </div>
+                  <span>My Files</span>
+                </button>
+
+                <button
+                  type="button"
+                  className={`flux-more-item ${activeNavKey === 'tree' ? 'active' : ''}`}
+                  onClick={() => {
+                    navigate('/?tab=tree');
+                    setIsMoreSheetOpen(false);
+                  }}
+                >
+                  <div className="flux-more-icon-box">
+                    <GitBranch size={20} />
+                  </div>
+                  <span>Concept Tree</span>
+                </button>
+
+                <button
+                  type="button"
+                  className={`flux-more-item ${activeNavKey === 'roadmap' ? 'active' : ''}`}
+                  onClick={() => {
+                    navigate('/?tab=roadmap');
+                    setIsMoreSheetOpen(false);
+                  }}
+                >
+                  <div className="flux-more-icon-box">
+                    <ArrowRight size={20} />
+                  </div>
+                  <span>Roadmap</span>
+                </button>
+
+                <button
+                  type="button"
+                  className={`flux-more-item ${activeNavKey === 'concepts' ? 'active' : ''}`}
+                  onClick={() => {
+                    navigate('/?tab=concepts');
+                    setIsMoreSheetOpen(false);
+                  }}
+                >
+                  <div className="flux-more-icon-box">
+                    <List size={20} />
+                  </div>
+                  <span>Concepts</span>
+                </button>
+
+                <button
+                  type="button"
+                  className="flux-more-item"
+                  onClick={() => {
+                    setIsMoreSheetOpen(false);
+                    onToggleReminders();
+                  }}
+                >
+                  <div className="flux-more-icon-box">
+                    <Bell size={20} />
+                  </div>
+                  <span>Reminders</span>
+                </button>
+              </div>
+
+              <div className="flux-more-install-row">
+                <button
+                  type="button"
+                  className="flux-more-install-btn"
+                  onClick={() => {
+                    setIsMoreSheetOpen(false);
+                    handleInstallApp();
+                  }}
+                >
+                  <Sparkles size={16} />
+                  <span>{isAppInstalled ? 'Open Notes' : 'Install Web App'}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </OverlayPortal>
+      )}
 
       {/* 3. Study Reminders Slide-Out Drawer */}
       {isRemindersOpen && (

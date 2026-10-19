@@ -182,12 +182,13 @@
   }
 }
 
-/* 3. Row 2 Grid (Mastery Overview + Day 3 of 7) */
+/* 3. Row 2 Grid (Day 3 of 7 Left + Study Consistency Right) */
 .flux-row-2-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
   gap: 16px;
   width: 100%;
+  align-items: stretch;
 }
 
 @media (max-width: 1023px) {
@@ -196,9 +197,19 @@
   }
 }
 
-/* 4. Row 3 Wrap (Study Consistency) */
-.flux-row-3-wrap {
+/* 4. Row 3 Grid (Drop your notes here + Related Topics & Learning Clusters) */
+.flux-row-3-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
   width: 100%;
+  align-items: stretch;
+}
+
+@media (max-width: 1023px) {
+  .flux-row-3-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* 5. Below Row 3 Grid */

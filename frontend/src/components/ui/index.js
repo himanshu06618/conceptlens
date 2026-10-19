@@ -8,7 +8,6 @@ export { default as Input } from './Input';
 export { default as SearchInput } from './SearchInput';
 export { default as Card } from './Card';
 export { default as StatCard } from './StatCard';
-export { default as OverlappingCirclesCard } from './OverlappingCirclesCard';
 export { default as DotMatrixStreakCard } from './DotMatrixStreakCard';
 export { default as PaperSurface } from './PaperSurface';
 export { default as Badge } from './Badge';

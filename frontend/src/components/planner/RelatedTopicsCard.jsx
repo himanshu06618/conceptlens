@@ -10,7 +10,6 @@ import {
 } from 'lucide-react';
 import { getChapterRelations } from '../../api/client';
 
-// 14px stroke 2.4 Stairs Icon (steps going up)
 export const StairsIcon = ({ size = 14, className = '', strokeWidth = 2.4 }) => (
   <svg
     width={size}
@@ -29,7 +28,6 @@ export const StairsIcon = ({ size = 14, className = '', strokeWidth = 2.4 }) => 
   </svg>
 );
 
-// 14px stroke 2.4 Chain-link Icon
 export const ChainIcon = ({ size = 14, className = '', strokeWidth = 2.4 }) => (
   <svg
     width={size}
@@ -95,7 +93,6 @@ export default function RelatedTopicsCard({
   useEffect(() => {
     if (!currentChapterId) return;
 
-    // If initialRelationsData matches this chapter, avoid redundant fetch
     if (initialRelationsData?.chapter?.id === currentChapterId && initialRelationsData?.clusters?.length > 0) {
       setRelationsData(initialRelationsData);
       setLoading(false);
@@ -107,7 +104,6 @@ export default function RelatedTopicsCard({
     setLoading(true);
     setError(null);
 
-    // 15-second timeout guards against hanging requests
     const timeoutId = setTimeout(() => {
       if (!isCancelled) {
         setLoading(false);
@@ -142,101 +138,90 @@ export default function RelatedTopicsCard({
     };
   }, [currentChapterId, retryKey]);
 
-  // Reset pagination limit when chapter or filter changes
   useEffect(() => {
     setVisibleLimit(80);
   }, [currentChapterId, filter]);
 
   const rawClusters = relationsData?.clusters || [];
 
-  // Filter topics within clusters according to active segmented filter
   const filteredClusters = useMemo(() => {
+    if (!rawClusters || rawClusters.length === 0) return [];
+    if (filter === 'all') return rawClusters;
+
     return rawClusters
       .map((cluster) => {
-        const topics = (cluster.topics || []).filter((topic) => {
-          const hasPrereqs = Array.isArray(topic.prerequisites) && topic.prerequisites.length > 0;
-          const hasRelated = Array.isArray(topic.related) && topic.related.length > 0;
-          if (filter === 'prereq') return hasPrereqs;
-          if (filter === 'related') return hasRelated;
-          return true; // 'all'
+        const topics = cluster.topics || [];
+        const matchingTopics = topics.filter((topic) => {
+          if (filter === 'prereq') {
+            return Array.isArray(topic.prerequisites) && topic.prerequisites.length > 0;
+          }
+          if (filter === 'related') {
+            return Array.isArray(topic.related) && topic.related.length > 0;
+          }
+          return true;
         });
+
+        if (matchingTopics.length === 0) return null;
         return {
           ...cluster,
-          topics
+          topics: matchingTopics
         };
       })
-      .filter((cluster) => cluster.topics.length > 0);
+      .filter(Boolean);
   }, [rawClusters, filter]);
 
-  // Total concept counts
-  const totalConceptsCount = useMemo(() => {
-    return filteredClusters.reduce((sum, c) => sum + c.topics.length, 0);
-  }, [filteredClusters]);
-
   const totalRawConceptsCount = useMemo(() => {
-    return rawClusters.reduce((sum, c) => sum + (c.topics?.length || 0), 0);
+    return rawClusters.reduce((acc, c) => acc + (c.topics?.length || 0), 0);
   }, [rawClusters]);
 
-  // Progressive rendering slices across clusters
-  const displayedClusters = useMemo(() => {
-    if (totalConceptsCount <= 100) {
-      return filteredClusters;
-    }
+  const totalConceptsCount = useMemo(() => {
+    return filteredClusters.reduce((acc, c) => acc + (c.topics?.length || 0), 0);
+  }, [filteredClusters]);
+
+  const { displayedClusters, displayedConceptsCount } = useMemo(() => {
     let count = 0;
     const result = [];
+
     for (const cluster of filteredClusters) {
       if (count >= visibleLimit) break;
       const remainingSlots = visibleLimit - count;
-      if (cluster.topics.length <= remainingSlots) {
+      const clusterTopics = cluster.topics || [];
+
+      if (clusterTopics.length <= remainingSlots) {
         result.push(cluster);
-        count += cluster.topics.length;
+        count += clusterTopics.length;
       } else {
         result.push({
           ...cluster,
-          topics: cluster.topics.slice(0, remainingSlots)
+          topics: clusterTopics.slice(0, remainingSlots)
         });
         count += remainingSlots;
         break;
       }
     }
-    return result;
-  }, [filteredClusters, totalConceptsCount, visibleLimit]);
 
-  const displayedConceptsCount = useMemo(() => {
-    return displayedClusters.reduce((sum, c) => sum + c.topics.length, 0);
-  }, [displayedClusters]);
+    return { displayedClusters: result, displayedConceptsCount: count };
+  }, [filteredClusters, visibleLimit]);
 
-  // Handle scroll inside card to load more items when > 100 concepts
-  const handleScroll = useCallback((e) => {
-    if (totalConceptsCount <= 100) return;
-    const el = e.currentTarget;
+  const handleScroll = useCallback(() => {
+    const el = listContainerRef.current;
+    if (!el) return;
     if (el.scrollHeight - el.scrollTop - el.clientHeight < 120) {
-      setVisibleLimit((prev) => Math.min(totalConceptsCount, prev + 40));
+      if (displayedConceptsCount < totalConceptsCount) {
+        setVisibleLimit((prev) => prev + 50);
+      }
     }
-  }, [totalConceptsCount]);
+  }, [displayedConceptsCount, totalConceptsCount]);
 
-  // Toggle or set expanded concept
-  const handleRowClick = (topicName) => {
-    setExpandedConceptName((prev) => (prev === topicName ? null : topicName));
+  const handleRowClick = (conceptName) => {
+    setExpandedConceptName((prev) => (prev === conceptName ? null : conceptName));
   };
 
-  const handleRowKeyDown = (e, topicName) => {
+  const handleRowKeyDown = (e, conceptName) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
-      handleRowClick(topicName);
+      handleRowClick(conceptName);
     }
-  };
-
-  // Chip click selects/expands that concept
-  const handleChipClick = (targetName) => {
-    setExpandedConceptName(targetName);
-    // Attempt smooth scroll to row if rendered
-    setTimeout(() => {
-      const rowEl = document.querySelector(`[data-concept-row="${CSS.escape(targetName)}"]`);
-      if (rowEl) {
-        rowEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-      }
-    }, 50);
   };
 
   const handleRetry = () => {
@@ -245,29 +230,75 @@ export default function RelatedTopicsCard({
     setRetryKey((k) => k + 1);
   };
 
-  const currentChapter = chapters.find((c) => c.id === currentChapterId);
-
   return (
-    <div className="planner-section-card related-topics-container" role="region" aria-label="Related Topics and Learning Clusters">
-      {/* 1. Header with Stack icon, Title and responsive Document Dropdown */}
-      <div className="related-topics-header">
-        <div className="related-topics-title-wrap">
-          <Layers size={22} className="related-topics-title-icon" aria-hidden="true" />
-          <h2 className="related-topics-title">
+    <div
+      className="card"
+      style={{
+        borderRadius: '24px',
+        padding: '24px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '14px',
+        overflow: 'hidden',
+        minWidth: 0,
+        height: '100%',
+        boxSizing: 'border-box',
+        justifyContent: 'space-between'
+      }}
+      role="region"
+      aria-label="Related Topics and Learning Clusters"
+    >
+      {/* 1. Header with lime icon chip, title and file dropdown pill */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+          <div
+            style={{
+              width: '36px',
+              height: '36px',
+              minWidth: '36px',
+              minHeight: '36px',
+              borderRadius: '10px',
+              backgroundColor: '#D7F25C',
+              color: '#111113',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0
+            }}
+            aria-hidden="true"
+          >
+            <Layers size={18} strokeWidth={2.4} />
+          </div>
+          <h3 style={{ fontSize: '18px', fontWeight: 700, margin: 0, color: 'var(--text)', whiteSpace: 'nowrap' }}>
             Related Topics & Learning Clusters
-          </h2>
+          </h3>
         </div>
 
         {chapters.length > 0 && (
-          <div className="related-topics-select-wrap">
+          <div style={{ maxWidth: '150px' }}>
             <select
-              className="planner-select related-topics-dropdown"
               value={currentChapterId}
               onChange={(e) => {
                 const newId = e.target.value;
                 setCurrentChapterId(newId);
                 onSelectChapter(newId);
                 setExpandedConceptName(null);
+              }}
+              style={{
+                background: 'var(--surface-subtle, #F0F0F2)',
+                color: 'var(--text)',
+                borderRadius: '9999px',
+                padding: '6px 14px',
+                fontSize: '12px',
+                fontWeight: 600,
+                border: 'none',
+                maxWidth: '150px',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                cursor: 'pointer',
+                outline: 'none',
+                fontFamily: 'inherit'
               }}
               aria-label="Select document or chapter"
             >
@@ -283,11 +314,17 @@ export default function RelatedTopicsCard({
         )}
       </div>
 
-      {/* 2. Segmented Filter & Legend Key Line */}
-      <div className="related-topics-controls-row">
-        {/* Segmented Filter */}
+      {/* 2. Segmented Tabs: All | Prerequisite | Related */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
         <div
-          className="related-topics-filter-group"
+          style={{
+            display: 'inline-flex',
+            background: 'var(--surface-subtle, #F0F0F2)',
+            borderRadius: '9999px',
+            padding: '3px',
+            gap: '2px',
+            width: 'fit-content'
+          }}
           role="tablist"
           aria-label="Filter concepts by relation type"
         >
@@ -295,8 +332,19 @@ export default function RelatedTopicsCard({
             type="button"
             role="tab"
             aria-selected={filter === 'all'}
-            className={`related-filter-btn ${filter === 'all' ? 'active' : ''}`}
             onClick={() => setFilter('all')}
+            style={{
+              height: '32px',
+              padding: '0 16px',
+              borderRadius: '9999px',
+              fontSize: '12px',
+              fontWeight: filter === 'all' ? 700 : 500,
+              border: 'none',
+              cursor: 'pointer',
+              background: filter === 'all' ? '#111113' : 'transparent',
+              color: filter === 'all' ? '#FFFFFF' : 'var(--muted)',
+              transition: 'all 0.15s ease'
+            }}
           >
             All
           </button>
@@ -304,296 +352,246 @@ export default function RelatedTopicsCard({
             type="button"
             role="tab"
             aria-selected={filter === 'prereq'}
-            className={`related-filter-btn ${filter === 'prereq' ? 'active' : ''}`}
             onClick={() => setFilter('prereq')}
+            style={{
+              height: '32px',
+              padding: '0 16px',
+              borderRadius: '9999px',
+              fontSize: '12px',
+              fontWeight: filter === 'prereq' ? 700 : 500,
+              border: 'none',
+              cursor: 'pointer',
+              background: filter === 'prereq' ? '#111113' : 'transparent',
+              color: filter === 'prereq' ? '#FFFFFF' : 'var(--muted)',
+              transition: 'all 0.15s ease'
+            }}
           >
-            <StairsIcon size={14} />
-            <span>Prerequisite</span>
+            Prerequisite
           </button>
           <button
             type="button"
             role="tab"
             aria-selected={filter === 'related'}
-            className={`related-filter-btn ${filter === 'related' ? 'active' : ''}`}
             onClick={() => setFilter('related')}
+            style={{
+              height: '32px',
+              padding: '0 16px',
+              borderRadius: '9999px',
+              fontSize: '12px',
+              fontWeight: filter === 'related' ? 700 : 500,
+              border: 'none',
+              cursor: 'pointer',
+              background: filter === 'related' ? '#111113' : 'transparent',
+              color: filter === 'related' ? '#FFFFFF' : 'var(--muted)',
+              transition: 'all 0.15s ease'
+            }}
           >
-            <ChainIcon size={14} />
-            <span>Related</span>
+            Related
           </button>
         </div>
 
-        {/* Legend Key Line */}
-        <div className="related-topics-legend-key" aria-hidden="true">
-          <span className="legend-key-item">
-            <span className="legend-key-icon-wrap prereq">
-              <StairsIcon size={13} />
-            </span>
-            <span>Learn first (prerequisite)</span>
-          </span>
-          <span className="legend-key-divider">·</span>
-          <span className="legend-key-item">
-            <span className="legend-key-icon-wrap related">
-              <ChainIcon size={13} />
-            </span>
-            <span>Study together (related)</span>
-          </span>
+        {/* 3. Legend Key */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '11px', color: 'var(--muted)', lineHeight: 1.4 }}>
+          <span>Lime: learn first (prerequisite)</span>
+          <span>Lavender: study together (related)</span>
         </div>
       </div>
 
-      {/* 8. Loading Skeleton State (at most 6 rows of 44px) */}
-      {loading ? (
-        <div
-          className="related-topics-skeleton-list"
-          aria-busy="true"
-          aria-label="Loading topic relationships"
-        >
-          {[0, 1, 2, 3, 4, 5].map((idx) => (
-            <div key={idx} className="related-row-skeleton">
-              <div className="skeleton-bar-name" />
-              <div className="skeleton-badges-wrap">
-                <div className="skeleton-pill pill-lime" />
-                <div className="skeleton-pill pill-white" />
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : error ? (
-        /* 8. Error State with Retry Button */
-        <div className="related-topics-error-state" role="alert">
-          <div className="related-error-content">
-            <AlertTriangle size={24} className="related-error-icon" aria-hidden="true" />
-            <div>
-              <div className="related-error-title">Could not load relationships</div>
-              <div className="related-error-msg">{error}</div>
-            </div>
+      {/* 4. Body Content (Clusters & Concepts) */}
+      <div
+        ref={listContainerRef}
+        onScroll={handleScroll}
+        style={{
+          flex: 1,
+          overflowY: 'auto',
+          maxHeight: '260px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '12px',
+          scrollbarWidth: 'thin'
+        }}
+        tabIndex={0}
+      >
+        {loading ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '8px 0' }}>
+            {[0, 1, 2].map((i) => (
+              <div
+                key={i}
+                style={{
+                  height: '44px',
+                  background: 'var(--surface-subtle, #F0F0F2)',
+                  borderRadius: '12px',
+                  opacity: 0.6
+                }}
+              />
+            ))}
           </div>
-          <button
-            type="button"
-            onClick={handleRetry}
-            className="related-retry-btn"
-            aria-label="Retry loading topic relationships"
-          >
-            <RotateCcw size={15} />
-            <span>Retry</span>
-          </button>
-        </div>
-      ) : rawClusters.length === 0 || totalRawConceptsCount === 0 ? (
-        /* 8. Empty State */
-        <div className="related-topics-empty-state">
-          <p className="related-empty-text">
-            No topic links found for this document yet. Try Re-analyse on the document.
-          </p>
-        </div>
-      ) : filteredClusters.length === 0 ? (
-        /* Empty State for current filter */
-        <div className="related-topics-empty-state">
-          <p className="related-empty-text">
-            No concepts match the "{filter === 'prereq' ? 'Prerequisite' : 'Related'}" filter.
-          </p>
-          <button
-            type="button"
-            className="related-reset-filter-btn"
-            onClick={() => setFilter('all')}
-          >
-            Show all concepts
-          </button>
-        </div>
-      ) : (
-        /* 3 & 4. Scrollable Container with Sticky Headers and 44px Concept Rows */
-        <>
-          <div
-            ref={listContainerRef}
-            className="related-topics-scroll-list"
-            tabIndex={0}
-            role="region"
-            aria-label="Learning clusters and related concepts list"
-            onScroll={handleScroll}
-          >
-            {displayedClusters.map((cluster, cIdx) => {
-              const clusterName = cluster.name || `Cluster ${cIdx + 1}`;
-              const clusterTopics = cluster.topics || [];
+        ) : error ? (
+          <div style={{ padding: '16px', textAlign: 'center', background: 'rgba(239, 68, 68, 0.08)', borderRadius: '14px' }}>
+            <p style={{ fontSize: '13px', color: '#DC2626', margin: '0 0 8px' }}>{error}</p>
+            <button
+              type="button"
+              className="pill"
+              onClick={handleRetry}
+              style={{ background: '#111113', color: '#FFFFFF', padding: '6px 14px', fontSize: '12px', border: 'none', cursor: 'pointer' }}
+            >
+              Retry
+            </button>
+          </div>
+        ) : displayedClusters.length === 0 ? (
+          <div style={{ padding: '24px 12px', textAlign: 'center', color: 'var(--muted)', fontSize: '13px' }}>
+            No concepts match the selected filter.
+          </div>
+        ) : (
+          displayedClusters.map((cluster, cIdx) => {
+            const clusterName = cluster.name || `Cluster ${cIdx + 1}`;
+            const clusterTopics = cluster.topics || [];
 
-              return (
-                <section key={clusterName} className="cluster-group-section">
-                  {/* Sticky Group Header */}
-                  <div className="cluster-sticky-header">
-                    <span className="cluster-sticky-title">
-                      {clusterName}
-                    </span>
-                    <span className="cluster-sticky-count">
-                      {clusterTopics.length} {clusterTopics.length === 1 ? 'concept' : 'concepts'}
-                    </span>
-                  </div>
+            return (
+              <div key={clusterName} style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {/* Cluster Header Row: Cluster 1 + 2 concepts */}
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '8px 12px',
+                    background: 'var(--surface-subtle, #F0F0F2)',
+                    borderRadius: '10px'
+                  }}
+                >
+                  <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)' }}>
+                    {clusterName}
+                  </span>
+                  <span style={{ fontSize: '12px', color: 'var(--muted)', fontWeight: 500 }}>
+                    {clusterTopics.length} {clusterTopics.length === 1 ? 'concept' : 'concepts'}
+                  </span>
+                </div>
 
-                  {/* Concept Rows inside cluster */}
-                  <div className="cluster-topics-list">
-                    {clusterTopics.map((topic) => {
-                      const topicName = topic.name;
-                      const prereqs = Array.isArray(topic.prerequisites) ? topic.prerequisites : [];
-                      const related = Array.isArray(topic.related) ? topic.related : [];
-                      const prereqCount = prereqs.length;
-                      const relatedCount = related.length;
+                {/* Concept Rows: 44px high */}
+                {clusterTopics.map((topic) => {
+                  const topicName = topic.name;
+                  const prereqs = Array.isArray(topic.prerequisites) ? topic.prerequisites : [];
+                  const related = Array.isArray(topic.related) ? topic.related : [];
+                  const prereqCount = prereqs.length;
+                  const relatedCount = related.length;
+                  const isExpanded = expandedConceptName === topicName;
 
-                      // Row expands inline; in filtered mode, open concepts match the active filter
-                      const isExpanded = expandedConceptName === topicName;
-
-                      return (
-                        <div
-                          key={topic.id || topicName}
-                          data-concept-row={topicName}
-                          className={`concept-row-wrapper ${isExpanded ? 'expanded' : ''}`}
+                  return (
+                    <div
+                      key={topic.id || topicName}
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        background: isExpanded ? 'var(--surface-subtle, #F0F0F2)' : 'transparent',
+                        borderRadius: '12px',
+                        overflow: 'hidden',
+                        transition: 'background 0.15s ease'
+                      }}
+                    >
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => handleRowClick(topicName)}
+                        onKeyDown={(e) => handleRowKeyDown(e, topicName)}
+                        style={{
+                          height: '44px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '0 10px',
+                          cursor: 'pointer',
+                          borderRadius: '10px'
+                        }}
+                      >
+                        {/* Concept Name with Ellipsis */}
+                        <span
+                          style={{
+                            fontSize: '14px',
+                            fontWeight: 600,
+                            color: 'var(--text)',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            maxWidth: '60%'
+                          }}
+                          title={topicName}
                         >
-                          {/* Row Header Button */}
-                          <div
-                            className="concept-row"
-                            role="button"
-                            tabIndex={0}
-                            aria-expanded={isExpanded}
-                            aria-label={`${topicName}. ${prereqCount} to learn first. ${relatedCount} to study together.`}
-                            onClick={() => handleRowClick(topicName)}
-                            onKeyDown={(e) => handleRowKeyDown(e, topicName)}
+                          {topicName}
+                        </span>
+
+                        {/* Count Chips + Chevron */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span
+                            className="pill"
+                            style={{
+                              background: '#D7F25C',
+                              color: '#111113',
+                              padding: '2px 8px',
+                              fontSize: '11px',
+                              fontWeight: 700
+                            }}
+                            title={`${prereqCount} prerequisites`}
                           >
-                            {/* Truncated Name */}
-                            <span className="concept-row-name" title={topicName}>
-                              {topicName}
-                            </span>
+                            {prereqCount}
+                          </span>
 
-                            {/* Badges on the right */}
-                            <div className="concept-row-badges">
-                              {/* Prerequisite badge: stairs icon + count, solid lime */}
-                              <span
-                                className="rel-badge rel-badge-prereq"
-                                aria-label={`${prereqCount} to learn first`}
-                                title={`${prereqCount} to learn first`}
-                              >
-                                <StairsIcon size={14} />
-                                <span className="rel-badge-count">{prereqCount}</span>
-                              </span>
+                          <span
+                            className="pill"
+                            style={{
+                              background: '#B7A9F2',
+                              color: '#111113',
+                              padding: '2px 8px',
+                              fontSize: '11px',
+                              fontWeight: 700
+                            }}
+                            title={`${relatedCount} related topics`}
+                          >
+                            {relatedCount}
+                          </span>
 
-                              {/* Related badge: chain-link icon + count, white outlined */}
-                              <span
-                                className="rel-badge rel-badge-related"
-                                aria-label={`${relatedCount} to study together`}
-                                title={`${relatedCount} to study together`}
-                              >
-                                <ChainIcon size={14} />
-                                <span className="rel-badge-count">{relatedCount}</span>
-                              </span>
-
-                              {/* Expansion chevron indicator */}
-                              <span className="row-expand-chevron" aria-hidden="true">
-                                {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                              </span>
-                            </div>
-                          </div>
-
-                          {/* 5. Inline Expansion Content (one open at a time) */}
-                          {isExpanded && (
-                            <div className="concept-expanded-body" role="region" aria-label={`Details for ${topicName}`}>
-                              {/* Learn first (prerequisites) section */}
-                              {(filter === 'all' || filter === 'prereq') && prereqs.length > 0 && (
-                                <div className="expanded-rel-group">
-                                  <div className="expanded-rel-heading">
-                                    <StairsIcon size={14} />
-                                    <span>Learn first ({prereqs.length}):</span>
-                                  </div>
-                                  <div className="expanded-chips-flow">
-                                    {prereqs.map((pName, pIdx) => (
-                                      <button
-                                        key={pIdx}
-                                        type="button"
-                                        className="expanded-chip chip-solid-lime"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          handleChipClick(pName);
-                                        }}
-                                        title={`View prerequisite "${pName}"`}
-                                        aria-label={`Select prerequisite concept ${pName}`}
-                                      >
-                                        <StairsIcon size={12} />
-                                        <span>{pName}</span>
-                                      </button>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-
-                              {/* Study together (related) section */}
-                              {(filter === 'all' || filter === 'related') && related.length > 0 && (
-                                <div className="expanded-rel-group">
-                                  <div className="expanded-rel-heading">
-                                    <ChainIcon size={14} />
-                                    <span>Study together ({related.length}):</span>
-                                  </div>
-                                  <div className="expanded-chips-flow">
-                                    {related.map((rName, rIdx) => (
-                                      <button
-                                        key={rIdx}
-                                        type="button"
-                                        className="expanded-chip chip-white-outline"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          handleChipClick(rName);
-                                        }}
-                                        title={`View related topic "${rName}"`}
-                                        aria-label={`Select related concept ${rName}`}
-                                      >
-                                        <ChainIcon size={12} />
-                                        <span>{rName}</span>
-                                      </button>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-
-                              {/* When neither prereqs nor related are present */}
-                              {prereqs.length === 0 && related.length === 0 && (
-                                <div className="expanded-empty-notice">
-                                  Foundational concept with no prerequisites or related links.
-                                </div>
-                              )}
-
-                              {/* "View in results" action button */}
-                              <div className="expanded-action-bar">
-                                <button
-                                  type="button"
-                                  className="view-in-results-action-btn"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    onOpenConceptInResults(currentChapterId, topicName);
-                                  }}
-                                  aria-label={`View ${topicName} in results panel Concept Tree`}
-                                >
-                                  <GitBranch size={15} />
-                                  <span>View in results</span>
-                                  <ArrowRight size={14} />
-                                </button>
-                              </div>
-                            </div>
-                          )}
+                          <span style={{ color: 'var(--muted)', display: 'flex', alignItems: 'center', marginLeft: '2px' }}>
+                            {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                          </span>
                         </div>
-                      );
-                    })}
-                  </div>
-                </section>
-              );
-            })}
-          </div>
+                      </div>
 
-          {/* 7. Footer line with concept counts */}
-          <div className="related-topics-footer" aria-live="polite">
-            {totalConceptsCount > 100 && displayedConceptsCount < totalConceptsCount ? (
-              <span>
-                Showing {displayedConceptsCount} of {totalConceptsCount} concepts · scroll for more
-              </span>
-            ) : (
-              <span>
-                Showing {displayedConceptsCount} of {totalConceptsCount} concepts
-              </span>
-            )}
-          </div>
-        </>
-      )}
+                      {/* Inline Expanded Panel */}
+                      {isExpanded && (
+                        <div style={{ padding: '8px 12px 14px', display: 'flex', flexDirection: 'column', gap: '8px', borderTop: '1px solid rgba(0,0,0,0.05)' }}>
+                          {topic.definition && (
+                            <p style={{ fontSize: '13px', color: 'var(--text)', margin: 0, lineHeight: 1.4 }}>
+                              {topic.definition}
+                            </p>
+                          )}
+                          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                            <button
+                              type="button"
+                              className="pill card--lime"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onOpenConceptInResults(topicName);
+                              }}
+                              style={{ border: 'none', cursor: 'pointer', fontSize: '11px', fontWeight: 700, padding: '4px 10px' }}
+                            >
+                              Explore in Graph
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* 5. Footer: Showing X of Y concepts */}
+      <div style={{ fontSize: '12px', color: 'var(--muted)', textAlign: 'center', paddingTop: '4px' }}>
+        Showing {displayedConceptsCount} of {totalConceptsCount} concepts
+      </div>
     </div>
   );
 }

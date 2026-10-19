@@ -30,12 +30,10 @@ import { getDashboardCache, saveDashboardCache } from '../utils/dashboardCache';
 
 import RelatedTopicsCard from '../components/planner/RelatedTopicsCard';
 import CourseStatusCard from '../components/planner/CourseStatusCard';
-import NotesAnalysisSection from '../components/planner/NotesAnalysisSection';
 import CompactUploadCard from '../components/planner/CompactUploadCard';
-import UploadedFilesSection from '../components/planner/UploadedFilesSection';
 import BookshelfLoader from '../components/ui/BookshelfLoader';
 import AskAnswerCard from '../components/results/AskAnswerCard';
-import { StatCard, OverlappingCirclesCard, DotMatrixStreakCard } from '../components/ui';
+import { StatCard, DotMatrixStreakCard } from '../components/ui';
 import '../styles/planner.css';
 import '../styles/results-panel.css';
 
@@ -715,11 +713,11 @@ export default function StudentDashboard({ onToast = () => {} }) {
       <section className="flux-stat-grid" aria-label="Study Progress Statistics">
         <StatCard
           label="Concepts"
-          value={stats.total_concepts > 0 ? stats.total_concepts : 56}
+          value={stats.total_concepts > 0 ? stats.total_concepts : 71}
           icon={Sparkles}
           iconColor="#111113"
           iconBg="#D7F25C"
-          growth="+12%"
+          growth={stats.total_concepts > 0 ? (stats.concepts_growth || "+12%") : null}
           progress={100}
           progressColor="var(--text)"
           contextText="Extracted from your notes"
@@ -727,64 +725,83 @@ export default function StudentDashboard({ onToast = () => {} }) {
 
         <StatCard
           label="Chapters Done"
-          value={stats.total_chapters > 0 ? `${stats.chapters_done} / ${stats.total_chapters}` : "0 / 1"}
+          value={stats.total_chapters > 0 ? `${stats.chapters_done} / ${stats.total_chapters}` : "0 / 5"}
           icon={CheckCircle}
           iconColor="#111113"
           iconBg="#B7A9F2"
-          growth="+25%"
+          growth={stats.total_chapters > 0 ? (stats.chapters_growth || "+25%") : null}
           progress={stats.total_chapters > 0 ? (stats.chapters_done / stats.total_chapters) * 100 : 0}
           progressColor="#B7A9F2"
-          contextText={`${Math.max(1, stats.total_chapters - stats.chapters_done)} chapter left to master`}
+          contextText={`${Math.max(1, (stats.total_chapters || 5) - (stats.chapters_done || 0))} chapters left to master`}
         />
 
         <StatCard
           label="Study Time Left"
-          value={stats.study_time_left > 0 ? stats.study_time_left : 11.5}
+          value={stats.study_time_left > 0 ? stats.study_time_left : 14.8}
           unit="h"
           icon={Clock}
           iconColor="#111113"
           iconBg="#E6E6E8"
-          growth="-1.5h"
+          growth={stats.study_time_left > 0 ? (stats.time_growth || "-1.5h") : null}
           progress={65}
           progressColor="#D7F25C"
-          contextText="Estimated at your personalized pace"
+          contextText="Estimated at your pace"
         />
 
         <StatCard
           label="Mastery"
-          value={stats.mastery_percent > 0 ? stats.mastery_percent : 5.4}
+          value={stats.mastery_percent > 0 ? stats.mastery_percent : 4.2}
           unit="%"
           icon={TrendingUp}
           iconColor="#111113"
           iconBg="#D7F25C"
-          growth="+8%"
-          progress={stats.mastery_percent > 0 ? stats.mastery_percent : 5.4}
+          growth={stats.mastery_percent > 0 ? (stats.mastery_growth || "+8%") : null}
+          progress={stats.mastery_percent > 0 ? stats.mastery_percent : 4.2}
           progressColor="#B7A9F2"
           contextText="Based on chapter milestones"
         />
       </section>
 
-      {/* 4. Row 2: Mastery Overview Left + Day 3 of 7 Right */}
-      <section className="flux-row-2-grid" aria-label="Mastery Overview and Pacing">
-        <OverlappingCirclesCard
-          corePercent={54}
-          prereqPercent={32}
-          recallPercent={14}
-        />
+      {/* 4. Row 2: Grid minmax(0,1.2fr) minmax(0,1fr): Day 3 of 7 Left + Study Consistency Right */}
+      <section className="flux-row-2-grid" aria-label="Course Pacing and Consistency">
         <CourseStatusCard
           activePlan={activePlan}
           planStatus={planStatus}
-          totalChapters={stats.total_chapters || 1}
+          totalChapters={stats.total_chapters || 5}
           doneChapters={stats.chapters_done || 0}
         />
-      </section>
-
-      {/* 5. Row 3: Study Consistency Full Width */}
-      <section className="flux-row-3-wrap" aria-label="Study Consistency">
         <DotMatrixStreakCard
           score={9.2}
           maxScore={10}
           streakDays={5}
+        />
+      </section>
+
+      {/* 5. Row 3: Grid minmax(0,1fr) minmax(0,1fr), equal heights: Drop your notes here | Related Topics & Learning Clusters */}
+      <section className="flux-row-3-grid" aria-label="Upload Notes and Learning Clusters">
+        <CompactUploadCard
+          onUpload={handleUpload}
+          isUploading={isUploading}
+          processingDoc={processingDoc}
+          processingStage={processingStage}
+          processingProgress={processingProgress}
+          processingMessage={processingMessage}
+          processingError={processingError}
+          onRetryUpload={handleRetryUpload}
+          onCancelProcessing={handleCancelProcessing}
+          onToast={onToast}
+        />
+        <RelatedTopicsCard
+          chapters={allChapters}
+          selectedChapterId={relationsChapterId}
+          onSelectChapter={(cId) => setRelationsChapterId(cId)}
+          onOpenConceptInResults={handleOpenConceptInResults}
+          activePlan={activePlan}
+          initialRelationsData={
+            relationsChapterId === overview?.selected_chapter_id
+              ? (overview?.related_topics || overview?.relations)
+              : null
+          }
         />
       </section>
 
@@ -910,83 +927,6 @@ export default function StudentDashboard({ onToast = () => {} }) {
           />
         </React.Suspense>
       )}
-
-      {/* Main Balanced Layout: Left Column (Study Materials & Library) / Right Column (Pacing & Quick Actions) */}
-      <div className="planner-main-layout">
-        {/* Left Column: Learning Center & Library */}
-        <div className="planner-left-col">
-          {/* 1. Notes & Chapters Analysis Section */}
-          <NotesAnalysisSection
-            books={overview?.books || []}
-            activeBookId={activeBookId}
-            onSelectBook={(bId) => {
-              setActiveBookId(bId);
-              loadDocResults(bId);
-            }}
-            onOpenDocumentResults={(bId) => {
-              setActiveBookId(bId);
-              loadDocResults(bId);
-            }}
-            onDeleteDocument={handleDeleteDocument}
-            onUpdateChapterStatus={handleUpdateChapterStatus}
-            onUpdateChapterMeta={handleUpdateChapterMeta}
-          />
-
-          {/* 2. Dedicated Uploaded Files Library Section */}
-          {isAuthenticated && (
-            <UploadedFilesSection
-              documents={documentsList}
-              activeDocId={activeDocId}
-              onSelectDoc={(docId) => {
-                setActiveBookId(docId);
-                loadDocResults(docId);
-              }}
-              onDeleteDoc={handleDeleteDocument}
-              isLoading={isDocumentsLoading}
-              onRefresh={loadDocumentsList}
-            />
-          )}
-        </div>
-
-        {/* Right Column: Course Pacing, Quick Upload & Graph Discovery */}
-        <div className="planner-right-col">
-          {/* 1. Course Status & Daily Targets Card */}
-          <CourseStatusCard
-            activePlan={activePlan}
-            planStatus={planStatus}
-            totalChapters={stats.total_chapters}
-            doneChapters={stats.chapters_done}
-          />
-
-          {/* 2. Quick Upload / Document Intake Card */}
-          <CompactUploadCard
-            onUpload={handleUpload}
-            isUploading={isUploading}
-            processingDoc={processingDoc}
-            processingStage={processingStage}
-            processingProgress={processingProgress}
-            processingMessage={processingMessage}
-            processingError={processingError}
-            onRetryUpload={handleRetryUpload}
-            onCancelProcessing={handleCancelProcessing}
-            onToast={onToast}
-          />
-
-          {/* 3. Related Topics & Knowledge Connections Card */}
-          <RelatedTopicsCard
-            chapters={allChapters}
-            selectedChapterId={relationsChapterId}
-            onSelectChapter={(cId) => setRelationsChapterId(cId)}
-            onOpenConceptInResults={handleOpenConceptInResults}
-            activePlan={activePlan}
-            initialRelationsData={
-              relationsChapterId === overview?.selected_chapter_id
-                ? (overview?.related_topics || overview?.relations)
-                : null
-            }
-          />
-        </div>
-      </div>
 
       {/* Floating Ask Your Notes Button & Drawer (Screen 3) */}
       <button

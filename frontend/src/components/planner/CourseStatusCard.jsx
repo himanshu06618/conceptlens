@@ -3,11 +3,11 @@ import { useNavigate } from 'react-router-dom';
 
 /**
  * CourseStatusCard — "Flux" Health-Dashboard Inspired Study Route Tracker
- * Matches Image 2:
+ * Matches Target Design (PDF 1):
  * - Dark card (.card.card--dark)
  * - Header: "Day 3 of 7" + amber "2 days behind" pill
  * - 7 vertical pill-shaped bars (today lime, done lavender, rest #3A3A3E) with day labels M T W T F S S
- * - Full-width lime "Manage Study Route" button
+ * - Lime full-width "Manage Study Route" button
  */
 export default function CourseStatusCard({
   activePlan = null,
@@ -34,7 +34,20 @@ export default function CourseStatusCard({
   ];
 
   return (
-    <div className={`card card--dark ${className}`.trim()} style={{ justifyContent: 'space-between' }}>
+    <div
+      className={`card card--dark ${className}`.trim()}
+      style={{
+        borderRadius: '24px',
+        padding: '24px',
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'space-between',
+        minWidth: 0,
+        boxSizing: 'border-box',
+        overflow: 'hidden'
+      }}
+    >
       {/* Top Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
         <h3 style={{ fontSize: '18px', fontWeight: 700, margin: 0, color: '#FFFFFF' }}>
@@ -62,8 +75,8 @@ export default function CourseStatusCard({
           justifyContent: 'space-between',
           alignItems: 'flex-end',
           height: '110px',
-          padding: '4px 8px 0',
-          margin: '6px 0 2px'
+          padding: '6px 4px 0',
+          margin: '12px 0 6px'
         }}
         role="img"
         aria-label="Weekly study pacing chart"
@@ -89,7 +102,7 @@ export default function CourseStatusCard({
             >
               <div
                 style={{
-                  width: '26px',
+                  width: '24px',
                   height: bar.height,
                   borderRadius: '999px',
                   backgroundColor: barBg,
@@ -120,12 +133,15 @@ export default function CourseStatusCard({
         style={{
           width: '100%',
           justifyContent: 'center',
-          padding: '12px 18px',
+          height: '44px',
+          padding: '0 18px',
           fontSize: '14px',
           fontWeight: 700,
           border: 'none',
           cursor: 'pointer',
-          marginTop: '6px',
+          marginTop: '8px',
+          display: 'flex',
+          alignItems: 'center',
           transition: 'transform 0.15s ease, opacity 0.15s ease'
         }}
       >

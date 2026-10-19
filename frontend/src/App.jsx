@@ -25,6 +25,8 @@ const ResultsView = React.lazy(() => import('./components/ResultsView'));
 const LandingPage = React.lazy(() => import('./components/LandingPage'));
 const DocumentViewer = React.lazy(() => import('./pages/DocumentViewer'));
 const StudyPlannerView = React.lazy(() => import('./pages/StudyPlannerView'));
+const NotesAnalysisView = React.lazy(() => import('./pages/NotesAnalysisView'));
+const MyFilesView = React.lazy(() => import('./pages/MyFilesView'));
 const LoaderShowcase = React.lazy(() => import('./components/dev/LoaderShowcase'));
 import { useAuth } from './context/AuthContext';
 import { 
@@ -745,6 +747,8 @@ export default function App() {
 
       {/* Desktop Inset Dark Left Sidebar & Mobile Bottom Nav & Reminders Drawer */}
       <FluxNavigation
+        isSidebarOpen={isNavSidebarOpen}
+        onCloseSidebar={() => setIsNavSidebarOpen(false)}
         isRemindersOpen={isRemindersOpen}
         onToggleReminders={() => setIsRemindersOpen((prev) => !prev)}
         onToast={addToast}
@@ -754,6 +758,16 @@ export default function App() {
       <div className="flux-main-panel">
         {/* Top Header inside main panel */}
         <header className="flux-top-header">
+          {/* Tablet/mobile navigation drawer toggle (<1024px) */}
+          <button
+            type="button"
+            className="flux-header-menu-btn"
+            onClick={() => setIsNavSidebarOpen((prev) => !prev)}
+            aria-label="Toggle navigation drawer"
+          >
+            <Menu size={20} />
+          </button>
+
           {/* Mobile brand (shown <1024px since sidebar is hidden) */}
           <div 
             className="flux-mobile-brand"
@@ -884,6 +898,16 @@ export default function App() {
               <Route 
                 path="/notes" 
                 element={<NotesView onToast={addToast} />} 
+              />
+
+              <Route 
+                path="/notes-analysis" 
+                element={<NotesAnalysisView onToast={addToast} />} 
+              />
+
+              <Route 
+                path="/my-files" 
+                element={<MyFilesView onToast={addToast} />} 
               />
 
               <Route 
