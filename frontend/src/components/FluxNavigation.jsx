@@ -3,11 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard,
   FileText,
-  BarChart3,
   Folder,
-  GitBranch,
-  ArrowRight,
-  List,
   Compass,
   Bell,
   Download,
@@ -238,21 +234,15 @@ export default function FluxNavigation({
   // Determine current active navigation key
   const activeNavKey = useMemo(() => {
     const path = location.pathname;
-    const search = location.search;
-    if (path === '/notes-analysis') return 'analysis';
     if (path === '/my-files' || path.startsWith('/files')) return 'files';
     if (path.startsWith('/notes')) return 'notes';
     if (path.startsWith('/planner')) return 'planner';
-    if (search.includes('tab=tree') || search.includes('view=tree')) return 'tree';
-    if (search.includes('tab=roadmap') || search.includes('view=roadmap')) return 'roadmap';
-    if (search.includes('tab=concepts') || search.includes('view=concepts')) return 'concepts';
     if (path === '/' || path === '/dashboard' || path === '/app') return 'dashboard';
     return '';
-  }, [location.pathname, location.search]);
+  }, [location.pathname]);
 
-  // All 9 items visible at once in exact order per spec:
-  // Dashboard, Notes & Upload, Notes Analysis (bar-chart), My Files (folder),
-  // Concept Tree, Roadmap, Concepts, Study Planner, Reminders
+  // Clean, focused sidebar items:
+  // Dashboard, Notes & Upload, My Files, Study Planner, Reminders
   const navItems = [
     {
       id: 'dashboard',
@@ -275,52 +265,12 @@ export default function FluxNavigation({
       }
     },
     {
-      id: 'analysis',
-      label: 'Notes Analysis',
-      icon: BarChart3,
-      badge: null,
-      onClick: () => {
-        navigate('/notes-analysis');
-        onCloseSidebar();
-      }
-    },
-    {
       id: 'files',
       label: 'My Files',
       icon: Folder,
       badge: null,
       onClick: () => {
         navigate('/my-files');
-        onCloseSidebar();
-      }
-    },
-    {
-      id: 'tree',
-      label: 'Concept Tree',
-      icon: GitBranch,
-      badge: null,
-      onClick: () => {
-        navigate('/?tab=tree');
-        onCloseSidebar();
-      }
-    },
-    {
-      id: 'roadmap',
-      label: 'Roadmap',
-      icon: ArrowRight,
-      badge: null,
-      onClick: () => {
-        navigate('/?tab=roadmap');
-        onCloseSidebar();
-      }
-    },
-    {
-      id: 'concepts',
-      label: 'Concepts',
-      icon: List,
-      badge: conceptCount > 0 ? conceptCount : null,
-      onClick: () => {
-        navigate('/?tab=concepts');
         onCloseSidebar();
       }
     },
@@ -508,20 +458,6 @@ export default function FluxNavigation({
               <div className="flux-more-grid">
                 <button
                   type="button"
-                  className={`flux-more-item ${activeNavKey === 'analysis' ? 'active' : ''}`}
-                  onClick={() => {
-                    navigate('/notes-analysis');
-                    setIsMoreSheetOpen(false);
-                  }}
-                >
-                  <div className="flux-more-icon-box">
-                    <BarChart3 size={20} />
-                  </div>
-                  <span>Notes Analysis</span>
-                </button>
-
-                <button
-                  type="button"
                   className={`flux-more-item ${activeNavKey === 'files' ? 'active' : ''}`}
                   onClick={() => {
                     navigate('/my-files');
@@ -532,48 +468,6 @@ export default function FluxNavigation({
                     <Folder size={20} />
                   </div>
                   <span>My Files</span>
-                </button>
-
-                <button
-                  type="button"
-                  className={`flux-more-item ${activeNavKey === 'tree' ? 'active' : ''}`}
-                  onClick={() => {
-                    navigate('/?tab=tree');
-                    setIsMoreSheetOpen(false);
-                  }}
-                >
-                  <div className="flux-more-icon-box">
-                    <GitBranch size={20} />
-                  </div>
-                  <span>Concept Tree</span>
-                </button>
-
-                <button
-                  type="button"
-                  className={`flux-more-item ${activeNavKey === 'roadmap' ? 'active' : ''}`}
-                  onClick={() => {
-                    navigate('/?tab=roadmap');
-                    setIsMoreSheetOpen(false);
-                  }}
-                >
-                  <div className="flux-more-icon-box">
-                    <ArrowRight size={20} />
-                  </div>
-                  <span>Roadmap</span>
-                </button>
-
-                <button
-                  type="button"
-                  className={`flux-more-item ${activeNavKey === 'concepts' ? 'active' : ''}`}
-                  onClick={() => {
-                    navigate('/?tab=concepts');
-                    setIsMoreSheetOpen(false);
-                  }}
-                >
-                  <div className="flux-more-icon-box">
-                    <List size={20} />
-                  </div>
-                  <span>Concepts</span>
                 </button>
 
                 <button
