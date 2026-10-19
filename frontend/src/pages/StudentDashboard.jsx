@@ -567,15 +567,18 @@ export default function StudentDashboard({ onToast = () => {} }) {
     const books = overview?.books || [];
     const allChs = books.flatMap((b) => b.chapters || []);
 
-    // Concepts: sum over files
-    const conceptsSum = books.reduce((sum, b) => {
+    // Concepts: sum over files in documentsList or overview books
+    const docConceptsSum = documentsList.reduce((sum, d) => sum + (d.concept_count || 0), 0);
+    const bookConceptsSum = books.reduce((sum, b) => {
       const bConcepts = b.concepts_count || b.chapters?.reduce((cSum, ch) => cSum + (ch.concept_count || 0), 0) || 0;
       return sum + bConcepts;
     }, 0);
-    const totalConcepts = Math.max(overview?.stats?.total_concepts || 0, conceptsSum, 101);
+    const totalConcepts = docConceptsSum > 0
+      ? docConceptsSum
+      : (bookConceptsSum > 0 ? bookConceptsSum : (overview?.stats?.total_concepts || 0));
 
     // Chapters Done / total
-    const totalChapters = books.reduce((sum, b) => sum + (b.chapter_count || b.chapters?.length || 0), 0) || (allChs.length > 0 ? allChs.length : 12);
+    const totalChapters = books.reduce((sum, b) => sum + (b.chapter_count || b.chapters?.length || 0), 0) || allChs.length || (fileCount > 0 ? fileCount : 0);
     const chaptersDone = allChs.filter((ch) => ch.status === 2 || ch.status === 'completed').length;
     const remainingChapters = Math.max(0, totalChapters - chaptersDone);
 
@@ -584,18 +587,20 @@ export default function StudentDashboard({ onToast = () => {} }) {
     if (allChs.length > 0) {
       remainingTime = allChs.reduce((sum, ch) => {
         if (ch.status === 2 || ch.status === 'completed') return sum;
-        const hrs = Number(ch.estimated_hours) || 1.8;
+        const hrs = Number(ch.estimated_hours) || 1.5;
         return sum + hrs;
       }, 0);
     }
     const studyTimeLeft = overview?.stats?.study_time_left > 0
       ? Number(overview.stats.study_time_left.toFixed(1))
-      : (remainingTime > 0 ? Number(remainingTime.toFixed(1)) : 21.1);
+      : (remainingTime > 0 ? Number(remainingTime.toFixed(1)) : 0);
 
     // Mastery: average weighted by concept count across all files
-    let masteryPercent = 3;
-    if (totalConcepts > 0 && overview?.stats?.mastery_percent !== undefined) {
+    let masteryPercent = 0;
+    if (overview?.stats?.mastery_percent !== undefined) {
       masteryPercent = Math.round(overview.stats.mastery_percent);
+    } else if (totalConcepts > 0 && overview?.stats?.studied_concepts_count) {
+      masteryPercent = Math.round((overview.stats.studied_concepts_count / totalConcepts) * 100);
     }
 
     return {
@@ -610,7 +615,7 @@ export default function StudentDashboard({ onToast = () => {} }) {
       time_growth: "-1.5h",
       mastery_growth: "+8%"
     };
-  }, [fileCount, overview]);
+  }, [fileCount, documentsList, overview]);
 
   // One line status message
   const statusLineMessage = useMemo(() => {

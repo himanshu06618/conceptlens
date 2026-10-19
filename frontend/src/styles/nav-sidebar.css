@@ -820,6 +820,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
+  margin-left: auto;
 }
 
 .flux-header-bell-btn,
@@ -918,5 +919,34 @@
     min-width: 36px;
     min-height: 36px;
   }
+}
+
+/* Floating Short Notification Toast Cards */
+.flux-toast-container {
+  position: fixed !important;
+  top: 24px !important;
+  right: 24px !important;
+  z-index: 999999 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 10px !important;
+  pointer-events: none !important;
+  max-width: 420px !important;
+  width: calc(100vw - 48px) !important;
+}
+
+.flux-toast-card {
+  pointer-events: auto !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+  padding: 12px 18px !important;
+  border-radius: 18px !important;
+  background: #1B1B1D !important;
+  color: #FFFFFF !important;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.32), 0 4px 14px rgba(0, 0, 0, 0.14) !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  font-family: 'Poppins', sans-serif !important;
+  box-sizing: border-box !important;
 }
 

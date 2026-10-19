@@ -131,8 +131,18 @@ export default function FileDashboardView({ onToast = () => {} }) {
     }
   };
 
+  // Target book from overview corresponding to this file
+  const targetBook = useMemo(() => {
+    return overview?.books?.find((b) => String(b.id) === String(fileId));
+  }, [overview, fileId]);
+
+  const targetChapters = useMemo(() => {
+    return targetBook?.chapters || [];
+  }, [targetBook]);
+
   // Chapter count for this file
   const chapterCount = useMemo(() => {
+    if (targetChapters.length > 0) return targetChapters.length;
     if (documentData?.chapter_count) return documentData.chapter_count;
     if (topics && topics.length > 0) return topics.length;
     const chSet = new Set();
@@ -141,10 +151,22 @@ export default function FileDashboardView({ onToast = () => {} }) {
       if (ch) chSet.add(ch);
     });
     return chSet.size || (concepts.length > 0 ? 1 : 0);
-  }, [documentData, concepts, topics]);
+  }, [targetChapters, documentData, concepts, topics]);
 
-  // Study time left for this file only
+  // Done chapters count
+  const doneChaptersCount = useMemo(() => {
+    return targetChapters.filter((ch) => ch.status === 2 || ch.status === 'completed').length;
+  }, [targetChapters]);
+
+  // Study time left for this file only (matches chapter estimation in main dashboard)
   const studyTimeLeft = useMemo(() => {
+    if (targetChapters.length > 0) {
+      const rem = targetChapters.reduce((sum, ch) => {
+        if (ch.status === 2 || ch.status === 'completed') return sum;
+        return sum + (Number(ch.estimated_hours) || 1.5);
+      }, 0);
+      if (rem > 0) return Number(rem.toFixed(1));
+    }
     let minutes = 0;
     concepts.forEach((c) => {
       const imp = Math.max(1, Math.min(3, Number(c.importance) || 2));
@@ -154,8 +176,8 @@ export default function FileDashboardView({ onToast = () => {} }) {
     if (minutes > 0) {
       return Number((minutes / 60).toFixed(1));
     }
-    return 3.6;
-  }, [concepts]);
+    return 0;
+  }, [targetChapters, concepts]);
 
   // Loading skeleton
   if (loading && !documentData) {
@@ -434,7 +456,7 @@ export default function FileDashboardView({ onToast = () => {} }) {
       <section className="flux-stat-grid" aria-label="File Progress Statistics">
         <StatCard
           label="Concepts"
-          value={concepts.length > 0 ? concepts.length : (documentData.concept_count || 19)}
+          value={concepts.length > 0 ? concepts.length : (documentData.concept_count || 0)}
           icon={Sparkles}
           iconColor="#111113"
           iconBg="#D7F25C"
@@ -445,13 +467,13 @@ export default function FileDashboardView({ onToast = () => {} }) {
 
         <StatCard
           label="Chapters Done"
-          value={`0 / ${chapterCount}`}
+          value={`${doneChaptersCount} / ${chapterCount}`}
           icon={CheckCircle}
           iconColor="#111113"
           iconBg="#B7A9F2"
-          progress={0}
+          progress={chapterCount > 0 ? (doneChaptersCount / chapterCount) * 100 : 0}
           progressColor="#B7A9F2"
-          contextText={`${chapterCount} chapters left in this file`}
+          contextText={`${Math.max(0, chapterCount - doneChaptersCount)} chapters left in this file`}
         />
 
         <StatCard
@@ -468,12 +490,12 @@ export default function FileDashboardView({ onToast = () => {} }) {
 
         <StatCard
           label="Mastery"
-          value={0}
+          value={targetBook?.mastery_percent !== undefined ? Math.round(targetBook.mastery_percent) : 0}
           unit="%"
           icon={TrendingUp}
           iconColor="#111113"
           iconBg="#D7F25C"
-          progress={0}
+          progress={targetBook?.mastery_percent !== undefined ? Math.round(targetBook.mastery_percent) : 0}
           progressColor="#B7A9F2"
           contextText="This file's milestones"
         />

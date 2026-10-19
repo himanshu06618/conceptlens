@@ -45,8 +45,7 @@ import {
   AmbientBackground,
   Logo, 
   ThemeToggle, 
-  Button,
-  SearchInput
+  Button
 } from './components/ui';
 
 import './styles/tokens.css';
@@ -161,7 +160,6 @@ export default function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isNavSidebarOpen, setIsNavSidebarOpen] = useState(false);
   const [isRemindersOpen, setIsRemindersOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
     try {
       return localStorage.getItem('conceptlens_sidebar_collapsed') === 'true';
@@ -791,20 +789,6 @@ export default function App() {
             <Logo size={32} wordmarkSize="1.25rem" />
           </div>
 
-          {/* Rounded search bar */}
-          <div className="flux-header-search-wrap">
-            <SearchInput
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onClear={() => setSearchQuery('')}
-              placeholder="Search notes, concepts, chapters..."
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && searchQuery.trim()) {
-                  navigate(`/notes?q=${encodeURIComponent(searchQuery.trim())}`);
-                }
-              }}
-            />
-          </div>
 
           {/* Right controls: Theme toggle, Reminders notification bell with lime badge, UserMenu / Sign in */}
           <div className="flux-header-actions">
