@@ -190,25 +190,36 @@ export default function FileDashboardView({ onToast = () => {} }) {
   // Study time left for this file only (matches chapter estimation in main dashboard)
   const studyTimeLeft = useMemo(() => {
     if (isCurrentFileDone) return 0;
+
+    // 1. If user has only 1 file in the curriculum, match the main dashboard overview directly
+    if (totalFilesCount === 1 && typeof overview?.stats?.study_time_left === 'number' && overview.stats.study_time_left >= 0) {
+      return Number(overview.stats.study_time_left.toFixed(1));
+    }
+
+    // 2. Exact concept-based estimation (identical to backend planner_db.py formula)
+    if (concepts && concepts.length > 0) {
+      let minutes = 0;
+      concepts.forEach((c) => {
+        if (c.status === 'studied') return;
+        const imp = Math.max(1, Math.min(3, Number(c.importance) || 2));
+        const dLen = (c.definition || '').length;
+        const estM = Math.max(1, Math.min(30, 4 + imp * 3 + Math.min(8, Math.floor(dLen / 30))));
+        minutes += estM;
+      });
+      return Number((minutes / 60).toFixed(1));
+    }
+
+    // 3. Fallback to chapter est_hours if concepts not loaded
     if (targetChapters.length > 0) {
       const rem = targetChapters.reduce((sum, ch) => {
         if (ch.status === 2 || ch.status === 'completed') return sum;
-        return sum + (Number(ch.estimated_hours) || 1.5);
+        return sum + (Number(ch.est_hours) || Number(ch.estimated_hours) || 1.5);
       }, 0);
       if (rem > 0) return Number(rem.toFixed(1));
     }
-    let minutes = 0;
-    concepts.forEach((c) => {
-      if (c.status === 'studied') return;
-      const imp = Math.max(1, Math.min(3, Number(c.importance) || 2));
-      const dLen = (c.definition || '').length;
-      minutes += 4 + imp * 3 + Math.min(8, Math.floor(dLen / 30));
-    });
-    if (minutes > 0) {
-      return Number((minutes / 60).toFixed(1));
-    }
+
     return 0;
-  }, [targetChapters, concepts, isCurrentFileDone]);
+  }, [totalFilesCount, overview, concepts, isCurrentFileDone, targetChapters]);
 
   // Loading skeleton
   if (loading && !documentData) {

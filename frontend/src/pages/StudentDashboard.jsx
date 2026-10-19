@@ -578,7 +578,7 @@ export default function StudentDashboard({ onToast = () => {} }) {
     if (allChs.length > 0) {
       remainingTime = allChs.reduce((sum, ch) => {
         if (ch.status === 2 || ch.status === 'completed') return sum;
-        const hrs = Number(ch.estimated_hours) || 1.5;
+        const hrs = Number(ch.est_hours) || Number(ch.estimated_hours) || 1.5;
         return sum + hrs;
       }, 0);
     }
