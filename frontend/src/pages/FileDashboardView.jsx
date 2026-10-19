@@ -141,26 +141,55 @@ export default function FileDashboardView({ onToast = () => {} }) {
     return targetBook?.chapters || [];
   }, [targetBook]);
 
-  // Chapter count for this file
-  const chapterCount = useMemo(() => {
-    if (targetChapters.length > 0) return targetChapters.length;
-    if (documentData?.chapter_count) return documentData.chapter_count;
-    if (topics && topics.length > 0) return topics.length;
-    const chSet = new Set();
-    concepts.forEach((c) => {
-      const ch = c.chapter || c.topic;
-      if (ch) chSet.add(ch);
-    });
-    return chSet.size || (concepts.length > 0 ? 1 : 0);
-  }, [targetChapters, documentData, concepts, topics]);
+  // 1 File = 1 Chapter Model: Total files uploaded by user (y)
+  const totalFilesCount = useMemo(() => {
+    return Math.max(1, allDocuments.length || (overview?.books?.length || 1));
+  }, [allDocuments, overview]);
 
-  // Done chapters count
-  const doneChaptersCount = useMemo(() => {
-    return targetChapters.filter((ch) => ch.status === 2 || ch.status === 'completed').length;
-  }, [targetChapters]);
+  // Concepts count for this file (x)
+  const fileConceptsCount = concepts.length > 0 ? concepts.length : (documentData?.concept_count || 0);
+
+  // Studied concepts count in this file
+  const studiedConceptsCount = useMemo(() => {
+    return concepts.filter((c) => c.status === 'studied').length;
+  }, [concepts]);
+
+  // Is this specific file completed (consisting of x concepts)?
+  const isCurrentFileDone = useMemo(() => {
+    if (concepts.length > 0 && studiedConceptsCount === concepts.length) return true;
+    if (targetBook?.mastery_pct !== undefined && targetBook.mastery_pct >= 100) return true;
+    if (targetChapters.length > 0 && targetChapters.every((ch) => ch.status === 2 || ch.completed)) return true;
+    return false;
+  }, [concepts, studiedConceptsCount, targetBook, targetChapters]);
+
+  // Completed chapters count across user's uploaded files (k / y)
+  const completedChaptersCount = useMemo(() => {
+    const currentCompleted = isCurrentFileDone ? 1 : 0;
+    const otherCompleted = (overview?.books || [])
+      .filter((b) => String(b.id) !== String(fileId))
+      .filter((b) => {
+        if (b.mastery_pct !== undefined && b.mastery_pct >= 100) return true;
+        if (b.chapters && b.chapters.length > 0) {
+          return b.chapters.every((ch) => ch.status === 2 || ch.completed);
+        }
+        return false;
+      }).length;
+    return Math.min(totalFilesCount, currentCompleted + otherCompleted);
+  }, [isCurrentFileDone, overview, fileId, totalFilesCount]);
+
+  // File mastery percentage
+  const fileMastery = useMemo(() => {
+    if (concepts.length > 0) {
+      return Math.round((studiedConceptsCount / concepts.length) * 100);
+    }
+    if (targetBook?.mastery_pct !== undefined) return Math.round(targetBook.mastery_pct);
+    if (targetBook?.mastery_percent !== undefined) return Math.round(targetBook.mastery_percent);
+    return 0;
+  }, [concepts, studiedConceptsCount, targetBook]);
 
   // Study time left for this file only (matches chapter estimation in main dashboard)
   const studyTimeLeft = useMemo(() => {
+    if (isCurrentFileDone) return 0;
     if (targetChapters.length > 0) {
       const rem = targetChapters.reduce((sum, ch) => {
         if (ch.status === 2 || ch.status === 'completed') return sum;
@@ -170,6 +199,7 @@ export default function FileDashboardView({ onToast = () => {} }) {
     }
     let minutes = 0;
     concepts.forEach((c) => {
+      if (c.status === 'studied') return;
       const imp = Math.max(1, Math.min(3, Number(c.importance) || 2));
       const dLen = (c.definition || '').length;
       minutes += 4 + imp * 3 + Math.min(8, Math.floor(dLen / 30));
@@ -178,7 +208,7 @@ export default function FileDashboardView({ onToast = () => {} }) {
       return Number((minutes / 60).toFixed(1));
     }
     return 0;
-  }, [targetChapters, concepts]);
+  }, [targetChapters, concepts, isCurrentFileDone]);
 
   // Loading skeleton
   if (loading && !documentData) {
@@ -425,7 +455,7 @@ export default function FileDashboardView({ onToast = () => {} }) {
           </h1>
           <div className="flux-page-subtitle-row">
             <span className="flux-page-subtitle">
-              This file only · {concepts.length} {concepts.length === 1 ? 'concept' : 'concepts'} · {chapterCount} {chapterCount === 1 ? 'chapter' : 'chapters'} · {(documentData.file_type || 'PDF').toUpperCase()}
+              This file only · {fileConceptsCount} {fileConceptsCount === 1 ? 'concept' : 'concepts'} · 1 chapter · {(documentData.file_type || 'PDF').toUpperCase()}
             </span>
           </div>
         </div>
@@ -457,7 +487,7 @@ export default function FileDashboardView({ onToast = () => {} }) {
       <section className="flux-stat-grid" aria-label="File Progress Statistics">
         <StatCard
           label="Concepts"
-          value={concepts.length > 0 ? concepts.length : (documentData.concept_count || 0)}
+          value={fileConceptsCount}
           icon={Sparkles}
           iconColor="#111113"
           iconBg="#D7F25C"
@@ -468,13 +498,17 @@ export default function FileDashboardView({ onToast = () => {} }) {
 
         <StatCard
           label="Chapters Done"
-          value={`${doneChaptersCount} / ${chapterCount}`}
+          value={`${completedChaptersCount} / ${totalFilesCount}`}
           icon={CheckCircle}
           iconColor="#111113"
           iconBg="#B7A9F2"
-          progress={chapterCount > 0 ? (doneChaptersCount / chapterCount) * 100 : 0}
+          progress={totalFilesCount > 0 ? (completedChaptersCount / totalFilesCount) * 100 : 0}
           progressColor="#B7A9F2"
-          contextText={`${Math.max(0, chapterCount - doneChaptersCount)} chapters left in this file`}
+          contextText={
+            completedChaptersCount >= totalFilesCount
+              ? `All ${totalFilesCount} ${totalFilesCount === 1 ? 'chapter' : 'chapters'} completed`
+              : `${Math.max(0, totalFilesCount - completedChaptersCount)} ${totalFilesCount - completedChaptersCount === 1 ? 'chapter' : 'chapters'} remaining`
+          }
         />
 
         <StatCard
@@ -484,19 +518,19 @@ export default function FileDashboardView({ onToast = () => {} }) {
           icon={Clock}
           iconColor="#111113"
           iconBg="#E6E6E8"
-          progress={40}
+          progress={fileMastery}
           progressColor="#D7F25C"
           contextText="For this file only"
         />
 
         <StatCard
           label="Mastery"
-          value={targetBook?.mastery_percent !== undefined ? Math.round(targetBook.mastery_percent) : 0}
+          value={fileMastery}
           unit="%"
           icon={TrendingUp}
           iconColor="#111113"
           iconBg="#D7F25C"
-          progress={targetBook?.mastery_percent !== undefined ? Math.round(targetBook.mastery_percent) : 0}
+          progress={fileMastery}
           progressColor="#B7A9F2"
           contextText="This file's milestones"
         />
@@ -511,8 +545,8 @@ export default function FileDashboardView({ onToast = () => {} }) {
         <CourseStatusCard
           activePlan={overview?.active_plan}
           planStatus={overview?.plan_status}
-          totalChapters={chapterCount}
-          doneChapters={0}
+          totalChapters={1}
+          doneChapters={isCurrentFileDone ? 1 : 0}
           subtitle="Study plan for this file"
         />
         <DotMatrixStreakCard
@@ -552,9 +586,10 @@ export default function FileDashboardView({ onToast = () => {} }) {
           onSelectDoc={(id) => navigate(`/files/${id}`)}
           onDeleteDocument={handleDeleteDoc}
           onRenameDocument={handleRenameDoc}
-          chapterCount={chapterCount}
+          chapterCount={1}
           isLoading={false}
           onToast={onToast}
+          onProgressChange={loadData}
           initialTab="concepts"
         />
       </div>

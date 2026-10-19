@@ -562,9 +562,15 @@ export default function StudentDashboard({ onToast = () => {} }) {
       ? docConceptsSum
       : (bookConceptsSum > 0 ? bookConceptsSum : (overview?.stats?.total_concepts || 0));
 
-    // Chapters Done / total
-    const totalChapters = books.reduce((sum, b) => sum + (b.chapter_count || b.chapters?.length || 0), 0) || allChs.length || (fileCount > 0 ? fileCount : 0);
-    const chaptersDone = allChs.filter((ch) => ch.status === 2 || ch.status === 'completed').length;
+    // Chapters Done / total (1 uploaded file = 1 chapter)
+    const totalChapters = fileCount > 0 ? fileCount : (books.length || (overview?.stats?.total_chapters || 0));
+    const chaptersDone = books.filter((b) => {
+      if (b.mastery_pct !== undefined && b.mastery_pct >= 100) return true;
+      if (b.chapters && b.chapters.length > 0) {
+        return b.chapters.every((ch) => ch.status === 2 || ch.completed);
+      }
+      return false;
+    }).length || allChs.filter((ch) => ch.status === 2 || ch.status === 'completed').length;
     const remainingChapters = Math.max(0, totalChapters - chaptersDone);
 
     // Study Time Left: sum of remaining hours across all files
