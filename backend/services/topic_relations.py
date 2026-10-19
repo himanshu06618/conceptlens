@@ -34,13 +34,14 @@ STRICT RULES:
 
 def generate_fallback_relations(topics: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
-    Fallback: Chunks of 4 consecutive topics with no edges if AI call fails or is unavailable.
+    Fallback: Chunks of 4 consecutive topics with sequential learning relations (prerequisites and related topics).
     """
     if not topics:
         return {"clusters": [], "edges": []}
 
     sorted_topics = sorted(topics, key=lambda t: t.get("order_index", 0))
     clusters = []
+    edges = []
     chunk_size = 4
 
     for i in range(0, len(sorted_topics), chunk_size):
@@ -52,9 +53,24 @@ def generate_fallback_relations(topics: List[Dict[str, Any]]) -> Dict[str, Any]:
             "topic_ids": [t["id"] for t in chunk]
         })
 
+        # Generate realistic learning edges within the cluster
+        for j in range(1, len(chunk)):
+            # Predecessor is direct prerequisite for succeeding topic
+            edges.append({
+                "from": chunk[j - 1]["id"],
+                "to": chunk[j]["id"],
+                "type": "prerequisite"
+            })
+            # Foundational item chunk[0] and peer items are related
+            edges.append({
+                "from": chunk[0]["id"],
+                "to": chunk[j]["id"],
+                "type": "related"
+            })
+
     return {
         "clusters": clusters,
-        "edges": []
+        "edges": edges
     }
 
 

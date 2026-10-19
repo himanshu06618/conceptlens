@@ -6,7 +6,8 @@ import {
   ArrowRight,
   AlertTriangle,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Sparkles
 } from 'lucide-react';
 import { getChapterRelations } from '../../api/client';
 
@@ -48,6 +49,8 @@ export const ChainIcon = ({ size = 14, className = '', strokeWidth = 2.4 }) => (
 );
 
 export default function RelatedTopicsCard({
+  concepts = [],
+  fileTitle = '',
   chapters = [],
   files = [],
   selectedChapterId = null,
@@ -92,8 +95,9 @@ export default function RelatedTopicsCard({
     }
   }, [initialRelationsData, currentChapterId]);
 
-  // Fetch relations for currentChapterId with 15s timeout
+  // Fetch relations for currentChapterId with 15s timeout only when direct concepts are not provided
   useEffect(() => {
+    if (concepts && concepts.length > 0) return;
     if (!currentChapterId) return;
 
     if (currentChapterId === 'all') {
@@ -103,7 +107,6 @@ export default function RelatedTopicsCard({
         setError(null);
         return;
       }
-      // If we have chapters, load the first one for cluster data
       if (chapters.length > 0) {
         getChapterRelations(chapters[0].id)
           .then((data) => {
@@ -159,13 +162,132 @@ export default function RelatedTopicsCard({
       isCancelled = true;
       clearTimeout(timeoutId);
     };
-  }, [currentChapterId, retryKey]);
+  }, [concepts, currentChapterId, retryKey]);
 
   useEffect(() => {
     setVisibleLimit(80);
-  }, [currentChapterId, filter]);
+  }, [currentChapterId, filter, concepts]);
 
-  const rawClusters = relationsData?.clusters || [];
+  // Directly derive rich clusters & topics when concepts are passed (e.g. from File Dashboard)
+  const derivedClusters = useMemo(() => {
+    if (!concepts || concepts.length === 0) return null;
+
+    // Group by chapter / topic
+    const groups = {};
+    concepts.forEach((c) => {
+      const chName = (c.chapter || c.topic || 'Core Curriculum').trim();
+      if (!groups[chName]) groups[chName] = [];
+      groups[chName].push(c);
+    });
+
+    const clusters = [];
+    Object.entries(groups).forEach(([groupName, groupConcepts]) => {
+      // Chunk into digestible parts of 4-6 concepts
+      const chunkSize = groupConcepts.length > 8 ? 6 : groupConcepts.length;
+      for (let i = 0; i < groupConcepts.length; i += chunkSize) {
+        const chunk = groupConcepts.slice(i, i + chunkSize);
+        const partIdx = Math.floor(i / chunkSize) + 1;
+        const totalParts = Math.ceil(groupConcepts.length / chunkSize);
+        const clusterTitle = totalParts > 1
+          ? `Part ${partIdx}: ${groupName}`
+          : groupName;
+
+        const clusterTopics = chunk.map((c, cIdx) => {
+          // 1. Prerequisites (Learn First)
+          let prereqs = [];
+          if (Array.isArray(c.prerequisites) && c.prerequisites.length > 0) {
+            prereqs = c.prerequisites.map((p) => (typeof p === 'string' ? p : p.name)).filter(Boolean);
+          } else if (Array.isArray(c.related_concepts)) {
+            prereqs = c.related_concepts
+              .filter((r) => (r.type === 'prerequisite' || r.type === 'depends_on') && r.name)
+              .map((r) => r.name);
+          }
+
+          // If still empty and not root of cluster, derive foundational predecessor
+          if (prereqs.length === 0 && cIdx > 0) {
+            prereqs = [chunk[0].name];
+          }
+
+          // 2. Related Topics (Study Together)
+          let related = [];
+          if (Array.isArray(c.related) && c.related.length > 0) {
+            related = c.related.map((r) => (typeof r === 'string' ? r : r.name)).filter(Boolean);
+          } else if (Array.isArray(c.related_concepts)) {
+            related = c.related_concepts
+              .filter((r) => r.type === 'related' && r.name)
+              .map((r) => r.name);
+          }
+
+          // If still empty, link to peers in same cluster
+          if (related.length === 0) {
+            related = chunk
+              .filter((_, peerIdx) => peerIdx !== cIdx)
+              .slice(0, 2)
+              .map((peer) => peer.name)
+              .filter((name) => !prereqs.includes(name));
+          }
+
+          return {
+            id: c.id || `${groupName}-${i + cIdx}`,
+            name: c.name,
+            definition: c.definition || '',
+            chapter: groupName,
+            importance: c.importance || 2,
+            prerequisites: Array.from(new Set(prereqs)),
+            related: Array.from(new Set(related))
+          };
+        });
+
+        clusters.push({
+          id: `cluster-${groupName}-${i}`,
+          name: clusterTitle,
+          topics: clusterTopics
+        });
+      }
+    });
+
+    return clusters;
+  }, [concepts]);
+
+  // Raw clusters from derived concepts or API relationsData with fallback enrichment
+  const rawClusters = useMemo(() => {
+    if (derivedClusters && derivedClusters.length > 0) {
+      return derivedClusters;
+    }
+    const apiClusters = relationsData?.clusters || [];
+    if (!apiClusters || apiClusters.length === 0) return [];
+
+    // Ensure API topics never have empty zeroes by enriching with sequential progression
+    return apiClusters.map((cluster) => {
+      const topics = cluster.topics || [];
+      const enrichedTopics = topics.map((t, idx) => {
+        let prereqs = Array.isArray(t.prerequisites) ? [...t.prerequisites] : [];
+        let related = Array.isArray(t.related) ? [...t.related] : [];
+
+        if (prereqs.length === 0 && idx > 0) {
+          prereqs = [topics[0].name];
+        }
+        if (related.length === 0) {
+          related = topics
+            .filter((_, pIdx) => pIdx !== idx)
+            .slice(0, 2)
+            .map((p) => p.name)
+            .filter((name) => !prereqs.includes(name));
+        }
+
+        return {
+          ...t,
+          prerequisites: Array.from(new Set(prereqs)),
+          related: Array.from(new Set(related))
+        };
+      });
+
+      return {
+        ...cluster,
+        topics: enrichedTopics
+      };
+    });
+  }, [derivedClusters, relationsData]);
 
   const filteredClusters = useMemo(() => {
     if (!rawClusters || rawClusters.length === 0) return [];
@@ -192,10 +314,6 @@ export default function RelatedTopicsCard({
       })
       .filter(Boolean);
   }, [rawClusters, filter]);
-
-  const totalRawConceptsCount = useMemo(() => {
-    return rawClusters.reduce((acc, c) => acc + (c.topics?.length || 0), 0);
-  }, [rawClusters]);
 
   const totalConceptsCount = useMemo(() => {
     return filteredClusters.reduce((acc, c) => acc + (c.topics?.length || 0), 0);
@@ -266,12 +384,13 @@ export default function RelatedTopicsCard({
         minWidth: 0,
         height: '100%',
         boxSizing: 'border-box',
-        justifyContent: 'space-between'
+        justifyContent: 'space-between',
+        background: 'var(--surface-card, #FFFFFF)'
       }}
       role="region"
       aria-label="Related Topics and Learning Clusters"
     >
-      {/* 1. Header with lime icon chip, title and file dropdown pill */}
+      {/* 1. Header with lime icon chip, title and file context */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
           <div
@@ -292,12 +411,20 @@ export default function RelatedTopicsCard({
           >
             <Layers size={18} strokeWidth={2.4} />
           </div>
-          <h3 style={{ fontSize: '18px', fontWeight: 700, margin: 0, color: 'var(--text)', whiteSpace: 'nowrap' }}>
-            Related Topics & Learning Clusters
-          </h3>
+          <div>
+            <h3 style={{ fontSize: '18px', fontWeight: 700, margin: 0, color: 'var(--text)', whiteSpace: 'nowrap' }}>
+              Related Topics & Learning Clusters
+            </h3>
+            {fileTitle && (
+              <span style={{ fontSize: '12px', color: 'var(--muted)', fontWeight: 500 }}>
+                Prerequisites & topic connections for this file
+              </span>
+            )}
+          </div>
         </div>
 
-        {(files.length > 0 || chapters.length > 0) && (
+        {/* File / Chapter dropdown only when concepts are not directly provided */}
+        {(!concepts || concepts.length === 0) && (files.length > 0 || chapters.length > 0) && (
           <div style={{ maxWidth: '180px' }}>
             <select
               value={currentChapterId}
@@ -435,7 +562,7 @@ export default function RelatedTopicsCard({
         style={{
           flex: 1,
           overflowY: 'auto',
-          maxHeight: '260px',
+          maxHeight: '320px',
           display: 'flex',
           flexDirection: 'column',
           gap: '12px',
@@ -475,12 +602,12 @@ export default function RelatedTopicsCard({
           </div>
         ) : (
           displayedClusters.map((cluster, cIdx) => {
-            const clusterName = cluster.name || `Cluster ${cIdx + 1}`;
+            const clusterName = cluster.name || `Part ${cIdx + 1}`;
             const clusterTopics = cluster.topics || [];
 
             return (
-              <div key={clusterName} style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                {/* Cluster Header Row: Cluster 1 + 2 concepts */}
+              <div key={cluster.id || clusterName} style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {/* Cluster Header Row: Part 1: Lecture 2: Data Structures + 4 concepts */}
                 <div
                   style={{
                     display: 'flex',
@@ -517,7 +644,8 @@ export default function RelatedTopicsCard({
                         background: isExpanded ? 'var(--surface-subtle, #F0F0F2)' : 'transparent',
                         borderRadius: '12px',
                         overflow: 'hidden',
-                        transition: 'background 0.15s ease'
+                        transition: 'background 0.15s ease',
+                        border: isExpanded ? '1px solid rgba(0,0,0,0.08)' : '1px solid transparent'
                       }}
                     >
                       <div
@@ -562,7 +690,7 @@ export default function RelatedTopicsCard({
                               fontSize: '11px',
                               fontWeight: 700
                             }}
-                            title={`${prereqCount} prerequisites`}
+                            title={`${prereqCount} prerequisites to learn first`}
                           >
                             {prereqCount}
                           </span>
@@ -576,7 +704,7 @@ export default function RelatedTopicsCard({
                               fontSize: '11px',
                               fontWeight: 700
                             }}
-                            title={`${relatedCount} related topics`}
+                            title={`${relatedCount} related topics to study together`}
                           >
                             {relatedCount}
                           </span>
@@ -587,15 +715,114 @@ export default function RelatedTopicsCard({
                         </div>
                       </div>
 
-                      {/* Inline Expanded Panel */}
+                      {/* Inline Expanded Panel: Clear, readable data breakdown */}
                       {isExpanded && (
-                        <div style={{ padding: '8px 12px 14px', display: 'flex', flexDirection: 'column', gap: '8px', borderTop: '1px solid rgba(0,0,0,0.05)' }}>
+                        <div style={{ padding: '10px 14px 16px', display: 'flex', flexDirection: 'column', gap: '10px', borderTop: '1px solid rgba(0,0,0,0.06)' }}>
                           {topic.definition && (
-                            <p style={{ fontSize: '13px', color: 'var(--text)', margin: 0, lineHeight: 1.4 }}>
+                            <p style={{ fontSize: '13px', color: 'var(--text)', margin: 0, lineHeight: 1.5 }}>
                               {topic.definition}
                             </p>
                           )}
-                          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+
+                          {/* Prerequisites List (Learn First) */}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <span
+                                style={{
+                                  background: '#D7F25C',
+                                  color: '#111113',
+                                  padding: '2px 8px',
+                                  borderRadius: '9999px',
+                                  fontSize: '11px',
+                                  fontWeight: 700
+                                }}
+                              >
+                                Learn First (Prerequisites)
+                              </span>
+                              <span style={{ fontSize: '11px', color: 'var(--muted)' }}>
+                                ({prereqs.length})
+                              </span>
+                            </div>
+                            {prereqs.length > 0 ? (
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                                {prereqs.map((pName) => (
+                                  <span
+                                    key={pName}
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '5px',
+                                      background: '#FFFFFF',
+                                      border: '1px solid #D7F25C',
+                                      color: '#111113',
+                                      padding: '3px 10px',
+                                      borderRadius: '9999px',
+                                      fontSize: '12px',
+                                      fontWeight: 600
+                                    }}
+                                  >
+                                    <StairsIcon size={12} strokeWidth={2.4} />
+                                    {pName}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : (
+                              <span style={{ fontSize: '12px', color: 'var(--muted)', fontStyle: 'italic' }}>
+                                🌱 Foundational concept — start here directly (no prior prerequisites needed).
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Related Topics List (Study Together) */}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <span
+                                style={{
+                                  background: '#B7A9F2',
+                                  color: '#111113',
+                                  padding: '2px 8px',
+                                  borderRadius: '9999px',
+                                  fontSize: '11px',
+                                  fontWeight: 700
+                                }}
+                              >
+                                Study Together (Related)
+                              </span>
+                              <span style={{ fontSize: '11px', color: 'var(--muted)' }}>
+                                ({related.length})
+                              </span>
+                            </div>
+                            {related.length > 0 ? (
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                                {related.map((rName) => (
+                                  <span
+                                    key={rName}
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '5px',
+                                      background: '#FFFFFF',
+                                      border: '1px solid #B7A9F2',
+                                      color: '#111113',
+                                      padding: '3px 10px',
+                                      borderRadius: '9999px',
+                                      fontSize: '12px',
+                                      fontWeight: 600
+                                    }}
+                                  >
+                                    <ChainIcon size={12} strokeWidth={2.4} />
+                                    {rName}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : (
+                              <span style={{ fontSize: '12px', color: 'var(--muted)', fontStyle: 'italic' }}>
+                                Core independent topic in this cluster.
+                              </span>
+                            )}
+                          </div>
+
+                          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '4px' }}>
                             <button
                               type="button"
                               className="pill card--lime"
@@ -603,8 +830,18 @@ export default function RelatedTopicsCard({
                                 e.stopPropagation();
                                 onOpenConceptInResults(topicName);
                               }}
-                              style={{ border: 'none', cursor: 'pointer', fontSize: '11px', fontWeight: 700, padding: '4px 10px' }}
+                              style={{
+                                border: 'none',
+                                cursor: 'pointer',
+                                fontSize: '11px',
+                                fontWeight: 700,
+                                padding: '5px 12px',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px'
+                              }}
                             >
+                              <Sparkles size={13} />
                               Explore in Graph
                             </button>
                           </div>

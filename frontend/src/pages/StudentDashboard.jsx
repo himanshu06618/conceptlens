@@ -28,7 +28,6 @@ import {
 } from '../api/client';
 import { getDashboardCache, saveDashboardCache } from '../utils/dashboardCache';
 
-import RelatedTopicsCard from '../components/planner/RelatedTopicsCard';
 import CourseStatusCard from '../components/planner/CourseStatusCard';
 import CompactUploadCard from '../components/planner/CompactUploadCard';
 import BookshelfLoader from '../components/ui/BookshelfLoader';
@@ -81,9 +80,6 @@ export default function StudentDashboard({ onToast = () => {} }) {
   const [documentsList, setDocumentsList] = useState([]);
   const [isDocumentsLoading, setIsDocumentsLoading] = useState(false);
 
-  // Selected chapter for relations card
-  const [relationsChapterId, setRelationsChapterId] = useState(null);
-
   // Redirect teachers
   useEffect(() => {
     if (user?.role === 'teacher') {
@@ -106,9 +102,6 @@ export default function StudentDashboard({ onToast = () => {} }) {
           }
           if (cached.overview.books?.length > 0) {
             setActiveBookId(cached.overview.books[0].id);
-          }
-          if (cached.overview.selected_chapter_id && !relationsChapterId) {
-            setRelationsChapterId(cached.overview.selected_chapter_id);
           }
         }
         // Cached data is ready immediately: show instant paint
@@ -161,9 +154,6 @@ export default function StudentDashboard({ onToast = () => {} }) {
           } else {
             setActiveBookId(null);
           }
-          if (data.overview.selected_chapter_id && !relationsChapterId) {
-            setRelationsChapterId(data.overview.selected_chapter_id);
-          }
         }
 
         // Save fresh per-user payload in IndexedDB
@@ -200,7 +190,7 @@ export default function StudentDashboard({ onToast = () => {} }) {
         setIsUpdating(false);
       }
     },
-    [selectedSubjectId, relationsChapterId, activeBookId, user?.id, onToast]
+    [selectedSubjectId, activeBookId, user?.id, onToast]
   );
 
   const handleManualRetry = () => {
@@ -484,12 +474,7 @@ export default function StudentDashboard({ onToast = () => {} }) {
     }, 200);
   }, [allChapters, activeBookId, activeDocId, loadDocResults]);
 
-  // Auto-set relationsChapterId when chapters load
-  useEffect(() => {
-    if (allChapters.length > 0 && !relationsChapterId) {
-      setRelationsChapterId(allChapters[0].id);
-    }
-  }, [allChapters, relationsChapterId]);
+
 
   // Handlers for Chapter Progress & Meta
   const handleUpdateChapterStatus = async (chapterId, status) => {
@@ -852,22 +837,7 @@ export default function StudentDashboard({ onToast = () => {} }) {
         />
       </section>
 
-      {/* 6. Full-Width Related Topics & Learning Clusters */}
-      <section className="flux-related-topics-row" style={{ width: '100%', marginBottom: '24px' }}>
-        <RelatedTopicsCard
-          chapters={allChapters}
-          files={documentsList}
-          selectedChapterId={relationsChapterId}
-          onSelectChapter={(cId) => setRelationsChapterId(cId)}
-          onOpenConceptInResults={handleOpenConceptInResults}
-          activePlan={activePlan}
-          initialRelationsData={
-            relationsChapterId === overview?.selected_chapter_id
-              ? (overview?.related_topics || overview?.relations)
-              : null
-          }
-        />
-      </section>
+
 
       {/* Floating Ask Your Notes Button & Drawer (Screen 3) */}
       <button

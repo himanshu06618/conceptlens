@@ -22,6 +22,7 @@ import {
 } from '../api/client';
 import { StatCard, DotMatrixStreakCard } from '../components/ui';
 import CourseStatusCard from '../components/planner/CourseStatusCard';
+import RelatedTopicsCard from '../components/planner/RelatedTopicsCard';
 import UnifiedResultsPanel from '../components/results/UnifiedResultsPanel';
 import AskAnswerCard from '../components/results/AskAnswerCard';
 import BookshelfLoader from '../components/ui/BookshelfLoader';
@@ -522,7 +523,17 @@ export default function FileDashboardView({ onToast = () => {} }) {
         />
       </section>
 
-      {/* 5. Extraction Workspace as one large white card (radius 24px, padding 28px) */}
+      {/* 5. Related Topics & Learning Clusters for this specific file */}
+      <section className="flux-related-topics-row" style={{ width: '100%', marginBottom: '24px' }}>
+        <RelatedTopicsCard
+          concepts={concepts}
+          fileTitle={documentData?.filename}
+          activePlan={overview?.active_plan}
+          onOpenConceptInResults={() => {}}
+        />
+      </section>
+
+      {/* 6. Extraction Workspace as one large white card (radius 24px, padding 28px) */}
       <div
         className="card"
         style={{
