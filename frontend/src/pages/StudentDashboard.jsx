@@ -838,6 +838,7 @@ export default function StudentDashboard({ onToast = () => {} }) {
         <DotMatrixStreakCard
           completedConceptsCount={overview?.stats?.studied_concepts_count || 0}
           activeDays={overview?.stats?.active_days || []}
+          activeTimestamps={overview?.stats?.active_timestamps || []}
           subtitle={
             (overview?.stats?.studied_concepts_count || 0) > 0
               ? `${overview.stats.studied_concepts_count} concepts completed · all ${fileCount} files combined`

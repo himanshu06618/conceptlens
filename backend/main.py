@@ -1583,15 +1583,19 @@ async def root_dashboard_summary_endpoint(
     order_mode: str = Query(default="syllabus"),
     scope_chapter_id: Optional[str] = Query(default=None),
     chapter_for_relations: Optional[str] = Query(default=None),
+    tz: Optional[str] = Query(default=None),
+    x_timezone: Optional[str] = Header(default=None, alias="X-Timezone"),
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
+    client_tz = tz or x_timezone
     return get_dashboard_summary_data(
         user_id=current_user["id"],
         subject_id=subject_id,
         days=days,
         order_mode=order_mode,
         scope_chapter_id=scope_chapter_id,
-        chapter_for_relations=chapter_for_relations
+        chapter_for_relations=chapter_for_relations,
+        client_tz=client_tz
     )
 
 @app.get("/api/documents/{doc_id}/export")

@@ -60,4 +60,23 @@ describe('DotMatrixStreakCard — Study Consistency', () => {
     expect(day20).toBeTruthy();
     expect(day20.style.boxShadow).toContain('rgba(215, 242, 92');
   });
+
+  it('correctly maps UTC ISO timestamp to local day (e.g. day 20 from 23:11 UTC)', () => {
+    const expectedDay = new Date('2026-10-19T23:11:34+00:00').getDate();
+    const { container } = render(
+      <DotMatrixStreakCard
+        completedConceptsCount={1}
+        activeTimestamps={['2026-10-19T23:11:34+00:00']}
+        monthName="October"
+        year={2026}
+      />
+    );
+
+    const dayGrid = container.querySelector('[role="img"]');
+    const glowingElements = Array.from(dayGrid.children).filter(
+      (el) => el.style.boxShadow && el.style.boxShadow !== 'none'
+    );
+    expect(glowingElements.length).toBe(1);
+    expect(glowingElements[0].textContent).toBe(String(expectedDay));
+  });
 });

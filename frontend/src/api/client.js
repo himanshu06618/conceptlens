@@ -41,6 +41,14 @@ async function apiFetch(endpoint, options = {}) {
     headers['X-Guest-Session'] = guestSession;
   }
 
+  // Attach user's local timezone (e.g. Asia/Kolkata)
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (tz && !headers['X-Timezone']) {
+      headers['X-Timezone'] = tz;
+    }
+  } catch {}
+
   if (options.body && typeof options.body === 'string' && !headers['Content-Type']) {
     headers['Content-Type'] = 'application/json';
   }
@@ -501,6 +509,10 @@ export async function getDashboardBootstrap({
   if (subjectId) params.append('subject_id', subjectId);
   if (days) params.append('days', String(days));
   if (orderMode) params.append('order_mode', orderMode);
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (tz) params.append('tz', tz);
+  } catch {}
 
   const query = params.toString() ? `?${params.toString()}` : '';
   const res = await apiFetch(`/dashboard/bootstrap${query}`);
@@ -536,6 +548,10 @@ export async function getDashboardSummary({
   if (orderMode) params.append('order_mode', orderMode);
   if (scopeChapterId) params.append('scope_chapter_id', scopeChapterId);
   if (chapterForRelations) params.append('chapter_for_relations', chapterForRelations);
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (tz) params.append('tz', tz);
+  } catch {}
 
   const query = params.toString() ? `?${params.toString()}` : '';
   const res = await apiFetch(`/dashboard/summary${query}`);

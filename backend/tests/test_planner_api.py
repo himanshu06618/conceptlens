@@ -220,3 +220,53 @@ def test_dashboard_bootstrap_endpoint(client_with_user):
     assert root_resp.status_code == 200
     assert root_resp.json()["user"]["id"] == user["id"]
 
+
+def test_dashboard_summary_timezone_handling(client_with_user):
+    client, user = client_with_user
+    conn = get_connection()
+    try:
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO documents (id, user_id, filename, file_type, status, created_at)
+            VALUES ('doc-tz-1', ?, 'tz_test.pdf', 'pdf', 'completed', '2026-10-19T00:00:00')
+            """,
+            (user["id"],)
+        )
+        cur = conn.execute(
+            """
+            INSERT INTO concepts (document_id, name, definition, topic, score, importance, source_excerpt)
+            VALUES ('doc-tz-1', 'Quantum State', 'Quantum state vector', 'Physics', 0.9, 2, 'excerpt')
+            """
+        )
+        cid = cur.lastrowid
+        # In UTC it is 2026-10-19 23:11:34, but in Asia/Kolkata (IST) it is 2026-10-20 04:41:34 AM
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO concept_progress (user_id, concept_id, status, updated_at)
+            VALUES (?, ?, 'studied', '2026-10-19T23:11:34+00:00')
+            """,
+            (user["id"], str(cid))
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    try:
+        from backend.services.planner_db import invalidate_user_summary_cache
+    except ImportError:
+        from services.planner_db import invalidate_user_summary_cache
+    invalidate_user_summary_cache(user["id"])
+
+    # Query with Asia/Kolkata timezone
+    resp = client.get("/api/dashboard/summary?tz=Asia/Kolkata")
+    assert resp.status_code == 200
+    data = resp.json()
+    stats = data.get("stats", {})
+
+    assert "active_timestamps" in stats
+    assert "2026-10-19T23:11:34+00:00" in stats["active_timestamps"]
+    # 2026-10-19T23:11:34+00:00 in Asia/Kolkata must resolve to day 20, NOT day 19!
+    assert 20 in stats["active_days"]
+    assert 19 not in stats["active_days"]
+
+

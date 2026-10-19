@@ -17,7 +17,7 @@ import json
 from typing import Any, Dict, List, Optional, Tuple
 from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Header, status
 
 try:
     from backend.auth import get_current_user
@@ -227,6 +227,8 @@ async def get_dashboard_summary_endpoint(
     order_mode: str = Query(default="syllabus"),
     scope_chapter_id: Optional[str] = Query(default=None),
     chapter_for_relations: Optional[str] = Query(default=None),
+    tz: Optional[str] = Query(default=None),
+    x_timezone: Optional[str] = Header(default=None, alias="X-Timezone"),
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
     """
@@ -234,13 +236,15 @@ async def get_dashboard_summary_endpoint(
     Returns the 4 stat values, status line, notes analysis & chapters,
     active plan status (daily pace), study route planner, and related topics clusters.
     """
+    client_tz = tz or x_timezone
     return get_dashboard_summary_data(
         user_id=current_user["id"],
         subject_id=subject_id,
         days=days,
         order_mode=order_mode,
         scope_chapter_id=scope_chapter_id,
-        chapter_for_relations=chapter_for_relations
+        chapter_for_relations=chapter_for_relations,
+        client_tz=client_tz
     )
 
 
@@ -251,6 +255,8 @@ async def get_dashboard_bootstrap_endpoint(
     subject_id: Optional[str] = Query(default=None),
     days: int = Query(default=7),
     order_mode: str = Query(default="syllabus"),
+    tz: Optional[str] = Query(default=None),
+    x_timezone: Optional[str] = Header(default=None, alias="X-Timezone"),
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
     """
@@ -275,13 +281,15 @@ async def get_dashboard_bootstrap_endpoint(
                 "avatar_url": u.get("avatar_url")
             }
 
+    client_tz = tz or x_timezone
     user_profile = format_user_response(current_user)
     return get_dashboard_bootstrap_data(
         user_id=current_user["id"],
         user_profile=user_profile,
         subject_id=subject_id,
         days=days,
-        order_mode=order_mode
+        order_mode=order_mode,
+        client_tz=client_tz
     )
 
 

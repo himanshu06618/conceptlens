@@ -562,7 +562,8 @@ export default function FileDashboardView({ onToast = () => {} }) {
         />
         <DotMatrixStreakCard
           completedConceptsCount={studiedConceptsCount}
-          activeDays={studiedConceptsCount > 0 ? (overview?.stats?.active_days?.length > 0 ? overview.stats.active_days : [new Date().getDate()]) : []}
+          activeDays={overview?.stats?.active_days || []}
+          activeTimestamps={overview?.stats?.active_timestamps || []}
           subtitle={
             studiedConceptsCount > 0
               ? `${studiedConceptsCount} concepts completed · this file only`

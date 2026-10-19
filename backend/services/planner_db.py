@@ -3,6 +3,10 @@ import json
 import uuid
 import logging
 from datetime import datetime, timezone, date
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:
+    ZoneInfo = None
 from typing import Optional, List, Dict, Any, Tuple, Set
 from pathlib import Path
 
@@ -1311,7 +1315,8 @@ def get_dashboard_summary_data(
     days: int = 7,
     order_mode: str = "syllabus",
     scope_chapter_id: Optional[str] = None,
-    chapter_for_relations: Optional[str] = None
+    chapter_for_relations: Optional[str] = None,
+    client_tz: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Unified source of truth endpoint data for the student dashboard.
@@ -1326,7 +1331,7 @@ def get_dashboard_summary_data(
     """
     import time
     now_ts = time.time()
-    cache_key = f"{user_id}:{subject_id}:{days}:{order_mode}:{scope_chapter_id}:{chapter_for_relations}"
+    cache_key = f"{user_id}:{subject_id}:{days}:{order_mode}:{scope_chapter_id}:{chapter_for_relations}:{client_tz or 'utc'}"
     cached = _user_summary_cache.get(cache_key)
     if cached:
         cached_ts, cached_data = cached
@@ -1417,19 +1422,53 @@ def get_dashboard_summary_data(
     total_concepts = len(user_concepts) if user_concepts else sum(ch.get("concept_count", 0) for ch in all_chapters)
     studied_concept_count = sum(1 for c in user_concepts if prog_map.get(str(c["id"])) == "studied")
 
-    # Calculate active study days in current month from concept progress
-    cur_ym = date.today().strftime("%Y-%m")
+    # Calculate active study days in current month from concept progress with timezone support
+    target_tz = None
+    if client_tz and ZoneInfo:
+        try:
+            target_tz = ZoneInfo(client_tz.strip())
+        except Exception:
+            target_tz = None
+
+    if target_tz:
+        now_local = datetime.now(target_tz)
+        cur_ym = now_local.strftime("%Y-%m")
+        cur_day = now_local.day
+    else:
+        now_utc = datetime.now(timezone.utc)
+        cur_ym = now_utc.strftime("%Y-%m")
+        cur_day = now_utc.day
+
     active_days_set = set()
+    active_timestamps = []
     for r in prog_rows:
-        if r["status"] == "studied" and r["updated_at"] and str(r["updated_at"]).startswith(cur_ym):
+        if r["status"] == "studied" and r["updated_at"]:
+            ts_str = str(r["updated_at"])
+            active_timestamps.append(ts_str)
             try:
-                day_val = int(str(r["updated_at"])[8:10])
-                if 1 <= day_val <= 31:
-                    active_days_set.add(day_val)
-            except (ValueError, TypeError, IndexError):
-                pass
+                dt = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                if target_tz:
+                    dt_local = dt.astimezone(target_tz)
+                    if dt_local.strftime("%Y-%m") == cur_ym:
+                        if 1 <= dt_local.day <= 31:
+                            active_days_set.add(dt_local.day)
+                else:
+                    if dt.strftime("%Y-%m") == cur_ym:
+                        if 1 <= dt.day <= 31:
+                            active_days_set.add(dt.day)
+            except Exception:
+                if ts_str.startswith(cur_ym):
+                    try:
+                        day_val = int(ts_str[8:10])
+                        if 1 <= day_val <= 31:
+                            active_days_set.add(day_val)
+                    except (ValueError, TypeError, IndexError):
+                        pass
+
     if studied_concept_count > 0 and not active_days_set:
-        active_days_set.add(date.today().day)
+        active_days_set.add(cur_day)
     active_days_list = sorted(list(active_days_set)) if studied_concept_count > 0 else []
 
     not_studied_minutes = 0
@@ -1467,6 +1506,7 @@ def get_dashboard_summary_data(
         "mastery_percentage": mastery_percent,
         "studied_concepts_count": studied_concept_count,
         "active_days": active_days_list,
+        "active_timestamps": active_timestamps,
         "streak_days": len(active_days_list)
     }
 
@@ -1558,7 +1598,8 @@ def get_dashboard_bootstrap_data(
     user_profile: Dict[str, Any],
     subject_id: Optional[str] = None,
     days: int = 7,
-    order_mode: str = "syllabus"
+    order_mode: str = "syllabus",
+    client_tz: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Consolidated single-trip bootstrap payload for instant first-paint dashboard rendering.
@@ -1573,7 +1614,7 @@ def get_dashboard_bootstrap_data(
     """
     import time
     now_ts = time.time()
-    cache_key = f"{user_id}:{subject_id or 'default'}:{days}:{order_mode}"
+    cache_key = f"{user_id}:{subject_id or 'default'}:{days}:{order_mode}:{client_tz or 'utc'}"
     cached = _user_bootstrap_cache.get(cache_key)
     if cached:
         cached_ts, cached_data = cached
@@ -1585,7 +1626,8 @@ def get_dashboard_bootstrap_data(
         user_id=user_id,
         subject_id=subject_id,
         days=days,
-        order_mode=order_mode
+        order_mode=order_mode,
+        client_tz=client_tz
     )
 
     # 2. Documents list & count

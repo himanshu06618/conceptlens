@@ -11,6 +11,7 @@ import React, { useMemo } from 'react';
 export default function DotMatrixStreakCard({
   completedConceptsCount = 0,
   activeDays = [],
+  activeTimestamps = [],
   monthName = null,
   year = null,
   subtitle = null,
@@ -19,6 +20,7 @@ export default function DotMatrixStreakCard({
   const now = new Date();
   const currentMonth = monthName || now.toLocaleString('default', { month: 'long' });
   const currentYear = year || now.getFullYear();
+  const currentMonthIdx = now.getMonth();
   const currentDay = now.getDate();
 
   // Condition: Consistency only works/glows when user has marked a concept complete
@@ -27,12 +29,40 @@ export default function DotMatrixStreakCard({
   // Active days set for current month
   const activeDaysSet = useMemo(() => {
     if (!isConsistent) return new Set();
-    if (Array.isArray(activeDays) && activeDays.length > 0) {
-      return new Set(activeDays.map(Number));
+
+    const daysSet = new Set();
+
+    // 1. Primary: If activeTimestamps are provided, convert each timestamp into the user's local browser timezone
+    if (Array.isArray(activeTimestamps) && activeTimestamps.length > 0) {
+      activeTimestamps.forEach((ts) => {
+        if (!ts) return;
+        try {
+          const d = new Date(ts);
+          if (!isNaN(d.getTime())) {
+            // Check if matches the displayed month & year in user's local timezone
+            if (d.getMonth() === currentMonthIdx && d.getFullYear() === currentYear) {
+              const dayNum = d.getDate();
+              if (dayNum >= 1 && dayNum <= 31) {
+                daysSet.add(dayNum);
+              }
+            }
+          }
+        } catch {}
+      });
     }
-    // Default to today if concepts are completed
+
+    if (daysSet.size > 0) {
+      return daysSet;
+    }
+
+    // 2. Fallback: if activeDays was passed as numbers
+    if (Array.isArray(activeDays) && activeDays.length > 0) {
+      return new Set(activeDays.map(Number).filter((d) => d >= 1 && d <= 31));
+    }
+
+    // 3. Default to today in user's local timezone if concepts are completed
     return new Set([currentDay]);
-  }, [isConsistent, activeDays, currentDay]);
+  }, [isConsistent, activeTimestamps, activeDays, currentMonthIdx, currentYear, currentDay]);
 
   // Exactly 31 circular shapes representing all 31 days
   const days = useMemo(() => Array.from({ length: 31 }, (_, i) => i + 1), []);
