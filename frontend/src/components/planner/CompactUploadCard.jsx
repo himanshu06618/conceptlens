@@ -14,7 +14,7 @@ const ALLOWED_EXTS = ['pdf', 'png', 'jpg', 'jpeg', 'webp', 'txt', 'md'];
 const MAX_FILE_SIZE_MB = 10;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 
-export default function CompactUploadCard({
+const CompactUploadCard = React.forwardRef(function CompactUploadCard({
   onUpload,
   isUploading = false,
   processingDoc = null,
@@ -25,14 +25,20 @@ export default function CompactUploadCard({
   onRetryUpload,
   onCancelProcessing,
   onToast = () => {},
-  emphasis = false
-}) {
+  emphasis = false,
+  onClose = null
+}, ref) {
   const [isDragActive, setIsDragActive] = useState(false);
   const [isCompressing, setIsCompressing] = useState(false);
   const [retryPassword, setRetryPassword] = useState('');
   const fileInputRef = useRef(null);
   const cameraInputRef = useRef(null);
   const inFlightRef = useRef(false);
+
+  React.useImperativeHandle(ref, () => ({
+    openFilePicker: () => fileInputRef.current?.click(),
+    openCamera: () => cameraInputRef.current?.click()
+  }));
 
   const handleDrag = (e) => {
     e.preventDefault();
@@ -115,7 +121,34 @@ export default function CompactUploadCard({
       onDrop={handleDrop}
       role="region"
       aria-label="Upload Course Notes"
+      style={{ position: 'relative' }}
     >
+      {onClose && !isUploading && !processingDoc && (
+        <button
+          type="button"
+          onClick={onClose}
+          style={{
+            position: 'absolute',
+            top: 14,
+            right: 14,
+            width: '32px',
+            height: '32px',
+            borderRadius: '50%',
+            background: 'rgba(17, 17, 19, 0.08)',
+            border: 'none',
+            color: '#111113',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            zIndex: 3
+          }}
+          title="Close upload card"
+          aria-label="Close upload card"
+        >
+          <X size={16} />
+        </button>
+      )}
       {/* Hidden native file input */}
       <input
         ref={fileInputRef}
@@ -386,4 +419,6 @@ export default function CompactUploadCard({
       </div>
     </div>
   );
-}
+});
+
+export default CompactUploadCard;

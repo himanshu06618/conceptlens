@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Folder,
@@ -17,8 +17,9 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { listDocuments, deleteDocument } from '../api/client';
+import { listDocuments, deleteDocument, uploadDocument, getDocumentStatus } from '../api/client';
 import { deleteLocalFile } from '../utils/fileStore';
+import CompactUploadCard from '../components/planner/CompactUploadCard';
 import '../styles/planner.css';
 
 export default function MyFilesView({ onToast = () => {} }) {
@@ -29,6 +30,30 @@ export default function MyFilesView({ onToast = () => {} }) {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+
+  // Upload drop-card states
+  const [showUploadCard, setShowUploadCard] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [processingDoc, setProcessingDoc] = useState(null);
+  const [processingStage, setProcessingStage] = useState('reading');
+  const [processingProgress, setProcessingProgress] = useState(8);
+  const [processingMessage, setProcessingMessage] = useState('');
+  const [processingError, setProcessingError] = useState(null);
+  const [lastUploadedFile, setLastUploadedFile] = useState(null);
+
+  const uploadCardRef = useRef(null);
+  const uploadInFlightRef = useRef(false);
+  const pollingRef = useRef(null);
+  const progressTimerRef = useRef(null);
+  const completedJobsRef = useRef(new Set());
+
+  // Clean up polling timers on unmount
+  useEffect(() => {
+    return () => {
+      if (pollingRef.current) clearInterval(pollingRef.current);
+      if (progressTimerRef.current) clearInterval(progressTimerRef.current);
+    };
+  }, []);
 
   const fetchDocuments = useCallback(async () => {
     setLoading(true);
@@ -46,6 +71,123 @@ export default function MyFilesView({ onToast = () => {} }) {
   useEffect(() => {
     fetchDocuments();
   }, [fetchDocuments]);
+
+  // Polling document processing status
+  const startPolling = useCallback((docId) => {
+    if (pollingRef.current) clearInterval(pollingRef.current);
+    if (progressTimerRef.current) clearInterval(progressTimerRef.current);
+    let pollInFlight = false;
+
+    progressTimerRef.current = setInterval(() => {
+      setProcessingProgress((prev) => (prev < 92 ? prev + 1 : prev));
+    }, 450);
+
+    pollingRef.current = setInterval(async () => {
+      if (pollInFlight) return;
+      pollInFlight = true;
+      try {
+        const doc = await getDocumentStatus(docId);
+        setProcessingStage(doc.stage || 'reading');
+        if (typeof doc.progress === 'number' && doc.progress > 0) {
+          setProcessingProgress((prev) => Math.max(prev, doc.progress));
+        }
+        if (doc.stage_message) {
+          setProcessingMessage(doc.stage_message);
+        }
+
+        if (doc.status === 'completed') {
+          clearInterval(pollingRef.current);
+          if (progressTimerRef.current) clearInterval(progressTimerRef.current);
+
+          if (!completedJobsRef.current.has(docId)) {
+            completedJobsRef.current.add(docId);
+            setProcessingProgress(100);
+            setProcessingMessage('Extraction completed successfully!');
+
+            setTimeout(async () => {
+              setIsUploading(false);
+              setProcessingDoc(null);
+              setProcessingError(null);
+              await fetchDocuments();
+              onToast({
+                type: 'success',
+                message: 'Document uploaded and concepts extracted!'
+              });
+              navigate(`/files/${docId}`);
+            }, 300);
+          }
+        } else if (doc.status === 'failed') {
+          clearInterval(pollingRef.current);
+          if (progressTimerRef.current) clearInterval(progressTimerRef.current);
+          setIsUploading(false);
+          setProcessingError(doc.error || 'Failed to extract concepts from document.');
+        }
+      } catch (err) {
+        console.error('Polling error:', err);
+      } finally {
+        pollInFlight = false;
+      }
+    }, 1500);
+  }, [fetchDocuments, onToast, navigate]);
+
+  // Upload initiation handler
+  const handleUpload = async (file, options = {}) => {
+    if (uploadInFlightRef.current || isUploading) return;
+    uploadInFlightRef.current = true;
+    setLastUploadedFile(file);
+    setIsUploading(true);
+    setProcessingError(null);
+    setProcessingStage('reading');
+    setProcessingProgress(8);
+    setProcessingMessage(`Uploading ${file.name}...`);
+    setProcessingDoc({ filename: file.name });
+
+    try {
+      const idempotencyKey =
+        typeof crypto !== 'undefined' && crypto.randomUUID
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const resp = await uploadDocument(file, { ...options, idempotencyKey });
+      setProcessingDoc({ id: resp.id, filename: resp.filename });
+
+      if (resp.status === 'completed') {
+        if (!completedJobsRef.current.has(resp.id)) {
+          completedJobsRef.current.add(resp.id);
+          setIsUploading(false);
+          setProcessingDoc(null);
+          setProcessingError(null);
+          await fetchDocuments();
+          onToast({
+            type: 'success',
+            message: 'Document loaded successfully!'
+          });
+          navigate(`/files/${resp.id}`);
+        }
+      } else {
+        startPolling(resp.id);
+      }
+    } catch (err) {
+      setIsUploading(false);
+      setProcessingError(err.message || 'Upload failed. Please try again.');
+    } finally {
+      uploadInFlightRef.current = false;
+    }
+  };
+
+  const handleRetryUpload = (options = {}) => {
+    if (lastUploadedFile) {
+      handleUpload(lastUploadedFile, options);
+    }
+  };
+
+  const handleCancelProcessing = () => {
+    if (pollingRef.current) clearInterval(pollingRef.current);
+    if (progressTimerRef.current) clearInterval(progressTimerRef.current);
+    setIsUploading(false);
+    setProcessingDoc(null);
+    setProcessingError(null);
+    setProcessingProgress(0);
+  };
 
   const handleDelete = async (docId) => {
     try {
@@ -199,280 +341,329 @@ export default function MyFilesView({ onToast = () => {} }) {
           <button
             type="button"
             className="pill card--lime"
-            onClick={() => navigate('/notes')}
+            onClick={() => {
+              if (documents.length === 0) {
+                uploadCardRef.current?.openFilePicker();
+              } else {
+                setShowUploadCard((prev) => !prev);
+              }
+            }}
             style={{ border: 'none', cursor: 'pointer', padding: '8px 18px', fontWeight: 700 }}
+            aria-label={documents.length === 0 ? 'Browse files to upload' : (showUploadCard ? 'Close upload card' : 'Upload new file')}
           >
             <Plus size={15} strokeWidth={2.4} />
-            <span>Upload New</span>
+            <span>{showUploadCard && documents.length > 0 ? 'Close Upload' : 'Upload New'}</span>
           </button>
         </div>
       </section>
 
-      {/* 2. White Card Listing Files as Rows */}
-      <div className="card" style={{ padding: '28px', gap: '18px' }}>
-        {/* Search Field if documents exist */}
-        {documents.length > 2 && (
-          <div style={{ position: 'relative', width: '100%' }}>
-            <Search
-              size={18}
-              style={{
-                position: 'absolute',
-                left: 16,
-                top: '50%',
-                transform: 'translateY(-50)',
-                color: 'var(--muted)'
-              }}
-            />
-            <input
-              type="search"
-              placeholder="Search uploaded files by name..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '12px 18px 12px 46px',
-                borderRadius: '9999px',
-                border: 'none',
-                background: 'var(--surface-subtle, #F0F0F2)',
-                color: 'var(--text)',
-                fontSize: '14px',
-                fontWeight: 500,
-                boxSizing: 'border-box',
-                outline: 'none',
-                fontFamily: 'inherit'
-              }}
-              aria-label="Search uploaded files"
-            />
-          </div>
-        )}
+      {/* 2. Main Body: File Drop Option (when 0 files) or Files List Card */}
+      {loading && documents.length === 0 ? (
+        <div
+          className="card"
+          style={{
+            padding: '56px 24px',
+            textAlign: 'center',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '12px'
+          }}
+        >
+          <RotateCw size={28} className="spin-animation" style={{ color: 'var(--muted)' }} />
+          <span style={{ fontSize: '14px', color: 'var(--muted)', fontWeight: 500 }}>
+            Loading files...
+          </span>
+        </div>
+      ) : documents.length === 0 ? (
+        /* Empty State: Actual File Drop Option (CompactUploadCard matching Image 2) */
+        <section className="flux-drop-card-row" style={{ width: '100%', marginTop: '4px' }}>
+          <CompactUploadCard
+            ref={uploadCardRef}
+            onUpload={handleUpload}
+            isUploading={isUploading}
+            processingDoc={processingDoc}
+            processingStage={processingStage}
+            processingProgress={processingProgress}
+            processingMessage={processingMessage}
+            processingError={processingError}
+            onRetryUpload={handleRetryUpload}
+            onCancelProcessing={handleCancelProcessing}
+            onToast={onToast}
+            emphasis={true}
+          />
+        </section>
+      ) : (
+        <>
+          {/* If there are files and user toggles upload (or upload in progress), show drop card on top */}
+          {(showUploadCard || isUploading) && (
+            <section className="flux-drop-card-row" style={{ width: '100%', marginBottom: '20px' }}>
+              <CompactUploadCard
+                ref={uploadCardRef}
+                onUpload={handleUpload}
+                isUploading={isUploading}
+                processingDoc={processingDoc}
+                processingStage={processingStage}
+                processingProgress={processingProgress}
+                processingMessage={processingMessage}
+                processingError={processingError}
+                onRetryUpload={handleRetryUpload}
+                onCancelProcessing={handleCancelProcessing}
+                onToast={onToast}
+                onClose={() => setShowUploadCard(false)}
+              />
+            </section>
+          )}
 
-        {/* Empty State */}
-        {documents.length === 0 && !loading ? (
-          <div style={{ padding: '56px 24px', textAlign: 'center', background: 'var(--surface-subtle, #F0F0F2)', borderRadius: '20px' }}>
-            <Folder size={44} color="var(--muted)" style={{ margin: '0 auto 12px', opacity: 0.5 }} />
-            <h3 style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text)', margin: '0 0 6px' }}>
-              No files uploaded yet
-            </h3>
-            <p style={{ fontSize: '14px', color: 'var(--muted)', margin: '0 0 18px' }}>
-              Drag & drop course notes, lecture PDFs or photos to start learning.
-            </p>
-            <button
-              type="button"
-              className="pill card--lime"
-              onClick={() => navigate('/notes')}
-              style={{ border: 'none', cursor: 'pointer', padding: '10px 24px', fontWeight: 700, fontSize: '14px' }}
-            >
-              Upload Your First File
-            </button>
-          </div>
-        ) : filteredDocs.length === 0 ? (
-          <div style={{ padding: '36px', textAlign: 'center', color: 'var(--muted)' }}>
-            No files matched "{searchQuery}".
-          </div>
-        ) : (
-          /* File Rows */
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }} role="list">
-            {filteredDocs.map((doc) => {
-              const isDeleting = confirmDeleteId === doc.id;
-              const isProcessing = doc.status === 'processing';
-              const isFailed = doc.status === 'failed';
-
-              return (
-                <div
-                  key={doc.id}
-                  role="button"
-                  tabIndex={0}
-                  className="my-files-row"
-                  onClick={() => navigate(`/files/${doc.id}`)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      navigate(`/files/${doc.id}`);
-                    }
-                  }}
+          {/* White Card Listing Files as Rows */}
+          <div className="card" style={{ padding: '28px', gap: '18px' }}>
+            {/* Search Field if documents exist */}
+            {documents.length > 2 && (
+              <div style={{ position: 'relative', width: '100%' }}>
+                <Search
+                  size={18}
                   style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: '16px',
-                    padding: '14px 18px',
-                    borderRadius: '16px',
-                    background: 'var(--surface-subtle, #F0F0F2)',
-                    minHeight: '44px',
-                    flexWrap: 'wrap',
-                    cursor: 'pointer',
-                    transition: 'transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease'
+                    position: 'absolute',
+                    left: 16,
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    color: 'var(--muted)'
                   }}
-                  aria-label={`Open file dashboard for ${doc.filename}`}
-                >
-                  {/* Left: File-type Icon + Filename with ellipsis */}
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '12px',
-                      flex: '1 1 240px',
-                      minWidth: 0
-                    }}
-                  >
-                    {getFileIcon(doc.file_type, doc.filename)}
-                    <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                      <span
-                        style={{
-                          fontSize: '15px',
-                          fontWeight: 700,
-                          color: 'var(--text)',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap'
-                        }}
-                        title={doc.filename}
-                      >
-                        {doc.filename}
-                      </span>
-                      <span style={{ fontSize: '12px', color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <Clock size={11} />
-                        <span>{formatDate(doc.created_at)}</span>
-                      </span>
-                    </div>
-                  </div>
+                />
+                <input
+                  type="search"
+                  placeholder="Search uploaded files by name..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '12px 18px 12px 46px',
+                    borderRadius: '9999px',
+                    border: 'none',
+                    background: 'var(--surface-subtle, #F0F0F2)',
+                    color: 'var(--text)',
+                    fontSize: '14px',
+                    fontWeight: 500,
+                    boxSizing: 'border-box',
+                    outline: 'none',
+                    fontFamily: 'inherit'
+                  }}
+                  aria-label="Search uploaded files"
+                />
+              </div>
+            )}
 
-                  {/* Middle: Concept Count & Page Count */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexShrink: 0 }}>
-                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '13px', fontWeight: 600, color: 'var(--text)' }}>
-                      <Sparkles size={14} color="#B7A9F2" />
-                      <span>{doc.concept_count || 0} concepts</span>
-                    </div>
+            {filteredDocs.length === 0 ? (
+              <div style={{ padding: '36px', textAlign: 'center', color: 'var(--muted)' }}>
+                No files matched "{searchQuery}".
+              </div>
+            ) : (
+              /* File Rows */
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }} role="list">
+                {filteredDocs.map((doc) => {
+                  const isDeleting = confirmDeleteId === doc.id;
+                  const isProcessing = doc.status === 'processing';
+                  const isFailed = doc.status === 'failed';
 
-                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '13px', fontWeight: 500, color: 'var(--muted)' }}>
-                      <BookOpen size={14} />
-                      <span>{doc.page_count || 1} {doc.page_count === 1 ? 'page' : 'pages'}</span>
-                    </div>
-                  </div>
-
-                  {/* Right: Status Pill, Delete Button & Chevron */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
-                    {isProcessing ? (
-                      <span
-                        className="pill"
+                  return (
+                    <div
+                      key={doc.id}
+                      role="button"
+                      tabIndex={0}
+                      className="my-files-row"
+                      onClick={() => navigate(`/files/${doc.id}`)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          navigate(`/files/${doc.id}`);
+                        }
+                      }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '16px',
+                        padding: '14px 18px',
+                        borderRadius: '16px',
+                        background: 'var(--surface-subtle, #F0F0F2)',
+                        minHeight: '44px',
+                        flexWrap: 'wrap',
+                        cursor: 'pointer',
+                        transition: 'transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease'
+                      }}
+                      aria-label={`Open file dashboard for ${doc.filename}`}
+                    >
+                      {/* Left: File-type Icon + Filename with ellipsis */}
+                      <div
                         style={{
-                          background: 'rgba(183, 169, 242, 0.25)',
-                          color: '#111113',
-                          fontSize: '11px',
-                          fontWeight: 700
-                        }}
-                      >
-                        {doc.progress || 10}%
-                      </span>
-                    ) : isFailed ? (
-                      <span
-                        className="pill"
-                        style={{
-                          background: 'rgba(239, 68, 68, 0.15)',
-                          color: '#DC2626',
-                          fontSize: '11px',
-                          fontWeight: 700,
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '4px'
-                        }}
-                      >
-                        <AlertCircle size={12} />
-                        <span>Failed</span>
-                      </span>
-                    ) : (
-                      <span
-                        className="pill card--lime"
-                        style={{
-                          fontSize: '11px',
-                          fontWeight: 700,
-                          padding: '4px 10px',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '4px'
-                        }}
-                      >
-                        <CheckCircle2 size={12} />
-                        <span>Ready</span>
-                      </span>
-                    )}
-
-                    {!isDeleting ? (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setConfirmDeleteId(doc.id);
-                        }}
-                        style={{
-                          width: '36px',
-                          height: '36px',
-                          borderRadius: '50%',
-                          background: 'transparent',
-                          border: 'none',
-                          color: 'var(--muted)',
                           display: 'flex',
                           alignItems: 'center',
-                          justifyContent: 'center',
-                          cursor: 'pointer'
+                          gap: '12px',
+                          flex: '1 1 240px',
+                          minWidth: 0
                         }}
-                        title={`Delete ${doc.filename}`}
-                        aria-label={`Delete ${doc.filename}`}
                       >
-                        <Trash2 size={16} />
-                      </button>
-                    ) : (
-                      <div
-                        style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-                        onClick={(e) => e.stopPropagation()}
-                        onKeyDown={(e) => e.stopPropagation()}
-                      >
-                        <button
-                          type="button"
-                          className="pill"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDelete(doc.id);
-                          }}
-                          style={{
-                            background: '#EF4444',
-                            color: '#FFFFFF',
-                            fontSize: '11px',
-                            fontWeight: 700,
-                            padding: '4px 10px',
-                            border: 'none',
-                            cursor: 'pointer'
-                          }}
-                        >
-                          Delete
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setConfirmDeleteId(null);
-                          }}
-                          style={{
-                            background: 'none',
-                            border: 'none',
-                            color: 'var(--muted)',
-                            fontSize: '12px',
-                            cursor: 'pointer'
-                          }}
-                        >
-                          Cancel
-                        </button>
+                        {getFileIcon(doc.file_type, doc.filename)}
+                        <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                          <span
+                            style={{
+                              fontSize: '15px',
+                              fontWeight: 700,
+                              color: 'var(--text)',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap'
+                            }}
+                            title={doc.filename}
+                          >
+                            {doc.filename}
+                          </span>
+                          <span style={{ fontSize: '12px', color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <Clock size={11} />
+                            <span>{formatDate(doc.created_at)}</span>
+                          </span>
+                        </div>
                       </div>
-                    )}
 
-                    <ChevronRight size={18} color="var(--muted)" style={{ flexShrink: 0, marginLeft: '2px' }} />
-                  </div>
-                </div>
-              );
-            })}
+                      {/* Middle: Concept Count & Page Count */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexShrink: 0 }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '13px', fontWeight: 600, color: 'var(--text)' }}>
+                          <Sparkles size={14} color="#B7A9F2" />
+                          <span>{doc.concept_count || 0} concepts</span>
+                        </div>
+
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '13px', fontWeight: 500, color: 'var(--muted)' }}>
+                          <BookOpen size={14} />
+                          <span>{doc.page_count || 1} {doc.page_count === 1 ? 'page' : 'pages'}</span>
+                        </div>
+                      </div>
+
+                      {/* Right: Status Pill, Delete Button & Chevron */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
+                        {isProcessing ? (
+                          <span
+                            className="pill"
+                            style={{
+                              background: 'rgba(183, 169, 242, 0.25)',
+                              color: '#111113',
+                              fontSize: '11px',
+                              fontWeight: 700
+                            }}
+                          >
+                            {doc.progress || 10}%
+                          </span>
+                        ) : isFailed ? (
+                          <span
+                            className="pill"
+                            style={{
+                              background: 'rgba(239, 68, 68, 0.15)',
+                              color: '#DC2626',
+                              fontSize: '11px',
+                              fontWeight: 700,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px'
+                            }}
+                          >
+                            <AlertCircle size={12} />
+                            <span>Failed</span>
+                          </span>
+                        ) : (
+                          <span
+                            className="pill card--lime"
+                            style={{
+                              fontSize: '11px',
+                              fontWeight: 700,
+                              padding: '4px 10px',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px'
+                            }}
+                          >
+                            <CheckCircle2 size={12} />
+                            <span>Ready</span>
+                          </span>
+                        )}
+
+                        {!isDeleting ? (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setConfirmDeleteId(doc.id);
+                            }}
+                            style={{
+                              width: '36px',
+                              height: '36px',
+                              borderRadius: '50%',
+                              background: 'transparent',
+                              border: 'none',
+                              color: 'var(--muted)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              cursor: 'pointer'
+                            }}
+                            title={`Delete ${doc.filename}`}
+                            aria-label={`Delete ${doc.filename}`}
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        ) : (
+                          <div
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                            onClick={(e) => e.stopPropagation()}
+                            onKeyDown={(e) => e.stopPropagation()}
+                          >
+                            <button
+                              type="button"
+                              className="pill"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDelete(doc.id);
+                              }}
+                              style={{
+                                background: '#EF4444',
+                                color: '#FFFFFF',
+                                fontSize: '11px',
+                                fontWeight: 700,
+                                padding: '4px 10px',
+                                border: 'none',
+                                cursor: 'pointer'
+                              }}
+                            >
+                              Delete
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setConfirmDeleteId(null);
+                              }}
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                color: 'var(--muted)',
+                                fontSize: '12px',
+                                cursor: 'pointer'
+                              }}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        )}
+
+                        <ChevronRight size={18} color="var(--muted)" style={{ flexShrink: 0, marginLeft: '2px' }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        </>
+      )}
     </div>
   );
 }
