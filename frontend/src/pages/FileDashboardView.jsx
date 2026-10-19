@@ -561,10 +561,13 @@ export default function FileDashboardView({ onToast = () => {} }) {
           subtitle="Study plan for this file"
         />
         <DotMatrixStreakCard
-          score={9.2}
-          maxScore={10}
-          streakDays={5}
-          subtitle="5-day streak active · this file only"
+          completedConceptsCount={studiedConceptsCount}
+          activeDays={studiedConceptsCount > 0 ? (overview?.stats?.active_days?.length > 0 ? overview.stats.active_days : [new Date().getDate()]) : []}
+          subtitle={
+            studiedConceptsCount > 0
+              ? `${studiedConceptsCount} concepts completed · this file only`
+              : '0 concepts completed · this file only'
+          }
         />
       </section>
 

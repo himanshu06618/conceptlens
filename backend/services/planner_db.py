@@ -1395,7 +1395,7 @@ def get_dashboard_summary_data(
         ).fetchall()
 
         prog_rows = conn.execute(
-            "SELECT concept_id, status FROM concept_progress WHERE user_id = ?",
+            "SELECT concept_id, status, updated_at FROM concept_progress WHERE user_id = ?",
             (user_id,)
         ).fetchall()
         prog_map = {str(r["concept_id"]): r["status"] for r in prog_rows}
@@ -1416,6 +1416,21 @@ def get_dashboard_summary_data(
 
     total_concepts = len(user_concepts) if user_concepts else sum(ch.get("concept_count", 0) for ch in all_chapters)
     studied_concept_count = sum(1 for c in user_concepts if prog_map.get(str(c["id"])) == "studied")
+
+    # Calculate active study days in current month from concept progress
+    cur_ym = date.today().strftime("%Y-%m")
+    active_days_set = set()
+    for r in prog_rows:
+        if r["status"] == "studied" and r["updated_at"] and str(r["updated_at"]).startswith(cur_ym):
+            try:
+                day_val = int(str(r["updated_at"])[8:10])
+                if 1 <= day_val <= 31:
+                    active_days_set.add(day_val)
+            except (ValueError, TypeError, IndexError):
+                pass
+    if studied_concept_count > 0 and not active_days_set:
+        active_days_set.add(date.today().day)
+    active_days_list = sorted(list(active_days_set)) if studied_concept_count > 0 else []
 
     not_studied_minutes = 0
     for c in user_concepts:
@@ -1450,7 +1465,9 @@ def get_dashboard_summary_data(
         "study_time_left": study_time_left,
         "mastery_percent": mastery_percent,
         "mastery_percentage": mastery_percent,
-        "studied_concepts_count": studied_concept_count
+        "studied_concepts_count": studied_concept_count,
+        "active_days": active_days_list,
+        "streak_days": len(active_days_list)
     }
 
     # Active plan

@@ -1,27 +1,43 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 
 /**
- * DotMatrixStreakCard — "Flux" Health-Dashboard Inspired Activity & Momentum Matrix
- * Matches Target Design (PDF 1):
- * - Full white card (.card)
- * - Header: "Study Consistency" + "5-day streak active"
- * - Score: "9.2 / 10"
- * - Dot-matrix: 4 rows of lavender dots, pinned to the bottom
+ * DotMatrixStreakCard — Monthly 31-Day Study Consistency Tracker
+ * Features:
+ * - Current Month Name badge (e.g. October 2026)
+ * - Removed numeric rating (x/10)
+ * - Exactly 31 circular shapes representing days 1 to 31
+ * - Glowing circular shapes only when concepts are marked complete
  */
 export default function DotMatrixStreakCard({
-  score = 9.2,
-  maxScore = 10,
-  streakDays = 5,
+  completedConceptsCount = 0,
+  activeDays = [],
+  monthName = null,
+  year = null,
   subtitle = null,
   className = ''
 }) {
-  // 4 rows x 12 dots in shades of lavender
-  const rows = [
-    ['#B7A9F2', '#C8BEF7', '#A492EE', '#B7A9F2', '#ECE8FC', '#B7A9F2', '#C8BEF7', '#A492EE', '#B7A9F2', '#DCD5F9', '#B7A9F2', '#C8BEF7'],
-    ['#A492EE', '#B7A9F2', '#C8BEF7', '#B7A9F2', '#B7A9F2', '#C8BEF7', '#B7A9F2', '#A492EE', '#C8BEF7', '#B7A9F2', '#ECE8FC', '#B7A9F2'],
-    ['#B7A9F2', '#C8BEF7', '#B7A9F2', '#A492EE', '#B7A9F2', '#DCD5F9', '#B7A9F2', '#C8BEF7', '#A492EE', '#B7A9F2', '#C8BEF7', '#B7A9F2'],
-    ['#C8BEF7', '#B7A9F2', '#A492EE', '#B7A9F2', '#B7A9F2', '#C8BEF7', '#B7A9F2', '#A492EE', '#C8BEF7', '#ECE8FC', '#B7A9F2', '#C8BEF7'],
-  ];
+  const now = new Date();
+  const currentMonth = monthName || now.toLocaleString('default', { month: 'long' });
+  const currentYear = year || now.getFullYear();
+  const currentDay = now.getDate();
+
+  // Condition: Consistency only works/glows when user has marked a concept complete
+  const isConsistent = Number(completedConceptsCount) > 0;
+
+  // Active days set for current month
+  const activeDaysSet = useMemo(() => {
+    if (!isConsistent) return new Set();
+    if (Array.isArray(activeDays) && activeDays.length > 0) {
+      return new Set(activeDays.map(Number));
+    }
+    // Default to today if concepts are completed
+    return new Set([currentDay]);
+  }, [isConsistent, activeDays, currentDay]);
+
+  // Exactly 31 circular shapes representing all 31 days
+  const days = useMemo(() => Array.from({ length: 31 }, (_, i) => i + 1), []);
+
+  const activeDaysCount = activeDaysSet.size;
 
   return (
     <div
@@ -38,59 +54,120 @@ export default function DotMatrixStreakCard({
         overflow: 'hidden'
       }}
     >
-      {/* Top: Header & Score */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+      {/* Top Header: Title, Subtitle, and Month Badge */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
           <h3 style={{ fontSize: '18px', fontWeight: 700, margin: 0, color: 'var(--text)' }}>
             Study Consistency
           </h3>
           <p style={{ fontSize: '13px', color: 'var(--muted)', margin: 0 }}>
-            {subtitle || `${streakDays}-day streak active`}
+            {subtitle || (
+              isConsistent
+                ? `${completedConceptsCount} ${completedConceptsCount === 1 ? 'concept' : 'concepts'} completed · ${activeDaysCount} active ${activeDaysCount === 1 ? 'day' : 'days'}`
+                : '0 concepts completed · Inactive'
+            )}
           </p>
         </div>
 
-        {/* Big Score */}
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px', marginTop: '6px' }}>
-          <span style={{ fontSize: '38px', fontWeight: 700, color: 'var(--text)', lineHeight: 1 }}>
-            {score}
-          </span>
-          <span style={{ fontSize: '16px', color: 'var(--muted)', fontWeight: 500 }}>
-            / {maxScore}
-          </span>
-        </div>
+        {/* Prominent Month Name Badge */}
+        <span
+          className="pill"
+          style={{
+            background: isConsistent ? 'var(--lime, #D7F25C)' : 'rgba(0, 0, 0, 0.06)',
+            color: '#111113',
+            fontSize: '12px',
+            fontWeight: 700,
+            padding: '4px 12px',
+            borderRadius: '999px',
+            letterSpacing: '0.02em',
+            flexShrink: 0
+          }}
+        >
+          {currentMonth} {currentYear}
+        </span>
       </div>
 
-      {/* Bottom: Dot Matrix pinned to bottom right / bottom */}
-      <div
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'flex-end',
-          gap: '7px',
-          marginTop: 'auto',
-          paddingTop: '16px',
-          overflowX: 'auto',
-          maxWidth: '100%'
-        }}
-        role="img"
-        aria-label="Consistency dot matrix"
-      >
-        {rows.map((row, rIdx) => (
-          <div key={rIdx} style={{ display: 'flex', gap: '7px' }}>
-            {row.map((color, dIdx) => (
-              <span
-                key={dIdx}
+      {/* Middle/Bottom: 31 Circular Shapes in 7-Column Calendar Layout */}
+      <div style={{ marginTop: 'auto', paddingTop: '16px' }}>
+        {/* Weekday indicator row (M T W T F S S) */}
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(7, 1fr)',
+            gap: '8px',
+            marginBottom: '6px',
+            maxWidth: '300px'
+          }}
+          aria-hidden="true"
+        >
+          {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((dayChar, idx) => (
+            <div
+              key={idx}
+              style={{
+                fontSize: '11px',
+                fontWeight: 600,
+                color: 'var(--muted)',
+                textAlign: 'center'
+              }}
+            >
+              {dayChar}
+            </div>
+          ))}
+        </div>
+
+        {/* 31 Circular Shapes Grid */}
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(7, 1fr)',
+            gap: '8px',
+            maxWidth: '300px'
+          }}
+          role="img"
+          aria-label={`Study consistency for ${currentMonth}: ${activeDaysCount} active days out of 31`}
+        >
+          {days.map((dayNum) => {
+            const isActive = activeDaysSet.has(dayNum);
+            const isToday = dayNum === currentDay;
+
+            return (
+              <div
+                key={dayNum}
+                title={`${currentMonth} ${dayNum}${isActive ? ': Concepts completed (Active)' : ': No activity'}`}
                 style={{
-                  width: '10px',
-                  height: '10px',
+                  aspectRatio: '1',
+                  width: '100%',
+                  maxWidth: '32px',
                   borderRadius: '50%',
-                  backgroundColor: color,
-                  flexShrink: 0
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '11px',
+                  fontWeight: isActive ? 700 : 500,
+                  transition: 'all 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+                  backgroundColor: isActive
+                    ? 'var(--lime, #D7F25C)'
+                    : isToday
+                      ? 'rgba(0, 0, 0, 0.08)'
+                      : 'rgba(0, 0, 0, 0.04)',
+                  color: isActive
+                    ? '#111113'
+                    : isToday
+                      ? 'var(--text)'
+                      : 'var(--muted)',
+                  boxShadow: isActive
+                    ? '0 0 10px rgba(215, 242, 92, 0.8), 0 0 4px rgba(183, 169, 242, 0.9)'
+                    : 'none',
+                  border: isToday && !isActive ? '1px dashed rgba(0, 0, 0, 0.3)' : 'none',
+                  cursor: 'default',
+                  userSelect: 'none'
                 }}
-              />
-            ))}
-          </div>
-        ))}
+              >
+                {dayNum}
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );

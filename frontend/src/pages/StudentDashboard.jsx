@@ -836,10 +836,13 @@ export default function StudentDashboard({ onToast = () => {} }) {
           subtitle={fileCount === 0 ? 'Upload notes to start' : `One route for all ${fileCount} files`}
         />
         <DotMatrixStreakCard
-          score={9.2}
-          maxScore={10}
-          streakDays={5}
-          subtitle={fileCount === 0 ? 'Upload notes to start' : `5-day streak active · all ${fileCount} files combined`}
+          completedConceptsCount={overview?.stats?.studied_concepts_count || 0}
+          activeDays={overview?.stats?.active_days || []}
+          subtitle={
+            (overview?.stats?.studied_concepts_count || 0) > 0
+              ? `${overview.stats.studied_concepts_count} concepts completed · all ${fileCount} files combined`
+              : '0 concepts completed · Inactive'
+          }
         />
       </section>
 
