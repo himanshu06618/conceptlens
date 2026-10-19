@@ -317,30 +317,40 @@ def save_document_file_record(
     storage_key: Optional[str],
     size: int,
     mime: str,
-    sha256: str
+    sha256: str,
+    file_data: Optional[bytes] = None
 ) -> None:
     """Inserts or updates the document_files record."""
     now_iso = datetime.now(timezone.utc).isoformat()
-    # Check if record exists
     cursor = conn.execute("SELECT document_id FROM document_files WHERE document_id = ?", (document_id,))
     if cursor.fetchone():
-        conn.execute(
-            """
-            UPDATE document_files
-            SET user_id = ?, provider = ?, storage_key = ?, size = ?, mime = ?, sha256 = ?, created_at = ?
-            WHERE document_id = ?
-            """,
-            (user_id, provider, storage_key, size, mime, sha256, now_iso, document_id)
-        )
+        if file_data is not None:
+            conn.execute(
+                """
+                UPDATE document_files
+                SET user_id = ?, provider = ?, storage_key = ?, size = ?, mime = ?, sha256 = ?, file_data = ?, created_at = ?
+                WHERE document_id = ?
+                """,
+                (user_id, provider, storage_key, size, mime, sha256, file_data, now_iso, document_id)
+            )
+        else:
+            conn.execute(
+                """
+                UPDATE document_files
+                SET user_id = ?, provider = ?, storage_key = ?, size = ?, mime = ?, sha256 = ?, created_at = ?
+                WHERE document_id = ?
+                """,
+                (user_id, provider, storage_key, size, mime, sha256, now_iso, document_id)
+            )
     else:
         conn.execute(
             """
             INSERT INTO document_files (
-                document_id, user_id, provider, storage_key, size, mime, sha256, created_at
+                document_id, user_id, provider, storage_key, size, mime, sha256, created_at, file_data
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (document_id, user_id, provider, storage_key, size, mime, sha256, now_iso)
+            (document_id, user_id, provider, storage_key, size, mime, sha256, now_iso, file_data)
         )
 
 

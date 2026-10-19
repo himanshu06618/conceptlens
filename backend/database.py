@@ -3,6 +3,7 @@ import sqlite3
 import json
 import re
 import logging
+import hashlib
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set
 from pathlib import Path
@@ -10,6 +11,15 @@ from contextvars import ContextVar
 from dotenv import load_dotenv
 
 logger = logging.getLogger("conceptlens.db")
+
+def get_upload_dir() -> Path:
+    """Returns the absolute uploads directory."""
+    up = Path(os.getenv("UPLOAD_DIR", "uploads"))
+    if not up.is_absolute():
+        up = Path(__file__).resolve().parent / up
+    up.mkdir(parents=True, exist_ok=True)
+    return up
+
 
 # Thread-safe & request-scoped query counter for performance metrics
 query_counter_var: ContextVar[int] = ContextVar("query_counter_var", default=-1)
@@ -594,6 +604,8 @@ def init_db() -> None:
                 conn.execute("ALTER TABLE documents ADD COLUMN IF NOT EXISTS concept_count INTEGER DEFAULT 0;")
                 conn.execute("ALTER TABLE documents ADD COLUMN IF NOT EXISTS chapter_count INTEGER DEFAULT 0;")
                 conn.execute("ALTER TABLE documents ADD COLUMN IF NOT EXISTS idempotency_key TEXT;")
+                conn.execute("ALTER TABLE documents ADD COLUMN IF NOT EXISTS file_data BYTEA;")
+                conn.execute("ALTER TABLE document_files ADD COLUMN IF NOT EXISTS file_data BYTEA;")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_idempotency_key ON documents(user_id, idempotency_key);")
 
                 conn.execute("ALTER TABLE documents ADD COLUMN IF NOT EXISTS schema_version INTEGER DEFAULT 3;")
@@ -787,6 +799,11 @@ def init_db() -> None:
                 if "idempotency_key" not in columns:
                     conn.execute("ALTER TABLE documents ADD COLUMN idempotency_key TEXT;")
                     conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_idempotency_key ON documents(user_id, idempotency_key);")
+                if "file_data" not in columns:
+                    conn.execute("ALTER TABLE documents ADD COLUMN file_data BLOB;")
+                doc_file_cols = [row["name"] for row in conn.execute("PRAGMA table_info(document_files)").fetchall()]
+                if "file_data" not in doc_file_cols:
+                    conn.execute("ALTER TABLE document_files ADD COLUMN file_data BLOB;")
                 if "schema_version" not in columns:
                     conn.execute("ALTER TABLE documents ADD COLUMN schema_version INTEGER DEFAULT 2;")
                 if "chapter" not in concept_columns:
@@ -908,10 +925,12 @@ def init_db() -> None:
         try:
             with conn:
                 apply_safe_unique_constraints(conn)
+                _backfill_files_into_database(conn)
+                _sanitize_and_sync_all_document_concepts(conn)
         finally:
             conn.close()
     except Exception as e_uq:
-        logger.warning(f"Safe unique constraints check warning: {e_uq}")
+        logger.warning(f"Safe unique constraints and data sync warning: {e_uq}")
 
 
 def apply_safe_unique_constraints(conn) -> Dict[str, Any]:
@@ -1904,6 +1923,16 @@ def save_concepts_and_relations(
             conn.execute("DELETE FROM relations WHERE document_id = ?", (doc_id,))
             conn.execute("DELETE FROM concepts WHERE document_id = ?", (doc_id,))
             
+            # Apply deterministic normalization first so only valid concepts enter the DB
+            try:
+                try:
+                    from backend.services.normalizer import normalize_extracted_concepts
+                except ImportError:
+                    from services.normalizer import normalize_extracted_concepts
+                concepts_data = normalize_extracted_concepts(concepts_data)
+            except Exception as e_norm:
+                logger.warning(f"Normalizer before save exception for doc {doc_id}: {e_norm}")
+
             seen_concepts: Set[str] = set()
             deduped_concepts = []
             for c in concepts_data:
@@ -1982,6 +2011,7 @@ def save_concepts_and_relations(
                     relation_rows
                 )
             conn.execute("UPDATE documents SET tree_json = NULL, flow_json = NULL, concept_count = ? WHERE id = ?", (len(deduped_concepts), doc_id))
+            conn.execute("UPDATE chapters SET concept_count = ? WHERE book_id = ?", (len(deduped_concepts), doc_id))
     finally:
         conn.close()
 
@@ -2088,9 +2118,13 @@ def get_concepts_by_document(
     doc_id: str,
     q: Optional[str] = None,
     topic: Optional[str] = None,
-    min_importance: Optional[int] = None
+    min_importance: Optional[int] = None,
+    conn=None
 ) -> List[Dict[str, Any]]:
-    conn = get_connection()
+    should_close = False
+    if conn is None:
+        conn = get_connection()
+        should_close = True
     try:
         query = """
             SELECT 
@@ -2164,7 +2198,8 @@ def get_concepts_by_document(
         
         return concepts
     finally:
-        conn.close()
+        if should_close:
+            conn.close()
 
 def get_distinct_topics(doc_id: str) -> List[str]:
     conn = get_connection()
@@ -2451,3 +2486,225 @@ def sync_chapter_progress_from_concept_change(user_id: str, concept_id: str) -> 
             )
     finally:
         conn.close()
+
+
+# ==================== Document File BLOB Storage & File Sync ====================
+
+def save_document_file_blob(
+    doc_id: str,
+    content: bytes,
+    user_id: str = "",
+    filename: str = "",
+    file_hash: Optional[str] = None,
+    conn=None
+) -> None:
+    """
+    Saves uploaded file bytes directly into database BLOB column.
+    Ensures that even if ephemeral disk storage is wiped (e.g. Render restart),
+    the file is permanently preserved for re-analysis, PDF viewer, and Graph RAG.
+    """
+    if not content:
+        return
+    should_close = False
+    if conn is None:
+        conn = get_connection()
+        should_close = True
+    try:
+        now_iso = datetime.now(timezone.utc).isoformat()
+        if not file_hash:
+            file_hash = hashlib.sha256(content).hexdigest()
+        ext = Path(filename).suffix.lower() if filename else ".pdf"
+        mime = "application/pdf" if ext == ".pdf" else ("text/plain" if ext in (".txt", ".md") else "application/octet-stream")
+        with conn:
+            conn.execute("UPDATE documents SET file_data = ? WHERE id = ?", (content, doc_id))
+            cursor = conn.execute("SELECT document_id FROM document_files WHERE document_id = ?", (doc_id,))
+            if cursor.fetchone():
+                conn.execute(
+                    """
+                    UPDATE document_files
+                    SET user_id = ?, provider = 'server', size = ?, mime = ?, sha256 = ?, file_data = ?, created_at = ?
+                    WHERE document_id = ?
+                    """,
+                    (user_id, len(content), mime, file_hash, content, now_iso, doc_id)
+                )
+            else:
+                conn.execute(
+                    """
+                    INSERT INTO document_files (
+                        document_id, user_id, provider, storage_key, size, mime, sha256, created_at, file_data
+                    ) VALUES (?, ?, 'server', NULL, ?, ?, ?, ?, ?)
+                    """,
+                    (doc_id, user_id, len(content), mime, file_hash, now_iso, content)
+                )
+    finally:
+        if should_close:
+            conn.close()
+
+
+def get_document_file_blob(doc_id: str, conn=None) -> Optional[bytes]:
+    """Retrieves document file bytes from documents or document_files table."""
+    should_close = False
+    if conn is None:
+        conn = get_connection()
+        should_close = True
+    try:
+        cursor = conn.execute("SELECT file_data FROM documents WHERE id = ?", (doc_id,))
+        row = cursor.fetchone()
+        if row and row["file_data"]:
+            return bytes(row["file_data"])
+        cursor = conn.execute("SELECT file_data FROM document_files WHERE document_id = ?", (doc_id,))
+        row = cursor.fetchone()
+        if row and row["file_data"]:
+            return bytes(row["file_data"])
+        return None
+    finally:
+        if should_close:
+            conn.close()
+
+
+def ensure_document_file_on_disk(
+    doc_id: str,
+    user_id: Optional[str] = None,
+    filename: Optional[str] = None
+) -> Optional[Path]:
+    """
+    Guarantees the document file is present on local disk.
+    If the file was removed from ephemeral disk (e.g. Render container restart),
+    restores it directly from the database BLOB.
+    """
+    upload_dir = get_upload_dir()
+    conn = get_connection()
+    try:
+        if not filename or not user_id:
+            row = conn.execute("SELECT user_id, filename FROM documents WHERE id = ?", (doc_id,)).fetchone()
+            if row:
+                if not user_id:
+                    user_id = row["user_id"] or ""
+                if not filename:
+                    filename = row["filename"] or f"{doc_id}.pdf"
+            else:
+                return None
+
+        candidates = []
+        if user_id:
+            candidates.append(upload_dir / user_id / f"{doc_id}_{filename}")
+        candidates.append(upload_dir / f"{doc_id}_{filename}")
+
+        for cand in candidates:
+            if cand.exists() and cand.is_file() and cand.stat().st_size > 0:
+                return cand
+
+        # Reconstitute from DB BLOB
+        file_bytes = get_document_file_blob(doc_id, conn=conn)
+        if file_bytes and len(file_bytes) > 0:
+            target_dir = upload_dir / user_id if user_id else upload_dir
+            target_dir.mkdir(parents=True, exist_ok=True)
+            target_path = target_dir / f"{doc_id}_{filename}"
+            with open(target_path, "wb") as f_out:
+                f_out.write(file_bytes)
+            logger.info(f"Restored file {filename} ({len(file_bytes)} bytes) from database BLOB for doc_id {doc_id}.")
+            return target_path
+
+        # If S3 is configured, try downloading from S3
+        try:
+            from backend.services.file_storage import get_document_file_record, is_s3_configured, generate_presigned_download_url
+            rec = get_document_file_record(conn, doc_id)
+            if rec and rec.get("provider") == "s3" and rec.get("storage_key") and is_s3_configured():
+                presigned = generate_presigned_download_url(rec["storage_key"], expires_in=300)
+                import urllib.request
+                target_dir = upload_dir / user_id if user_id else upload_dir
+                target_dir.mkdir(parents=True, exist_ok=True)
+                target_path = target_dir / f"{doc_id}_{filename}"
+                urllib.request.urlretrieve(presigned, str(target_path))
+                with open(target_path, "rb") as bf:
+                    save_document_file_blob(doc_id, bf.read(), user_id=user_id, filename=filename, conn=conn)
+                return target_path
+        except Exception as e_s3:
+            logger.warning(f"Could not restore file from S3: {e_s3}")
+
+        return None
+    finally:
+        conn.close()
+
+
+def _backfill_files_into_database(conn) -> None:
+    """Backfills file_data BLOB for any existing documents whose files are on disk."""
+    upload_dir = get_upload_dir()
+    try:
+        rows = conn.execute("SELECT id, user_id, filename FROM documents WHERE file_data IS NULL").fetchall()
+        now_iso = datetime.now(timezone.utc).isoformat()
+        for row in rows:
+            doc_id = row["id"]
+            user_id = row["user_id"] or ""
+            filename = row["filename"]
+            if not filename:
+                continue
+            candidates = [upload_dir / user_id / f"{doc_id}_{filename}", upload_dir / f"{doc_id}_{filename}"]
+            for p in candidates:
+                if p.exists() and p.is_file() and p.stat().st_size > 0:
+                    try:
+                        with open(p, "rb") as f:
+                            data = f.read()
+                        if data:
+                            conn.execute("UPDATE documents SET file_data = ? WHERE id = ?", (data, doc_id))
+                            ext = Path(filename).suffix.lower()
+                            mime = "application/pdf" if ext == ".pdf" else "application/octet-stream"
+                            file_hash = hashlib.sha256(data).hexdigest()
+                            conn.execute(
+                                """
+                                INSERT INTO document_files (
+                                    document_id, user_id, provider, storage_key, size, mime, sha256, created_at, file_data
+                                ) VALUES (?, ?, 'server', NULL, ?, ?, ?, ?, ?)
+                                ON CONFLICT (document_id) DO UPDATE SET
+                                    file_data = excluded.file_data,
+                                    size = excluded.size,
+                                    mime = excluded.mime,
+                                    sha256 = excluded.sha256,
+                                    provider = 'server'
+                                """,
+                                (doc_id, user_id, len(data), mime, file_hash, now_iso, data)
+                            )
+                    except Exception as ef:
+                        logger.debug(f"Could not backfill file for doc {doc_id}: {ef}")
+                    break
+    except Exception as e:
+        logger.debug(f"File backfill notice: {e}")
+
+
+def _sanitize_and_sync_all_document_concepts(conn) -> None:
+    """
+    Sanitizes concepts for all documents so that only normalized concepts remain.
+    Prunes unnormalized concepts from concepts & relations tables and updates documents.concept_count
+    and chapters.concept_count to match normalized counts (e.g. 15 instead of 16).
+    """
+    try:
+        try:
+            from backend.services.normalizer import normalize_extracted_concepts
+        except ImportError:
+            from services.normalizer import normalize_extracted_concepts
+
+        doc_rows = conn.execute("SELECT id FROM documents").fetchall()
+        for d in doc_rows:
+            doc_id = d["id"]
+            raw_concepts = get_concepts_by_document(doc_id, conn=conn)
+            if not raw_concepts:
+                continue
+            normalized = normalize_extracted_concepts(raw_concepts)
+            if len(normalized) != len(raw_concepts):
+                norm_keys = {re.sub(r"[^a-z0-9]", "", c["name"].lower()) for c in normalized}
+                for rc in raw_concepts:
+                    rc_key = re.sub(r"[^a-z0-9]", "", rc["name"].lower())
+                    if rc_key not in norm_keys:
+                        conn.execute("DELETE FROM relations WHERE concept_id = ?", (rc["id"],))
+                        conn.execute("DELETE FROM concepts WHERE id = ?", (rc["id"],))
+            conn.execute(
+                "UPDATE documents SET concept_count = ? WHERE id = ?",
+                (len(normalized), doc_id)
+            )
+            conn.execute(
+                "UPDATE chapters SET concept_count = ? WHERE book_id = ?",
+                (len(normalized), doc_id)
+            )
+    except Exception as e_san:
+        logger.debug(f"Concept sanitization notice: {e_san}")
+

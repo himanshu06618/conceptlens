@@ -601,10 +601,10 @@ export default function StudentDashboard({ onToast = () => {} }) {
       remaining_chapters: remainingChapters,
       study_time_left: studyTimeLeft,
       mastery_percent: masteryPercent,
-      concepts_growth: "+12%",
-      chapters_growth: "+25%",
-      time_growth: "-1.5h",
-      mastery_growth: "+8%"
+      concepts_growth: null,
+      chapters_growth: null,
+      time_growth: null,
+      mastery_growth: null
     };
   }, [fileCount, documentsList, overview]);
 
@@ -765,7 +765,7 @@ export default function StudentDashboard({ onToast = () => {} }) {
           iconColor="#111113"
           iconBg="#D7F25C"
           growth={combinedStats.concepts_growth}
-          progress={100}
+          progress={combinedStats.total_concepts > 0 ? Math.round(((overview?.stats?.studied_concepts_count || 0) / combinedStats.total_concepts) * 100) : 0}
           progressColor="var(--text)"
           contextText={fileCount === 0 ? "Combined from 0 files" : `Combined from ${fileCount} files`}
         />
@@ -790,7 +790,7 @@ export default function StudentDashboard({ onToast = () => {} }) {
           iconColor="#111113"
           iconBg="#E6E6E8"
           growth={combinedStats.time_growth}
-          progress={65}
+          progress={combinedStats.total_chapters > 0 ? Math.round((combinedStats.chapters_done / combinedStats.total_chapters) * 100) : 0}
           progressColor="#D7F25C"
           contextText="All files at your pace"
         />

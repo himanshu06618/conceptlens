@@ -67,7 +67,10 @@ try:
         get_user_concept_progress_map,
         save_document_page_coverage,
         get_document_page_coverage,
-        get_document_coverage_summary
+        get_document_coverage_summary,
+        save_document_file_blob,
+        get_document_file_blob,
+        ensure_document_file_on_disk
     )
     from backend.services.normalizer import normalize_extracted_concepts, SCHEMA_VERSION
     from backend.models import (
@@ -153,7 +156,10 @@ except ImportError:
         get_user_concept_progress_map,
         save_document_page_coverage,
         get_document_page_coverage,
-        get_document_coverage_summary
+        get_document_coverage_summary,
+        save_document_file_blob,
+        get_document_file_blob,
+        ensure_document_file_on_disk
     )
     from services.normalizer import normalize_extracted_concepts, SCHEMA_VERSION
     from models import (
@@ -868,6 +874,16 @@ async def upload_document(
         idempotency_key=effective_key
     )
 
+    # Persist file bytes directly into database BLOB for permanent durability across restarts
+    effective_doc_id = doc_record.get("id") or doc_id
+    save_document_file_blob(
+        doc_id=effective_doc_id,
+        content=content,
+        user_id=actor["id"],
+        filename=safe_filename,
+        file_hash=file_hash
+    )
+
     if doc_record.get("id") != doc_id:
         logger.info(f"Concurrent upload conflict resolved to existing doc {doc_record['id']}")
         return UploadResponse(
@@ -956,14 +972,9 @@ def get_document_file(
         raise HTTPException(status_code=404, detail="Document not found.")
 
     filename = doc["filename"]
-    actor_upload_dir = UPLOAD_DIR / actor["id"]
-    file_path = actor_upload_dir / f"{doc_id}_{filename}"
-    if not file_path.exists():
-        fallback_path = UPLOAD_DIR / f"{doc_id}_{filename}"
-        if fallback_path.exists():
-            file_path = fallback_path
-        else:
-            raise HTTPException(status_code=404, detail="Source document file not found on server.")
+    file_path = ensure_document_file_on_disk(doc_id=doc_id, user_id=actor["id"], filename=filename)
+    if not file_path or not file_path.exists():
+        raise HTTPException(status_code=404, detail="Source document file not found on server or database.")
 
     ext = Path(filename).suffix.lower()
     media_types = {
@@ -1031,14 +1042,8 @@ def get_document_file_url(
         conn.close()
 
     filename = doc["filename"]
-    actor_upload_dir = UPLOAD_DIR / actor["id"]
-    file_path = actor_upload_dir / f"{doc_id}_{filename}"
-    if not file_path.exists():
-        fallback_path = UPLOAD_DIR / f"{doc_id}_{filename}"
-        if fallback_path.exists():
-            file_path = fallback_path
-
-    if file_path.exists():
+    file_path = ensure_document_file_on_disk(doc_id=doc_id, user_id=actor["id"], filename=filename)
+    if file_path and file_path.exists():
         return {
             "document_id": doc_id,
             "provider": "server",
@@ -1097,6 +1102,14 @@ async def reattach_document_file(
     save_path = actor_upload_dir / f"{doc_id}_{safe_filename}"
     with open(save_path, "wb") as f_out:
         f_out.write(content)
+
+    save_document_file_blob(
+        doc_id=doc_id,
+        content=content,
+        user_id=actor["id"],
+        filename=safe_filename,
+        file_hash=file_sha
+    )
 
     conn = get_connection()
     provider = "server"
@@ -1393,14 +1406,9 @@ async def reanalyze_document_endpoint(
         raise HTTPException(status_code=404, detail="Document not found.")
 
     filename = doc["filename"]
-    actor_dir = UPLOAD_DIR / actor["id"]
-    file_path = actor_dir / f"{doc_id}_{filename}"
-    if not file_path.exists():
-        fallback = UPLOAD_DIR / f"{doc_id}_{filename}"
-        if fallback.exists():
-            file_path = fallback
-        else:
-            raise HTTPException(status_code=404, detail="Source document file not found on server for re-analysis.")
+    file_path = ensure_document_file_on_disk(doc_id=doc_id, user_id=actor["id"], filename=filename)
+    if not file_path or not file_path.exists():
+        raise HTTPException(status_code=404, detail="Source document file not found in database or server for re-analysis.")
 
     update_document_stage(doc_id, stage="extracting", status="processing", progress=20, stage_message="Re-analysing notes with Pipeline v2 (page-batched)...")
     try:
@@ -1470,14 +1478,9 @@ async def rerun_document_page_endpoint(
         raise HTTPException(status_code=404, detail="Document not found.")
 
     filename = doc["filename"]
-    actor_dir = UPLOAD_DIR / actor["id"]
-    file_path = actor_dir / f"{doc_id}_{filename}"
-    if not file_path.exists():
-        fallback = UPLOAD_DIR / f"{doc_id}_{filename}"
-        if fallback.exists():
-            file_path = fallback
-        else:
-            raise HTTPException(status_code=404, detail="Source file not found on server.")
+    file_path = ensure_document_file_on_disk(doc_id=doc_id, user_id=actor["id"], filename=filename)
+    if not file_path or not file_path.exists():
+        raise HTTPException(status_code=404, detail="Source file not found on server or database.")
 
     layout_ext = LayoutExtractor(file_path)
     pages, _ = layout_ext.extract_document_pages()
