@@ -220,109 +220,27 @@ export function generateStudyGuideMarkdown(documentData, concepts = [], chapters
 }
 
 /**
- * 1b. Generate Organized Plain Text (.txt) Study Guide
- * Clean, beautifully formatted plain text representation of extracted concepts,
- * chapters, definitions, importance levels, page numbers, and key excerpts.
+ * 1b. Generate Concepts List Plain Text (.txt)
+ * Exports only the list of concept titles along with the source document filename.
  */
 export function generateConceptsTxt(documentData, concepts = [], chapters = []) {
-  const docTitle = documentData?.title || documentData?.filename || 'Course Study Guide';
-  const createdDate = documentData?.created_at
-    ? new Date(documentData.created_at).toLocaleDateString(undefined, {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-      })
-    : new Date().toLocaleDateString();
+  const docTitle = typeof documentData === 'string'
+    ? documentData
+    : (documentData?.filename || documentData?.title || 'Document');
 
-  const totalConcepts = concepts.length;
-  const studiedCount = concepts.filter((c) => c.status === 'studied').length;
-  const studiedPct = totalConcepts > 0 ? Math.round((studiedCount / totalConcepts) * 100) : 0;
-  const totalMins = concepts.reduce((acc, c) => acc + (Number(c.estimated_minutes) || 5), 0);
-  const seqMap = computeKeyConceptNumbers(concepts);
+  const titles = (concepts || []).map((c) => {
+    if (typeof c === 'string') return c.trim();
+    return (c?.name || c?.title || '').trim();
+  }).filter(Boolean);
 
-  const border = '='.repeat(80);
-  const divider = '-'.repeat(80);
-
-  let txt = `${border}\n`;
-  txt += `                         CONCEPTLENS STUDY GUIDE\n`;
-  txt += `${border}\n`;
-  txt += `Document:             ${docTitle}\n`;
-  txt += `Generated Date:       ${createdDate}\n`;
-  txt += `Total Concepts:       ${totalConcepts}\n`;
-  txt += `Mastery Progress:     ${studiedCount}/${totalConcepts} studied (${studiedPct}%)\n`;
-  txt += `Estimated Study Time: ${totalMins} minutes\n`;
-  txt += `${border}\n\n`;
-
-  // Group concepts by chapter/topic
-  const chapterGroups = new Map();
-  concepts.forEach((concept) => {
-    const chapterName = concept.chapter || concept.topic || 'General Overview';
-    if (!chapterGroups.has(chapterName)) {
-      chapterGroups.set(chapterName, []);
-    }
-    chapterGroups.get(chapterName).push(concept);
-  });
-
-  // Table of Contents
-  txt += `[TABLE OF CONTENTS]\n`;
-  let chIndex = 1;
-  chapterGroups.forEach((items, chapterTitle) => {
-    txt += `  ${chIndex}. ${chapterTitle} (${items.length} concept${items.length === 1 ? '' : 's'})\n`;
-    chIndex++;
-  });
-  txt += `\n`;
-
-  // Render chapters and concepts
-  chIndex = 1;
-  chapterGroups.forEach((items, chapterTitle) => {
-    txt += `${border}\n`;
-    txt += `CHAPTER ${chIndex}: ${chapterTitle.toUpperCase()}\n`;
-    txt += `${border}\n\n`;
-
-    items.forEach((c) => {
-      const isStudied = c.status === 'studied';
-      const checkbox = isStudied ? '[x]' : '[ ]';
-      const statusLabel = isStudied ? 'COMPLETED' : 'NOT STARTED';
-      const timeStr = c.estimated_minutes ? `${c.estimated_minutes} min` : '5 min';
-      const stars = getStars(c.importance);
-      const keySeq = seqMap.get(c.id) || 1;
-
-      txt += `${checkbox} Concept #${keySeq}: ${c.name}\n`;
-      txt += `    Status:        ${statusLabel}\n`;
-      txt += `    Priority:      ${stars} (${c.importance || 3}/5)\n`;
-      txt += `    Est. Time:     ${timeStr}\n`;
-
-      if (c.source_page) {
-        txt += `    Source Page:   Page ${c.source_page}\n`;
-      }
-
-      if (Array.isArray(c.prerequisites) && c.prerequisites.length > 0) {
-        txt += `    Prerequisites: ${c.prerequisites.join(', ')}\n`;
-      }
-
-      if (Array.isArray(c.related) && c.related.length > 0) {
-        txt += `    Related:       ${c.related.join(', ')}\n`;
-      }
-
-      txt += `    Definition:\n`;
-      const def = c.definition || 'No definition available.';
-      txt += `      ${def.replace(/\n+/g, '\n      ')}\n`;
-
-      if (c.source_quote || c.source_excerpt) {
-        const quote = c.source_quote || c.source_excerpt;
-        txt += `    Key Excerpt:\n`;
-        txt += `      "${quote.replace(/\n+/g, ' ')}"\n`;
-      }
-
-      txt += `\n${divider}\n\n`;
+  let txt = `File: ${docTitle}\n\n`;
+  if (titles.length === 0) {
+    txt += `(No concepts extracted)\n`;
+  } else {
+    titles.forEach((title, idx) => {
+      txt += `${idx + 1}. ${title}\n`;
     });
-
-    chIndex++;
-  });
-
-  txt += `${border}\n`;
-  txt += `End of Study Guide — ConceptLens (https://conceptlens.vercel.app)\n`;
-  txt += `${border}\n`;
+  }
 
   return new Blob([txt], { type: 'text/plain;charset=utf-8' });
 }

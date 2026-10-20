@@ -1717,51 +1717,15 @@ def export_document_concepts(
         )
 
     elif format in ("txt", "text"):
-        border = "=" * 80
-        divider = "-" * 80
-        lines = [
-            border,
-            "                        CONCEPTLENS STUDY GUIDE",
-            border,
-            f"Document:    {doc['filename']}",
-            f"Generated:   {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}",
-            f"Total Notes: {len(concepts)} extracted concepts",
-            border,
-            "",
-            "[CHAPTER / TOPIC OVERVIEW]"
-        ]
-        topics_map = {}
-        for c in concepts:
-            t = c.get("topic") or "General"
-            topics_map.setdefault(t, []).append(c)
-
-        for idx, (topic, clist) in enumerate(topics_map.items(), 1):
-            lines.append(f"  {idx}. {topic} ({len(clist)} concepts)")
-        lines.append("")
-
-        for topic, clist in topics_map.items():
-            lines.append(border)
-            lines.append(f"SECTION: {topic.upper()}")
-            lines.append(border)
-            lines.append("")
-
-            for c_idx, c in enumerate(clist, 1):
-                importance_val = int(c.get("importance") or 3)
-                stars = "★" * importance_val + "☆" * (5 - importance_val)
-                lines.append(f"[{c_idx}] {c['name']}")
-                lines.append(f"    Importance:   {stars} ({importance_val}/5)")
-                lines.append(f"    Page:         Page {c.get('page', 1)}")
-                if c.get("definition"):
-                    lines.append(f"    Definition:   {c['definition']}")
-                if c.get("source_excerpt"):
-                    lines.append(f"    Key Excerpt:  \"{c['source_excerpt']}\"")
-                if c.get("related_concepts"):
-                    rel = ", ".join(r['name'] for r in c["related_concepts"])
-                    lines.append(f"    Related:      {rel}")
-                lines.append("")
-                lines.append(divider)
-                lines.append("")
-
+        filename = doc.get("filename") or doc.get("title") or "Document"
+        lines = [f"File: {filename}", ""]
+        valid_concepts = [c for c in concepts if (c.get("name") or c.get("title"))]
+        if not valid_concepts:
+            lines.append("(No concepts extracted)")
+        else:
+            for idx, c in enumerate(valid_concepts, 1):
+                name = (c.get("name") or c.get("title") or "").strip()
+                lines.append(f"{idx}. {name}")
         txt_bytes = "\n".join(lines).encode("utf-8")
         return StreamingResponse(
             io.BytesIO(txt_bytes),

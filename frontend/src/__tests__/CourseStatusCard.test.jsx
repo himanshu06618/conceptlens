@@ -131,7 +131,7 @@ describe('CourseStatusCard — Active Study Plan Pacing', () => {
 });
 
 describe('Export Utils — Plain Text (.txt) Export', () => {
-  it('generates an organized plain text study guide with headers, chapters, and concepts', async () => {
+  it('generates a clean plain text file with document filename and concept titles only', async () => {
     const docData = {
       title: 'Lecture 3: Sorting Algorithms',
       filename: 'lecture_3.pdf',
@@ -166,15 +166,12 @@ describe('Export Utils — Plain Text (.txt) Export', () => {
     expect(blob.type).toContain('text/plain');
 
     const text = await blob.text();
-    expect(text).toContain('CONCEPTLENS STUDY GUIDE');
-    expect(text).toContain('Lecture 3: Sorting Algorithms');
-    expect(text).toContain('[TABLE OF CONTENTS]');
-    expect(text).toContain('CHAPTER 1: SORTING BASICS');
-    expect(text).toContain('[ ] Concept #');
-    expect(text).toContain('Bubble Sort');
-    expect(text).toContain('[x] Concept #');
-    expect(text).toContain('Quick Sort');
-    expect(text).toContain('Page 2');
-    expect(text).toContain('Page 6');
+    expect(text).toContain('File: lecture_3.pdf');
+    expect(text).toContain('1. Bubble Sort');
+    expect(text).toContain('2. Quick Sort');
+    expect(text).not.toContain('CONCEPTLENS STUDY GUIDE');
+    expect(text).not.toContain('[TABLE OF CONTENTS]');
+    expect(text).not.toContain('CHAPTER 1:');
+    expect(text).not.toContain('Comparison-based sorting algorithm.');
   });
 });

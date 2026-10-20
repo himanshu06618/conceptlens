@@ -340,7 +340,7 @@ export default function UnifiedResultsPanel({
 
     setIsExporting(true);
     try {
-      const docTitle = documentData.title || documentData.filename || 'course-notes';
+      const docTitle = documentData.filename || documentData.title || 'course-notes';
       let blob = null;
       let filename = '';
 
@@ -624,7 +624,7 @@ export default function UnifiedResultsPanel({
                   role="menuitem"
                 >
                   <strong>Plain Text (.txt)</strong>
-                  <span>Organized study guide for any text editor</span>
+                  <span>Concept titles list with file name</span>
                 </button>
                 <button
                   type="button"
