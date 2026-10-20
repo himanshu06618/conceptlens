@@ -1697,14 +1697,22 @@ def check_table_exists(conn, table_name: str) -> bool:
         return False
 
 def delete_document_by_id(user_id: str, doc_id: str) -> bool:
-    """Deletes document strictly matching user_id, along with its chapters, topics, progress, and relations."""
+    """Deletes document completely from the database, along with all chapters, topics, progress, relations, files, and cache."""
     conn = get_connection()
     try:
         with conn:
-            # 1. Verify ownership
-            doc = conn.execute("SELECT id, subject_id FROM documents WHERE id = ? AND user_id = ?", (doc_id, user_id)).fetchone()
+            # 1. Verify document exists and belongs to user (or unassigned/guest)
+            doc = conn.execute(
+                "SELECT id, subject_id, filename, user_id FROM documents WHERE id = ? AND (user_id = ? OR user_id IS NULL)",
+                (doc_id, user_id)
+            ).fetchone()
             if not doc:
-                return False
+                doc = conn.execute("SELECT id, subject_id, filename, user_id FROM documents WHERE id = ?", (doc_id,)).fetchone()
+                if not doc or (doc["user_id"] and doc["user_id"] != user_id):
+                    return False
+
+            effective_user_id = doc["user_id"] or user_id
+            subject_id = doc["subject_id"]
 
             # 2. Get chapter IDs for this document
             ch_ids = []
@@ -1740,11 +1748,15 @@ def delete_document_by_id(user_id: str, doc_id: str) -> bool:
                     conn.execute("DELETE FROM chapters WHERE book_id = ?", (doc_id,))
 
             # 3. Delete concept progress, relations and concepts
-            # Explicitly cast concept id to TEXT for PostgreSQL text = integer compatibility
+            # Both TEXT and INT casts for cross-DB compatibility
             if check_table_exists(conn, "concept_progress") and check_table_exists(conn, "concepts"):
                 conn.execute(
-                    "DELETE FROM concept_progress WHERE concept_id IN (SELECT CAST(id AS TEXT) FROM concepts WHERE document_id = ?)",
-                    (doc_id,)
+                    """
+                    DELETE FROM concept_progress 
+                    WHERE concept_id IN (SELECT CAST(id AS TEXT) FROM concepts WHERE document_id = ?)
+                       OR concept_id IN (SELECT id FROM concepts WHERE document_id = ?)
+                    """,
+                    (doc_id, doc_id)
                 )
             if check_table_exists(conn, "relations"):
                 conn.execute("DELETE FROM relations WHERE document_id = ?", (doc_id,))
@@ -1761,12 +1773,29 @@ def delete_document_by_id(user_id: str, doc_id: str) -> bool:
             if check_table_exists(conn, "document_chunks"):
                 conn.execute("DELETE FROM document_chunks WHERE document_id = ?", (doc_id,))
 
-            # 4. Nullify scope_chapter_id in study plans if pointing to a deleted chapter
-            if ch_ids and check_table_exists(conn, "study_plans"):
-                conn.execute(
-                    "UPDATE study_plans SET scope_chapter_id = NULL WHERE user_id = ? AND scope_chapter_id IN ({seq})".format(seq=",".join("?" * len(ch_ids))),
-                    [user_id] + ch_ids
-                )
+            # 3c. Delete QA history referencing this document
+            if check_table_exists(conn, "qa_history"):
+                conn.execute("DELETE FROM qa_history WHERE document_id = ?", (doc_id,))
+
+            # 3d. Unlink personal notes from this deleted document so notes are preserved without dangling FK
+            if check_table_exists(conn, "notes"):
+                conn.execute("UPDATE notes SET document_id = NULL WHERE document_id = ?", (doc_id,))
+
+            # 4. Nullify or clean up study plans
+            if check_table_exists(conn, "study_plans"):
+                if ch_ids:
+                    conn.execute(
+                        "DELETE FROM study_plans WHERE scope_chapter_id IN ({seq})".format(seq=",".join("?" * len(ch_ids))),
+                        ch_ids
+                    )
+                # If subject has no remaining chapters, clean up any active study plan for it
+                if subject_id and check_table_exists(conn, "chapters"):
+                    remaining_count = conn.execute(
+                        "SELECT COUNT(*) FROM chapters c JOIN documents d ON c.book_id = d.id WHERE d.subject_id = ?",
+                        (subject_id,)
+                    ).fetchone()[0]
+                    if remaining_count == 0:
+                        conn.execute("DELETE FROM study_plans WHERE subject_id = ?", (subject_id,))
 
             # 5. Delete associated document file (and remove from S3 if configured)
             try:
@@ -1784,19 +1813,35 @@ def delete_document_by_id(user_id: str, doc_id: str) -> bool:
                     from backend.services.graph_service import cleanup_document_graph
                 except ImportError:
                     from services.graph_service import cleanup_document_graph
-                cleanup_document_graph(doc_id, user_id, conn=conn)
+                cleanup_document_graph(doc_id, effective_user_id, conn=conn)
             except Exception as e_gc:
                 logger.warning(f"Failed to cleanup document graph for {doc_id}: {e_gc}")
 
+            # 5c. Remove physical files from local upload directory
+            try:
+                up_dir = get_upload_dir()
+                candidate_dirs = [up_dir / effective_user_id, up_dir / user_id, up_dir]
+                for c_dir in candidate_dirs:
+                    if c_dir.exists():
+                        for f_match in c_dir.glob(f"{doc_id}_*"):
+                            try:
+                                f_match.unlink(missing_ok=True)
+                            except Exception:
+                                pass
+            except Exception as e_disk:
+                logger.warning(f"Failed to remove local upload files for {doc_id}: {e_disk}")
+
             # 6. Delete document
-            cursor = conn.execute("DELETE FROM documents WHERE id = ? AND user_id = ?", (doc_id, user_id))
+            cursor = conn.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
             if cursor.rowcount > 0:
                 try:
                     try:
                         from backend.services.planner_db import invalidate_user_summary_cache
                     except ImportError:
                         from services.planner_db import invalidate_user_summary_cache
-                    invalidate_user_summary_cache(user_id)
+                    invalidate_user_summary_cache(effective_user_id)
+                    if user_id != effective_user_id:
+                        invalidate_user_summary_cache(user_id)
                 except Exception:
                     pass
                 return True

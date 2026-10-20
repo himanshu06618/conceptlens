@@ -1,17 +1,27 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 /**
  * CourseStatusCard — "Flux" Health-Dashboard Inspired Study Route Tracker
- * Matches Target Design (PDF 1):
- * - Dark card (.card.card--dark)
- * - Header: "Day 3 of 7" + amber "2 days behind" pill
- * - 7 vertical pill-shaped bars (today lime, done lavender, rest #3A3A3E) with day labels M T W T F S S
+ * 
+ * Features:
+ * - Dynamic activation when user starts a plan (7 days / 15 days / 1 month)
+ * - Header: "Day X of Y" + status pill ("On track", "X days behind", "Course Complete")
+ * - 7 vertical pill-shaped bars representing Monday through Sunday of current week
+ * - Dynamically tracks daily concept completion rate:
+ *   - 0 concepts completed: bar remains at bottom (8px)
+ *   - 1 concept completed: bar goes up (28px)
+ *   - 2, 3, ... N concepts completed: bar goes up proportionally (up to 94px)
+ *   - Today is highlighted in vibrant lime (#D7F25C)
+ *   - Past completed days are soft lavender (#B7A9F2)
+ *   - Days with 0 completed concepts remain at bottom in dark gray (#3A3A3E)
  * - Lime full-width "Manage Study Route" button
  */
 export default function CourseStatusCard({
   activePlan = null,
   planStatus = null,
+  activeTimestamps = [],
+  completedConceptsCount = 0,
   totalChapters = 0,
   doneChapters = 0,
   subtitle = null,
@@ -19,20 +29,111 @@ export default function CourseStatusCard({
 }) {
   const navigate = useNavigate();
 
-  const days = Number(activePlan?.days) || 7;
-  const todayIndex = planStatus?.today_index || 3;
-  const behindCount = planStatus?.behind ?? 2;
-  const isComplete = planStatus?.complete || false;
+  const hasActivePlan = Boolean(activePlan && (activePlan.id || activePlan.days));
+  const days = Number(activePlan?.days) || Number(planStatus?.total_days) || 7;
+  const todayIndex = Number(planStatus?.today_index) || 1;
+  const behindCount = Number(planStatus?.behind) || 0;
+  const isComplete = Boolean(planStatus?.complete);
 
-  const weekdayBars = [
-    { label: 'M', dayIndex: 1, height: '48px', status: 'done' },
-    { label: 'T', dayIndex: 2, height: '70px', status: 'done' },
-    { label: 'W', dayIndex: 3, height: '94px', status: 'today' },
-    { label: 'T', dayIndex: 4, height: '56px', status: 'upcoming' },
-    { label: 'F', dayIndex: 5, height: '70px', status: 'upcoming' },
-    { label: 'S', dayIndex: 6, height: '42px', status: 'upcoming' },
-    { label: 'S', dayIndex: 7, height: '58px', status: 'upcoming' },
+  // Determine current week (Monday to Sunday) in user's local timezone
+  const now = new Date();
+  // In JS getDay(): 0 is Sunday, 1 is Monday ... 6 is Saturday
+  const currentDayOfWeek = (now.getDay() + 6) % 7; // 0 for Monday, ..., 6 for Sunday
+
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - currentDayOfWeek);
+  monday.setHours(0, 0, 0, 0);
+
+  // Group active timestamps by local YYYY-MM-DD
+  const completionCounts = useMemo(() => {
+    const counts = new Map();
+    if (Array.isArray(activeTimestamps) && activeTimestamps.length > 0) {
+      activeTimestamps.forEach((ts) => {
+        if (!ts) return;
+        try {
+          const d = new Date(ts);
+          if (!isNaN(d.getTime())) {
+            const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+            counts.set(key, (counts.get(key) || 0) + 1);
+          }
+        } catch {}
+      });
+    }
+    return counts;
+  }, [activeTimestamps]);
+
+  // Fallback: If completedConceptsCount > 0 but completionCounts is empty, attribute to today
+  const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  if (completionCounts.size === 0 && Number(completedConceptsCount) > 0) {
+    completionCounts.set(todayKey, Number(completedConceptsCount));
+  }
+
+  const weekdays = [
+    { label: 'M', name: 'Monday' },
+    { label: 'T', name: 'Tuesday' },
+    { label: 'W', name: 'Wednesday' },
+    { label: 'T', name: 'Thursday' },
+    { label: 'F', name: 'Friday' },
+    { label: 'S', name: 'Saturday' },
+    { label: 'S', name: 'Sunday' }
   ];
+
+  // Compute weekday bars data
+  const weekdayBars = weekdays.map((day, idx) => {
+    const dayDate = new Date(monday);
+    dayDate.setDate(monday.getDate() + idx);
+    const dateKey = `${dayDate.getFullYear()}-${String(dayDate.getMonth() + 1).padStart(2, '0')}-${String(dayDate.getDate()).padStart(2, '0')}`;
+    
+    // Concept completion count for this day
+    const count = hasActivePlan ? (completionCounts.get(dateKey) || 0) : 0;
+    const isToday = idx === currentDayOfWeek;
+    const isPast = idx < currentDayOfWeek;
+
+    // Height calculation:
+    // 0 concepts: remains at bottom (8px)
+    // 1 concept: 28px
+    // 2 concepts: 44px
+    // 3 concepts: 60px
+    // 4 concepts: 76px
+    // 5+ concepts: up to 94px max
+    let heightPx = 8;
+    if (count > 0) {
+      heightPx = Math.min(94, 28 + (count - 1) * 16);
+    }
+
+    // Colors:
+    // Today with completions: vibrant lime (#D7F25C)
+    // Today with 0 completions: dim lime (#D7F25C at low opacity, or 8px)
+    // Past with completions: lavender (#B7A9F2)
+    // 0 completions: dark gray (#3A3A3E)
+    let barBg = '#3A3A3E';
+    let opacity = 1;
+
+    if (isToday) {
+      barBg = '#D7F25C';
+      if (count === 0) {
+        opacity = 0.55;
+      }
+    } else if (isPast && count > 0) {
+      barBg = '#B7A9F2';
+    }
+
+    const tooltip = isToday
+      ? `${day.name} (Today): ${count} concept${count === 1 ? '' : 's'} completed`
+      : `${day.name}: ${count} concept${count === 1 ? '' : 's'} completed`;
+
+    return {
+      label: day.label,
+      fullName: day.name,
+      dayIndex: idx + 1,
+      height: `${heightPx}px`,
+      count,
+      barBg,
+      opacity,
+      isToday,
+      tooltip
+    };
+  });
 
   return (
     <div
@@ -53,27 +154,39 @@ export default function CourseStatusCard({
       <div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
           <h3 style={{ fontSize: '18px', fontWeight: 700, margin: 0, color: '#FFFFFF' }}>
-            Day {todayIndex} of {days}
+            {hasActivePlan ? `Day ${todayIndex} of ${days}` : 'No Active Plan'}
           </h3>
 
           <span
             className="pill"
             style={{
-              background: isComplete ? '#D7F25C' : behindCount > 0 ? '#F5C46B' : '#D7F25C',
-              color: '#111113',
+              background: !hasActivePlan
+                ? 'rgba(255, 255, 255, 0.12)'
+                : isComplete
+                ? '#D7F25C'
+                : behindCount > 0
+                ? '#F5C46B'
+                : '#D7F25C',
+              color: !hasActivePlan ? '#A8A8B0' : '#111113',
               fontSize: '12px',
               fontWeight: 700,
               padding: '4px 12px'
             }}
           >
-            {isComplete ? 'Course Complete' : behindCount > 0 ? `${behindCount} days behind` : 'On track'}
+            {!hasActivePlan
+              ? 'Inactive'
+              : isComplete
+              ? 'Course Complete'
+              : behindCount > 0
+              ? `${behindCount} days behind`
+              : 'On track'}
           </span>
         </div>
-        {subtitle && (
-          <p style={{ fontSize: '13px', color: '#A8A8B0', margin: '4px 0 0 0' }}>
-            {subtitle}
-          </p>
-        )}
+        <p style={{ fontSize: '13px', color: '#A8A8B0', margin: '4px 0 0 0' }}>
+          {hasActivePlan
+            ? (subtitle || 'Study plan for this file')
+            : 'Start a 7, 15, or 30-day plan in Study Planner to track daily pace'}
+        </p>
       </div>
 
       {/* 7 Vertical Pill-shaped Bars */}
@@ -89,51 +202,44 @@ export default function CourseStatusCard({
         role="img"
         aria-label="Weekly study pacing chart"
       >
-        {weekdayBars.map((bar, idx) => {
-          let barBg = '#3A3A3E';
-          if (bar.status === 'today') {
-            barBg = '#D7F25C';
-          } else if (bar.status === 'done') {
-            barBg = '#B7A9F2';
-          }
-
-          return (
+        {weekdayBars.map((bar, idx) => (
+          <div
+            key={idx}
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '8px',
+              flex: 1
+            }}
+          >
             <div
-              key={idx}
               style={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: '8px',
-                flex: 1
+                width: '24px',
+                height: bar.height,
+                borderRadius: '999px',
+                backgroundColor: bar.barBg,
+                opacity: bar.opacity,
+                transition: 'height 0.35s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.2s ease',
+                boxShadow: bar.isToday && bar.count > 0 ? '0 0 12px rgba(215, 242, 92, 0.45)' : 'none'
+              }}
+              title={bar.tooltip}
+            />
+            <span
+              style={{
+                fontSize: '11px',
+                fontWeight: bar.isToday ? 800 : 600,
+                color: bar.isToday ? '#D7F25C' : '#A8A8B0',
+                lineHeight: 1
               }}
             >
-              <div
-                style={{
-                  width: '24px',
-                  height: bar.height,
-                  borderRadius: '999px',
-                  backgroundColor: barBg,
-                  transition: 'height 0.3s ease'
-                }}
-                title={`Day ${bar.dayIndex} (${bar.label}): ${bar.status}`}
-              />
-              <span
-                style={{
-                  fontSize: '11px',
-                  fontWeight: 600,
-                  color: '#A8A8B0',
-                  lineHeight: 1
-                }}
-              >
-                {bar.label}
-              </span>
-            </div>
-          );
-        })}
+              {bar.label}
+            </span>
+          </div>
+        ))}
       </div>
 
-      {/* Lime Full-width Button */}
+      {/* Full-width Button */}
       <button
         type="button"
         className="pill card--lime"
@@ -153,7 +259,7 @@ export default function CourseStatusCard({
           transition: 'transform 0.15s ease, opacity 0.15s ease'
         }}
       >
-        Manage Study Route
+        {hasActivePlan ? 'Manage Study Route' : 'Start Study Plan'}
       </button>
     </div>
   );

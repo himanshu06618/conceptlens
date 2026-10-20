@@ -556,6 +556,8 @@ export default function FileDashboardView({ onToast = () => {} }) {
         <CourseStatusCard
           activePlan={overview?.active_plan}
           planStatus={overview?.plan_status}
+          activeTimestamps={overview?.stats?.active_timestamps || []}
+          completedConceptsCount={studiedConceptsCount}
           totalChapters={1}
           doneChapters={isCurrentFileDone ? 1 : 0}
           subtitle="Study plan for this file"

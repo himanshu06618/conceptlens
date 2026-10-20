@@ -829,8 +829,10 @@ export default function StudentDashboard({ onToast = () => {} }) {
       {/* 5. Course Pacing (Day N of 7) + Study Consistency Row */}
       <section className="flux-row-2-grid" aria-label="Course Pacing and Consistency" style={{ marginBottom: '24px' }}>
         <CourseStatusCard
-          activePlan={activePlan}
-          planStatus={planStatus}
+          activePlan={overview?.active_plan}
+          planStatus={overview?.plan_status}
+          activeTimestamps={overview?.stats?.active_timestamps || []}
+          completedConceptsCount={overview?.stats?.studied_concepts_count || 0}
           totalChapters={combinedStats.total_chapters}
           doneChapters={combinedStats.chapters_done}
           subtitle={fileCount === 0 ? 'Upload notes to start' : `One route for all ${fileCount} files`}

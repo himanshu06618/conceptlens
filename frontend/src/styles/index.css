@@ -789,18 +789,23 @@ code, kbd, pre, .font-mono {
   padding: 10px;
   overflow: hidden;
   border-radius: 22px;
-  border: 1px solid var(--overlay-border);
-  background: var(--overlay-bg);
-  backdrop-filter: blur(var(--overlay-blur)) saturate(1.15);
-  -webkit-backdrop-filter: blur(var(--overlay-blur)) saturate(1.15);
-  box-shadow: var(--overlay-shadow);
+  border: 1px solid var(--overlay-border, rgba(17, 17, 19, 0.12));
+  background: var(--overlay-bg, rgba(255, 255, 255, 0.98)) !important;
+  backdrop-filter: blur(var(--overlay-blur, 32px)) saturate(1.4) !important;
+  -webkit-backdrop-filter: blur(var(--overlay-blur, 32px)) saturate(1.4) !important;
+  box-shadow: var(--overlay-shadow, 0 20px 48px -8px rgba(0, 0, 0, 0.22), 0 8px 16px -4px rgba(0, 0, 0, 0.10)) !important;
   animation: user-dropdown-enter 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 [data-theme='dark'] .user-dropdown-panel {
-  border: 1px solid var(--overlay-border);
-  background: var(--overlay-bg);
-  box-shadow: var(--overlay-shadow);
+  border: 1px solid var(--overlay-border, rgba(255, 255, 255, 0.14));
+  background: var(--overlay-bg, rgba(27, 27, 29, 0.98)) !important;
+  box-shadow: var(--overlay-shadow, 0 20px 48px -8px rgba(0, 0, 0, 0.65), 0 8px 16px -4px rgba(0, 0, 0, 0.40)) !important;
+}
+
+.overlay-dropdown-panel {
+  isolation: isolate;
+  z-index: 1200;
 }
 
 .user-dropdown-header {

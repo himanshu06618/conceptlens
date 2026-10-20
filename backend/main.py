@@ -1535,23 +1535,39 @@ def delete_document(
     doc_id: str,
     actor: Dict[str, Any] = Depends(get_current_user_or_guest)
 ):
-    if not actor.get("is_authenticated"):
-        raise HTTPException(status_code=401, detail="Authentication required.")
     verify_csrf(request)
     doc = get_document_by_id(user_id=actor["id"], doc_id=doc_id)
+    if not doc:
+        # Check if doc exists with unassigned user_id or matching actor
+        conn = get_connection()
+        try:
+            row = conn.execute("SELECT id, filename, user_id FROM documents WHERE id = ?", (doc_id,)).fetchone()
+            if row and (row["user_id"] is None or row["user_id"] == actor["id"] or actor.get("role") == "admin"):
+                doc = dict(row)
+        finally:
+            conn.close()
+
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found.")
 
     filename = doc["filename"]
-    actor_upload_dir = UPLOAD_DIR / actor["id"]
-    file_path = actor_upload_dir / f"{doc_id}_{filename}"
-    if file_path.exists():
-        try:
-            file_path.unlink()
-        except Exception as e:
-            logger.warning(f"Could not remove file {file_path}: {e}")
+    owner_id = doc.get("user_id") or actor["id"]
 
-    deleted = delete_document_by_id(user_id=actor["id"], doc_id=doc_id)
+    # Remove all physical files for this document from disk
+    try:
+        actor_upload_dir = UPLOAD_DIR / actor["id"]
+        owner_upload_dir = UPLOAD_DIR / owner_id
+        for search_dir in [actor_upload_dir, owner_upload_dir, UPLOAD_DIR]:
+            if search_dir.exists():
+                for p in search_dir.glob(f"{doc_id}_*"):
+                    try:
+                        p.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+    except Exception as e:
+        logger.warning(f"Could not remove file for doc {doc_id}: {e}")
+
+    deleted = delete_document_by_id(user_id=owner_id, doc_id=doc_id)
     if not deleted:
         raise HTTPException(status_code=500, detail="Failed to delete document from database.")
 
@@ -1602,7 +1618,7 @@ async def root_dashboard_summary_endpoint(
 @app.get("/documents/{doc_id}/export")
 def export_document_concepts(
     doc_id: str,
-    format: str = Query("json", pattern="^(json|csv|markdown|md)$"),
+    format: str = Query("json", pattern="^(json|csv|markdown|md|txt|text)$"),
     actor: Dict[str, Any] = Depends(get_current_user_or_guest)
 ):
     doc = get_document_by_id(user_id=actor["id"], doc_id=doc_id)
@@ -1697,6 +1713,61 @@ def export_document_concepts(
             media_type="text/csv",
             headers={
                 "Content-Disposition": f'attachment; filename="{base_name}_concepts.csv"'
+            }
+        )
+
+    elif format in ("txt", "text"):
+        border = "=" * 80
+        divider = "-" * 80
+        lines = [
+            border,
+            "                        CONCEPTLENS STUDY GUIDE",
+            border,
+            f"Document:    {doc['filename']}",
+            f"Generated:   {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}",
+            f"Total Notes: {len(concepts)} extracted concepts",
+            border,
+            "",
+            "[CHAPTER / TOPIC OVERVIEW]"
+        ]
+        topics_map = {}
+        for c in concepts:
+            t = c.get("topic") or "General"
+            topics_map.setdefault(t, []).append(c)
+
+        for idx, (topic, clist) in enumerate(topics_map.items(), 1):
+            lines.append(f"  {idx}. {topic} ({len(clist)} concepts)")
+        lines.append("")
+
+        for topic, clist in topics_map.items():
+            lines.append(border)
+            lines.append(f"SECTION: {topic.upper()}")
+            lines.append(border)
+            lines.append("")
+
+            for c_idx, c in enumerate(clist, 1):
+                importance_val = int(c.get("importance") or 3)
+                stars = "★" * importance_val + "☆" * (5 - importance_val)
+                lines.append(f"[{c_idx}] {c['name']}")
+                lines.append(f"    Importance:   {stars} ({importance_val}/5)")
+                lines.append(f"    Page:         Page {c.get('page', 1)}")
+                if c.get("definition"):
+                    lines.append(f"    Definition:   {c['definition']}")
+                if c.get("source_excerpt"):
+                    lines.append(f"    Key Excerpt:  \"{c['source_excerpt']}\"")
+                if c.get("related_concepts"):
+                    rel = ", ".join(r['name'] for r in c["related_concepts"])
+                    lines.append(f"    Related:      {rel}")
+                lines.append("")
+                lines.append(divider)
+                lines.append("")
+
+        txt_bytes = "\n".join(lines).encode("utf-8")
+        return StreamingResponse(
+            io.BytesIO(txt_bytes),
+            media_type="text/plain; charset=utf-8",
+            headers={
+                "Content-Disposition": f'attachment; filename="{base_name}_concepts.txt"'
             }
         )
 

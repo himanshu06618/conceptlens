@@ -37,6 +37,7 @@ import {
 import { OverlayPortal, DropdownPortal, lockBodyScroll, unlockBodyScroll } from '../ui/Overlay';
 import {
   downloadBlob,
+  generateConceptsTxt,
   generateStudyGuideMarkdown,
   generateConceptsJson,
   generateConceptsCsv,
@@ -343,7 +344,10 @@ export default function UnifiedResultsPanel({
       let blob = null;
       let filename = '';
 
-      if (format === 'markdown') {
+      if (format === 'txt') {
+        blob = generateConceptsTxt(documentData, concepts, topics);
+        filename = getCleanExportFilename(docTitle, 'concepts.txt');
+      } else if (format === 'markdown') {
         blob = generateStudyGuideMarkdown(documentData, concepts, topics);
         filename = getCleanExportFilename(docTitle, 'study-guide.md');
       } else if (format === 'json') {
@@ -613,6 +617,15 @@ export default function UnifiedResultsPanel({
               placement="bottom-end"
             >
               <div className="panel-export-menu" role="menu" aria-label="Export options">
+                <button
+                  type="button"
+                  className="export-menu-item"
+                  onClick={() => handleExport('txt')}
+                  role="menuitem"
+                >
+                  <strong>Plain Text (.txt)</strong>
+                  <span>Organized study guide for any text editor</span>
+                </button>
                 <button
                   type="button"
                   className="export-menu-item"
