@@ -966,6 +966,8 @@ export default function UnifiedResultsPanel({
                       onToggleStudied={handleToggleStudied}
                       isAuthenticated={isAuthenticated}
                       onJumpToTab={handleJumpToTab}
+                      onReanalyze={handleReanalyze}
+                      isReanalyzing={isReanalyzing}
                     />
                   </ViewErrorBoundary>
                 )}

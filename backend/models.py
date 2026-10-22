@@ -14,7 +14,11 @@ class ConceptItem(BaseModel):
     id: Union[int, str]
     document_id: Optional[str] = None
     name: str
-    definition: Optional[str] = ""
+    definition: Optional[str] = None
+    definition_cue: Optional[str] = None
+    aliases: Optional[List[str]] = []
+    source_sentence: Optional[str] = None
+    location: Optional[Union[str, int]] = None
     topic: Optional[str] = "General"
     chapter: Optional[str] = "General"
     score: Optional[float] = 0.5

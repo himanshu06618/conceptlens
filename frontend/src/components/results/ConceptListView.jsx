@@ -15,8 +15,115 @@ import {
   ChevronLeft,
   ChevronRight,
   X,
-  ExternalLink
+  ExternalLink,
+  RotateCw
 } from 'lucide-react';
+
+function ConceptDefinitionBlock({ definition, cue, aliases }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  if (!definition) return null;
+
+  const formattedCue = cue ? cue.replace(/_/g, ' ') : null;
+
+  return (
+    <div
+      className="concept-definition-block"
+      onClick={(e) => e.stopPropagation()}
+      style={{ marginTop: '6px', marginBottom: '10px' }}
+    >
+      <div
+        className="concept-meta-chips"
+        style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: '6px',
+          alignItems: 'center',
+          marginBottom: '6px'
+        }}
+      >
+        {formattedCue && (
+          <span
+            className="concept-cue-chip"
+            style={{
+              fontSize: '0.70rem',
+              fontWeight: 600,
+              textTransform: 'lowercase',
+              padding: '2px 8px',
+              borderRadius: '12px',
+              background: 'rgba(212, 248, 40, 0.14)',
+              color: 'var(--accent-lime, #d4f828)',
+              border: '1px solid rgba(212, 248, 40, 0.28)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              lineHeight: 1.2
+            }}
+          >
+            {formattedCue}
+          </span>
+        )}
+        {Array.isArray(aliases) && aliases.map((alias, i) => (
+          <span
+            key={i}
+            className="concept-alias-chip"
+            style={{
+              fontSize: '0.70rem',
+              fontWeight: 500,
+              padding: '2px 8px',
+              borderRadius: '12px',
+              background: 'rgba(255, 255, 255, 0.06)',
+              color: 'rgba(255, 255, 255, 0.85)',
+              border: '1px solid rgba(255, 255, 255, 0.12)',
+              lineHeight: 1.2
+            }}
+            title={`Alternative name: ${alias}`}
+          >
+            aka {alias}
+          </span>
+        ))}
+      </div>
+      <div className="concept-def-text-wrap">
+        <p
+          className="card-definition-text"
+          style={{
+            margin: 0,
+            fontSize: '0.84rem',
+            lineHeight: '1.45',
+            color: 'var(--text-secondary, rgba(255, 255, 255, 0.78))',
+            display: isExpanded ? 'block' : '-webkit-box',
+            WebkitLineClamp: isExpanded ? 'unset' : 2,
+            WebkitBoxOrient: 'vertical',
+            overflow: isExpanded ? 'visible' : 'hidden',
+            wordBreak: 'break-word'
+          }}
+        >
+          {definition}
+        </p>
+        {definition.length > 80 && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsExpanded(!isExpanded);
+            }}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: 'var(--accent-lime, #d4f828)',
+              fontSize: '0.74rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              padding: '2px 0 0 0',
+              textDecoration: 'underline',
+              display: 'inline-block'
+            }}
+          >
+            {isExpanded ? 'less' : 'more'}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default function ConceptListView({
   concepts = [],
@@ -25,7 +132,9 @@ export default function ConceptListView({
   onSelectConcept,
   onToggleStudied,
   isAuthenticated = false,
-  onJumpToTab
+  onJumpToTab,
+  onReanalyze,
+  isReanalyzing = false
 }) {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
@@ -343,9 +452,11 @@ export default function ConceptListView({
 
         <h3 className="card-concept-title">{concept.name}</h3>
 
-        <p className="card-definition-text">
-          {concept.definition || 'No definition available for this concept.'}
-        </p>
+        <ConceptDefinitionBlock
+          definition={concept.definition}
+          cue={concept.definition_cue}
+          aliases={concept.aliases}
+        />
 
         <div className="card-bottom-row">
           <div className="card-time-wrap">
@@ -406,6 +517,53 @@ export default function ConceptListView({
 
   return (
     <div className="concept-list-view-container" role="region" aria-label="Concepts Searchable List">
+      {/* Manual Re-extract Banner for notes without definitions */}
+      {!concepts.some((c) => c.definition) && concepts.length > 0 && onReanalyze && (
+        <div
+          className="reextract-definitions-banner"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '10px 14px',
+            marginBottom: '14px',
+            borderRadius: '10px',
+            background: 'rgba(212, 248, 40, 0.08)',
+            border: '1px solid rgba(212, 248, 40, 0.22)',
+            fontSize: '0.82rem',
+            color: 'var(--text-primary, #f3f4f6)',
+            gap: '12px',
+            flexWrap: 'wrap'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Sparkles size={14} style={{ color: 'var(--accent-lime, #d4f828)' }} />
+            <span>Older note without extracted definitions.</span>
+          </div>
+          <button
+            type="button"
+            onClick={onReanalyze}
+            disabled={isReanalyzing}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '5px 12px',
+              borderRadius: '6px',
+              background: 'var(--accent-lime, #d4f828)',
+              color: '#000',
+              fontWeight: 600,
+              fontSize: '0.78rem',
+              border: 'none',
+              cursor: isReanalyzing ? 'not-allowed' : 'pointer'
+            }}
+          >
+            <RotateCw size={12} className={isReanalyzing ? 'is-spinning' : ''} />
+            <span>{isReanalyzing ? 'Re-extracting...' : 'Re-extract to add definitions'}</span>
+          </button>
+        </div>
+      )}
+
       {/* Search and Filters Toolbar */}
       <div className="concept-list-toolbar">
         <div className="list-search-wrap">

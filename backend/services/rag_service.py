@@ -37,6 +37,10 @@ try:
         get_flow_data,
         get_mastery_map_data
     )
+    from backend.services.definitions_lookup import (
+        lookup_stored_definitions,
+        format_natural_definition_answer
+    )
 except ImportError:
     from database import get_connection, is_postgres
     from services.graph_service import (
@@ -46,6 +50,10 @@ except ImportError:
         compute_token_overlap,
         get_flow_data,
         get_mastery_map_data
+    )
+    from services.definitions_lookup import (
+        lookup_stored_definitions,
+        format_natural_definition_answer
     )
 
 logger = logging.getLogger("conceptlens.rag")
@@ -732,6 +740,63 @@ def answer_user_question(
             except Exception:
                 pass
 
+        # Check stored definitions first (Step 4: Ask Your Notes)
+        stored_matches, is_def_q, target_term = lookup_stored_definitions(
+            question=question,
+            user_id=user_id,
+            document_id=target_doc_id,
+            conn=conn
+        )
+        valid_def_matches = [m for m in stored_matches if m.get("definition")]
+
+        if valid_def_matches:
+            formatted_ans = format_natural_definition_answer(valid_def_matches)
+            citations = []
+            for m in valid_def_matches:
+                citations.append({
+                    "type": "chunk",
+                    "chunk_id": None,
+                    "document_id": m["document_id"],
+                    "filename": m["filename"],
+                    "page": m["page"],
+                    "quote": m.get("source_sentence") or f"{m['name']} is defined as {m['definition']}",
+                    "origin": "notes"
+                })
+            concepts_used = list(dict.fromkeys(m["name"] for m in valid_def_matches))
+            # Cache to qa_history
+            now_iso = datetime.now(timezone.utc).isoformat()
+            qa_id = f"qa_{uuid.uuid4().hex[:12]}"
+            try:
+                conn.execute(
+                    """
+                    INSERT INTO qa_history (
+                        id, user_id, document_id, question, answer, route, citations_json, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        qa_id,
+                        user_id,
+                        target_doc_id,
+                        question,
+                        formatted_ans,
+                        "definition_direct",
+                        json.dumps(citations),
+                        now_iso
+                    )
+                )
+            except Exception as e_hist:
+                logger.warning(f"Could not save definition answer to qa_history: {e_hist}")
+
+            return {
+                "answer": formatted_ans,
+                "citations": citations,
+                "concepts_used": concepts_used,
+                "dependency_path": concepts_used,
+                "not_found": False,
+                "route": "definition_direct",
+                "timing_ms": (time.perf_counter() - t0) * 1000.0
+            }
+
         # 3. Route question
         route = route_query(question)
         if not GRAPH_RAG_ENABLED and route in ("graph", "hybrid"):
@@ -779,6 +844,13 @@ def answer_user_question(
                 "If a prerequisite or connection link has origin 'suggested', explicitly state that it is a suggested link rather than direct notes evidence. "
                 "If the provided passages and graph facts do NOT contain sufficient information to answer the question, set not_found to true and clearly state that the answer is not found in the uploaded notes."
             )
+
+            if is_def_q:
+                system_prompt += (
+                    "\nIMPORTANT NOTE: The student asked for a definition of a concept that is not explicitly defined in their notes. "
+                    "Start your answer with: 'Not explicitly defined in your notes.' then provide a brief factual explanation strictly based on retrieved passages. "
+                    "Never present an answer as an explicit definition from the notes."
+                )
 
             user_prompt = (
                 f"QUESTION: {question}\n\n"
@@ -844,6 +916,12 @@ def answer_user_question(
                     "not_found": False
                 }
 
+        # If user asked a definition question, but no explicit definition exists in notes:
+        if is_def_q and not gemini_answer.get("not_found"):
+            ans_text = gemini_answer.get("answer", "")
+            if not ans_text.startswith("Not explicitly defined in your notes.") and not ans_text.startswith("**Not explicitly defined in your notes.**"):
+                gemini_answer["answer"] = f"Not explicitly defined in your notes.\n\n{ans_text}"
+
         # 6. Server-Side Citation Verification (Security & Grounding)
         # Verify every cited chunk_id and edge_id actually exists in retrieved set
         raw_citations = gemini_answer.get("citations", [])
@@ -878,6 +956,11 @@ def answer_user_question(
                     "origin": edge["origin"]
                 })
 
+        ans_text = gemini_answer.get("answer", "")
+        if is_def_q and not valid_def_matches and not gemini_answer.get("not_found", False):
+            if "Not explicitly defined in your notes" not in ans_text:
+                ans_text = f"Not explicitly defined in your notes.\n\n{ans_text}"
+
         # Save to qa_history (safely guarded)
         now_iso = datetime.now(timezone.utc).isoformat()
         qa_id = f"qa_{uuid.uuid4().hex[:12]}"
@@ -894,7 +977,7 @@ def answer_user_question(
                         user_id,
                         target_doc_id,
                         question,
-                        gemini_answer.get("answer", ""),
+                        ans_text,
                         route,
                         json.dumps(verified_citations),
                         now_iso
@@ -907,7 +990,7 @@ def answer_user_question(
         logger.info(f"Answered Ask question in {t_elapsed:.1f}ms (route: {route}, verified citations: {len(verified_citations)})")
 
         return {
-            "answer": gemini_answer.get("answer", ""),
+            "answer": ans_text,
             "citations": verified_citations,
             "concepts_used": gemini_answer.get("concepts_used", []),
             "dependency_path": gemini_answer.get("dependency_path", graph_facts_data.get("dependency_path", [])),

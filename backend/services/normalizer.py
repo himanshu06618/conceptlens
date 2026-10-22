@@ -331,6 +331,10 @@ def normalize_extracted_concepts(raw_concepts: List[Dict[str, Any]]) -> List[Dic
         c_copy = dict(c)
         c_copy["name"] = valid_name
         c_copy["definition"] = defn_raw or sentence_definitions_pool.get(name_raw.lower(), "")
+        c_copy["definition_cue"] = c.get("definition_cue")
+        c_copy["aliases"] = c.get("aliases") or []
+        c_copy["source_sentence"] = c.get("source_sentence")
+        c_copy["location"] = c.get("location")
         c_copy["chapter"] = str(c.get("chapter") or c.get("topic") or "General").strip() or "General"
         cleaned_candidates.append(c_copy)
 
@@ -374,6 +378,17 @@ def normalize_extracted_concepts(raw_concepts: List[Dict[str, Any]]) -> List[Dic
             ex_def = str(existing.get("definition") or "")
             if len(c_def) > len(ex_def):
                 existing["definition"] = c_def
+            if not existing.get("definition_cue") and c.get("definition_cue"):
+                existing["definition_cue"] = c.get("definition_cue")
+            if c.get("aliases"):
+                ex_aliases = existing.setdefault("aliases", [])
+                for a in c.get("aliases", []):
+                    if a and a not in ex_aliases:
+                        ex_aliases.append(a)
+            if not existing.get("source_sentence") and c.get("source_sentence"):
+                existing["source_sentence"] = c.get("source_sentence")
+            if not existing.get("location") and c.get("location"):
+                existing["location"] = c.get("location")
             # Merge relations
             existing_rels = existing.setdefault("relations", [])
             existing_rels.extend(c.get("relations", []) or c.get("related_concepts", []))

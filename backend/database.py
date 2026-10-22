@@ -540,7 +540,11 @@ def init_db() -> None:
                         source_quote TEXT DEFAULT '',
                         source_verified BOOLEAN DEFAULT FALSE,
                         flow_order INTEGER NOT NULL DEFAULT 0,
-                        flow_group TEXT NOT NULL DEFAULT 'General'
+                        flow_group TEXT NOT NULL DEFAULT 'General',
+                        definition_cue TEXT,
+                        aliases_json TEXT DEFAULT '[]',
+                        source_sentence TEXT,
+                        location TEXT
                     );
                 """)
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_concepts_document_id ON concepts(document_id);")
@@ -621,6 +625,10 @@ def init_db() -> None:
                 conn.execute("ALTER TABLE concepts ADD COLUMN IF NOT EXISTS source_quote TEXT DEFAULT '';")
                 conn.execute("ALTER TABLE concepts ADD COLUMN IF NOT EXISTS source_verified BOOLEAN DEFAULT FALSE;")
                 conn.execute("ALTER TABLE concepts ADD COLUMN IF NOT EXISTS pages_json TEXT DEFAULT '[]';")
+                conn.execute("ALTER TABLE concepts ADD COLUMN IF NOT EXISTS definition_cue TEXT;")
+                conn.execute("ALTER TABLE concepts ADD COLUMN IF NOT EXISTS aliases_json TEXT DEFAULT '[]';")
+                conn.execute("ALTER TABLE concepts ADD COLUMN IF NOT EXISTS source_sentence TEXT;")
+                conn.execute("ALTER TABLE concepts ADD COLUMN IF NOT EXISTS location TEXT;")
 
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS page_coverage (
@@ -712,7 +720,11 @@ def init_db() -> None:
                         flow_group TEXT NOT NULL DEFAULT 'General',
                         source_page INTEGER,
                         source_quote TEXT DEFAULT '',
-                        source_verified BOOLEAN DEFAULT 0
+                        source_verified BOOLEAN DEFAULT 0,
+                        definition_cue TEXT,
+                        aliases_json TEXT DEFAULT '[]',
+                        source_sentence TEXT,
+                        location TEXT
                     );
 
                     CREATE TABLE IF NOT EXISTS document_files (
@@ -824,6 +836,14 @@ def init_db() -> None:
                     conn.execute("ALTER TABLE concepts ADD COLUMN source_verified BOOLEAN DEFAULT 0;")
                 if "pages_json" not in concept_columns:
                     conn.execute("ALTER TABLE concepts ADD COLUMN pages_json TEXT DEFAULT '[]';")
+                if "definition_cue" not in concept_columns:
+                    conn.execute("ALTER TABLE concepts ADD COLUMN definition_cue TEXT;")
+                if "aliases_json" not in concept_columns:
+                    conn.execute("ALTER TABLE concepts ADD COLUMN aliases_json TEXT DEFAULT '[]';")
+                if "source_sentence" not in concept_columns:
+                    conn.execute("ALTER TABLE concepts ADD COLUMN source_sentence TEXT;")
+                if "location" not in concept_columns:
+                    conn.execute("ALTER TABLE concepts ADD COLUMN location TEXT;")
                 if "target_id" not in relation_columns:
                     conn.execute("ALTER TABLE relations ADD COLUMN target_id TEXT DEFAULT '';")
 
@@ -1388,7 +1408,8 @@ def clone_cached_document(source_doc_id: str, target_doc_id: str) -> bool:
             c_cursor = conn.execute(
                 """
                 SELECT id, name, definition, topic, score, importance,
-                       source_excerpt, page, flow_order, flow_group
+                       source_excerpt, page, flow_order, flow_group,
+                       definition_cue, aliases_json, source_sentence, location
                 FROM concepts
                 WHERE document_id = ?
                 """,
@@ -1402,14 +1423,17 @@ def clone_cached_document(source_doc_id: str, target_doc_id: str) -> bool:
                     """
                     INSERT INTO concepts (
                         document_id, name, definition, topic, score, importance,
-                        source_excerpt, page, flow_order, flow_group
+                        source_excerpt, page, flow_order, flow_group,
+                        definition_cue, aliases_json, source_sentence, location
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         target_doc_id, sc["name"], sc["definition"], sc["topic"],
                         sc["score"], sc["importance"], sc["source_excerpt"],
-                        sc["page"], sc["flow_order"], sc["flow_group"]
+                        sc["page"], sc["flow_order"], sc["flow_group"],
+                        sc.get("definition_cue"), sc.get("aliases_json") or "[]",
+                        sc.get("source_sentence"), sc.get("location")
                     )
                 )
                 old_to_new_id[sc["id"]] = ins_c.lastrowid
@@ -2037,19 +2061,29 @@ def save_concepts_and_relations(
                 pages_list = c.get("pages") or [src_page or c.get("page", 1)]
                 pages_json = json.dumps(sorted(list(set(p for p in pages_list if isinstance(p, int)))))
 
+                def_val = c.get("definition")
+                if def_val in ("", "no definition in notes", "None"):
+                    def_val = None
+                cue_val = c.get("definition_cue")
+                aliases_raw = c.get("aliases") or []
+                aliases_json = json.dumps(aliases_raw if isinstance(aliases_raw, list) else [])
+                src_sent = c.get("source_sentence")
+                loc_val = str(c.get("location")) if c.get("location") is not None else None
+
                 cursor = conn.execute(
                     """
                     INSERT INTO concepts (
                         document_id, name, definition, topic, score, importance,
                         source_excerpt, page, flow_order, flow_group,
-                        source_page, source_quote, source_verified, pages_json
+                        source_page, source_quote, source_verified, pages_json,
+                        definition_cue, aliases_json, source_sentence, location
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         doc_id,
                         clean_name,
-                        c.get("definition", ""),
+                        def_val,
                         clean_topic,
                         float(c.get("score", 0.0)),
                         int(c.get("importance", 1)),
@@ -2060,7 +2094,11 @@ def save_concepts_and_relations(
                         src_page,
                         src_quote,
                         src_verified,
-                        pages_json
+                        pages_json,
+                        cue_val,
+                        aliases_json,
+                        src_sent,
+                        loc_val
                     )
                 )
                 concept_id = cursor.lastrowid
@@ -2222,7 +2260,11 @@ def get_concepts_by_document(
                 c.source_page,
                 c.source_quote,
                 c.source_verified,
-                c.pages_json
+                c.pages_json,
+                c.definition_cue,
+                c.aliases_json,
+                c.source_sentence,
+                c.location
             FROM concepts c
             WHERE c.document_id = ?
         """
@@ -2275,6 +2317,16 @@ def get_concepts_by_document(
                         c["pages"] = [c.get("source_page") or c.get("page", 1)]
                 else:
                     c["pages"] = [c.get("source_page") or c.get("page", 1)]
+                if c.get("aliases_json"):
+                    try:
+                        c["aliases"] = json.loads(c["aliases_json"])
+                    except Exception:
+                        c["aliases"] = []
+                else:
+                    c["aliases"] = []
+                raw_def = c.get("definition")
+                if not raw_def or raw_def in ("no definition in notes", "None", ""):
+                    c["definition"] = None
         
         return concepts
     finally:

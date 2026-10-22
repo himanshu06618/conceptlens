@@ -148,10 +148,48 @@ export default function ConceptDetailPanel({
 
         {/* Definition */}
         <div className="detail-section">
-          <h4 className="detail-section-title">Definition</h4>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+            <h4 className="detail-section-title" style={{ margin: 0 }}>Definition</h4>
+            {concept.definition_cue ? (
+              <span 
+                className="detail-cue-badge" 
+                style={{ 
+                  fontSize: '0.72rem', 
+                  padding: '2px 8px', 
+                  borderRadius: '12px', 
+                  background: 'rgba(212, 248, 40, 0.16)', 
+                  color: 'var(--accent-lime, #d4f828)', 
+                  fontWeight: 600, 
+                  textTransform: 'lowercase' 
+                }}
+              >
+                {concept.definition_cue.replace(/_/g, ' ')}
+              </span>
+            ) : null}
+          </div>
           <p className="detail-definition-text">
             {concept.definition || 'No definition available for this concept.'}
           </p>
+          {Array.isArray(concept.aliases) && concept.aliases.length > 0 && (
+            <div className="detail-aliases-row" style={{ marginTop: '8px', display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted, #9ca3af)', fontWeight: 500 }}>Also known as:</span>
+              {concept.aliases.map((alias, i) => (
+                <span 
+                  key={i} 
+                  style={{ 
+                    fontSize: '0.72rem', 
+                    padding: '2px 8px', 
+                    borderRadius: '12px', 
+                    background: 'rgba(255, 255, 255, 0.08)', 
+                    color: 'var(--text-secondary, #e5e7eb)', 
+                    border: '1px solid rgba(255, 255, 255, 0.12)' 
+                  }}
+                >
+                  {alias}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Source Section: Page Badge, Quote, and In-App PDF Link */}
@@ -168,9 +206,9 @@ export default function ConceptDetailPanel({
             ) : null}
           </div>
 
-          {concept.source_quote ? (
+          {(concept.source_sentence || concept.source_quote) ? (
             <blockquote className="detail-source-quote" style={{ margin: '0 0 10px 0', padding: '10px 12px', borderRadius: '8px', background: 'rgba(255, 255, 255, 0.04)', borderLeft: '3px solid var(--accent-lime, #d4f828)', fontStyle: 'italic', fontSize: '0.86rem', color: 'var(--text-secondary, #d1d5db)', lineHeight: 1.45 }}>
-              "{concept.source_quote}"
+              "{concept.source_sentence || concept.source_quote}"
             </blockquote>
           ) : (
             <p className="detail-empty-hint">

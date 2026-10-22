@@ -58,9 +58,15 @@ JUNK_PATTERNS = [
 ]
 
 DEFINITION_PATTERNS = [
-    re.compile(r"\b([A-Z][a-z0-9A-Z\s\-]{2,35})\s+(?:is|are)\s+defined\s+as\s+([^.]{10,200}\.)", re.IGNORECASE),
+    re.compile(r"\b([A-Za-z0-9\s\-]{2,35})\s+(?:is|are)\s+defined\s+as\s+([^.!?\n]{5,250})", re.IGNORECASE),
+    re.compile(r"\b([A-Za-z0-9\s\-]{2,35})\s+(?:is|are)?\s*(?:also\s+)?known\s+as\s+([^.!?\n]{2,150})", re.IGNORECASE),
+    re.compile(r"([^.!?\n]{5,150}?)\s+(?:is|are)\s+called\s+([A-Za-z0-9\s\-]{2,35})\b", re.IGNORECASE),
+    re.compile(r"\b([A-Za-z0-9\s\-]{2,35})\s+(?:is|are)\s+called\s+([^.!?\n]{5,150})", re.IGNORECASE),
+    re.compile(r"([^.!?\n]{5,150}?)\s+(?:is|are)\s+termed\s+([A-Za-z0-9\s\-]{2,35})\b", re.IGNORECASE),
+    re.compile(r"\b([A-Za-z0-9\s\-]{2,35})\s+refers\s+to\s+([^.!?\n]{5,250})", re.IGNORECASE),
+    re.compile(r"\b([A-Za-z0-9\s\-]{2,35})\s+means\s+([^.!?\n]{5,250})", re.IGNORECASE),
+    re.compile(r"\b([A-Za-z0-9\s\-]{2,35})\s+(?:is|are)\s+the\s+process\s+of\s+([^.!?\n]{5,250})", re.IGNORECASE),
     re.compile(r"\b([A-Z][a-z0-9A-Z\s\-]{2,35})\s+(?:is|are)\s+(?:a|an|the)\s+([^.]{10,200}\.)", re.IGNORECASE),
-    re.compile(r"\b([A-Z][a-z0-9A-Z\s\-]{2,35})\s+refers\s+to\s+([^.]{10,200}\.)", re.IGNORECASE),
     re.compile(r"we\s+define\s+([A-Z][a-z0-9A-Z\s\-]{2,35})\s+as\s+([^.]{10,200}\.)", re.IGNORECASE),
     re.compile(r"\b([A-Z][a-z0-9A-Z\s\-]{2,35}):\s+([A-Z][^.]{10,200}\.)"),
 ]
@@ -226,6 +232,7 @@ class ExtractionV2Pipeline:
         # 2. Quote verification & normalization
         verified_concepts_by_page: Dict[int, List[Dict[str, Any]]] = defaultdict(list)
         unverified_count = 0
+        VALID_CUES = {"defined_as", "known_as", "called", "refers_to", "termed", "means", "other"}
 
         for p in pages:
             p_data = extracted_pages_data.get(p.page_num, {})
@@ -236,10 +243,51 @@ class ExtractionV2Pipeline:
                     continue
 
                 quote = c.get("quote", "").strip()
-                defn = c.get("definition") or c.get("definition_from_text") or ""
-                defn = defn.strip()
-                if not defn or "educational concept relating to" in defn.lower():
-                    defn = "no definition in notes"
+                
+                # Definition normalization
+                raw_def = c.get("definition")
+                if raw_def is None:
+                    raw_def = c.get("definition_from_text")
+                if isinstance(raw_def, str):
+                    clean_def = raw_def.strip()
+                    if clean_def.lower() in ("no definition in notes", "none", "null", "") or "educational concept relating to" in clean_def.lower():
+                        defn = None
+                    else:
+                        defn = clean_def
+                else:
+                    defn = None
+
+                # Definition cue
+                raw_cue = c.get("definition_cue")
+                if isinstance(raw_cue, str) and raw_cue.strip().lower() in VALID_CUES:
+                    cue = raw_cue.strip().lower()
+                elif defn:
+                    cue = "defined_as"
+                else:
+                    cue = None
+
+                # Aliases
+                raw_aliases = c.get("aliases")
+                aliases = []
+                if isinstance(raw_aliases, list):
+                    for a in raw_aliases:
+                        if a and isinstance(a, str) and a.strip() and not is_junk_concept(a.strip()):
+                            a_clean = a.strip()
+                            if a_clean not in aliases and a_clean.lower() != name.lower():
+                                aliases.append(a_clean)
+
+                # Source sentence
+                raw_src_sent = c.get("source_sentence")
+                if isinstance(raw_src_sent, str) and raw_src_sent.strip():
+                    src_sentence = raw_src_sent.strip()
+                elif defn and quote:
+                    src_sentence = quote
+                else:
+                    src_sentence = None
+
+                # Location
+                raw_loc = c.get("location")
+                loc_val = str(raw_loc).strip() if raw_loc is not None else str(p.page_num)
 
                 # Verify quote on stated page
                 is_verified = verify_quote_on_page(quote, p.cleaned_text)
@@ -262,6 +310,10 @@ class ExtractionV2Pipeline:
                 verified_concepts_by_page[target_page].append({
                     "name": name,
                     "definition": defn,
+                    "definition_cue": cue,
+                    "aliases": aliases,
+                    "source_sentence": src_sentence,
+                    "location": loc_val,
                     "quote": quote,
                     "importance": int(c.get("importance", 2)),
                     "source_verified": is_verified,
@@ -298,13 +350,28 @@ class ExtractionV2Pipeline:
                             rc_name = rc.get("name", "").strip()
                             if not rc_name or is_junk_concept(rc_name):
                                 continue
-                            rc_defn = rc.get("definition") or rc.get("definition_from_text") or "no definition in notes"
+                            rc_raw_def = rc.get("definition") or rc.get("definition_from_text")
+                            if isinstance(rc_raw_def, str) and rc_raw_def.strip().lower() not in ("no definition in notes", "none", "null", ""):
+                                rc_defn = rc_raw_def.strip()
+                            else:
+                                rc_defn = None
+
+                            rc_raw_cue = rc.get("definition_cue")
+                            rc_cue = rc_raw_cue.strip().lower() if isinstance(rc_raw_cue, str) and rc_raw_cue.strip().lower() in VALID_CUES else ("defined_as" if rc_defn else None)
+                            rc_aliases = [str(a).strip() for a in rc.get("aliases", []) if str(a).strip() and not is_junk_concept(str(a))]
+                            rc_src_sent = rc.get("source_sentence") or (rc.get("quote") if rc_defn else None)
+                            rc_loc = str(rc.get("location")) if rc.get("location") is not None else str(p.page_num)
+
                             rc_quote = rc.get("quote", "").strip()
                             rc_imp = int(rc.get("importance", 2))
                             is_ver = verify_quote_on_page(rc_quote, p.cleaned_text)
                             verified_concepts_by_page[p.page_num].append({
                                 "name": rc_name,
                                 "definition": rc_defn,
+                                "definition_cue": rc_cue,
+                                "aliases": rc_aliases,
+                                "source_sentence": rc_src_sent,
+                                "location": rc_loc,
                                 "quote": rc_quote,
                                 "importance": rc_imp,
                                 "source_verified": is_ver,
@@ -324,7 +391,11 @@ class ExtractionV2Pipeline:
                 if not norm_key:
                     continue
 
-                c_defn = c.get("definition") or c.get("definition_from_text") or "no definition in notes"
+                c_defn = c.get("definition")
+                c_cue = c.get("definition_cue")
+                c_aliases = list(c.get("aliases") or [])
+                c_src_sent = c.get("source_sentence")
+                c_loc = c.get("location") or str(c.get("source_page", p_num))
                 c_imp = int(c.get("importance", 2))
                 c_quote = c.get("quote") or c.get("source_excerpt", "")
                 c_src_page = c.get("source_page", p_num)
@@ -334,6 +405,10 @@ class ExtractionV2Pipeline:
                     deduped_concepts_map[norm_key] = {
                         "name": c_name.title(),
                         "definition": c_defn,
+                        "definition_cue": c_cue,
+                        "aliases": c_aliases,
+                        "source_sentence": c_src_sent,
+                        "location": c_loc,
                         "importance": c_imp,
                         "source_excerpt": c_quote,
                         "source_quote": c_quote,
@@ -348,11 +423,20 @@ class ExtractionV2Pipeline:
                     if c_src_page not in existing.get("pages", []):
                         existing.setdefault("pages", []).append(c_src_page)
                         existing["pages"].sort()
-                    # Upgrade definition if previous had none
-                    if existing.get("definition") == "no definition in notes" and c_defn != "no definition in notes":
+                    # Upgrade definition if previous had none and this one has
+                    if not existing.get("definition") and c_defn:
                         existing["definition"] = c_defn
+                        existing["definition_cue"] = c_cue
+                        existing["source_sentence"] = c_src_sent
+                        existing["location"] = c_loc
                         existing["source_quote"] = c_quote
                         existing["source_excerpt"] = c_quote
+                    # Merge aliases
+                    if c_aliases:
+                        ex_aliases = existing.setdefault("aliases", [])
+                        for a in c_aliases:
+                            if a not in ex_aliases:
+                                ex_aliases.append(a)
                     # Retain highest importance
                     if c_imp > existing.get("importance", 1):
                         existing["importance"] = c_imp
@@ -534,10 +618,16 @@ class ExtractionV2Pipeline:
             "You must return a structured JSON response containing an entry for EVERY page in this batch. "
             "Do NOT skip any page. If a page has no educational concepts (e.g. title slide, agenda, blank, exercise), "
             "return an empty concepts list and state the explicit 'no_concepts_reason'.\n\n"
+            "DEFINITION INSTRUCTION:\n"
+            "For every concept, search the notes for explicit definitions or naming phrases such as 'is defined as', 'is known as', 'is called', 'refers to', 'is termed', 'means', 'is the process of'. Copy the supporting sentence into source_sentence. If the notes contain no explicit definition for a concept, set definition to null. Never write a definition from your own knowledge.\n\n"
             "CONCEPT RULES:\n"
             "- Concept name: Short noun phrase in Title Case, at most 6 words and 60 chars. Never code, sentences, or dates.\n"
-            "- Definitions: MUST be extracted directly from the text. If no definition exists in the notes, use empty string '' or 'no definition in notes'. NEVER invent fake definitions.\n"
-            "- Quote: 10 to 30 word exact verbatim sentence from that specific page where the concept appears.\n"
+            "- definition: Faithful definition extracted directly from notes, lightly shortened, or null if no explicit definition.\n"
+            "- definition_cue: Exactly one of 'defined_as', 'known_as', 'called', 'refers_to', 'termed', 'means', 'other', or null.\n"
+            "- aliases: List of alternative names or abbreviations from notes (e.g. from 'also known as', 'abbreviated as'), or [] if none.\n"
+            "- source_sentence: The exact sentence from the notes that contains the definition, or null.\n"
+            "- location: Page number or position in notes if available, else null.\n"
+            "- quote: 10 to 30 word exact verbatim sentence from that specific page where the concept appears.\n"
             "- Importance: 1 (minor detail), 2 (important), 3 (foundational core concept).\n"
             "- DO NOT extract professor/author names, universities, course codes, or logistical boilerplate."
         )
@@ -556,7 +646,11 @@ class ExtractionV2Pipeline:
             '      "concepts": [\n'
             '        {\n'
             '          "name": "<concise_name>",\n'
-            '          "definition_from_text": "<verbatim_definition_or_empty>",\n'
+            '          "definition": "<faithful_definition_or_null>",\n'
+            '          "definition_cue": "<defined_as|known_as|called|refers_to|termed|means|other|null>",\n'
+            '          "aliases": ["<alias1>"],\n'
+            '          "source_sentence": "<exact_sentence_from_notes_or_null>",\n'
+            '          "location": "<page_or_position_or_null>",\n'
             '          "quote": "<exact_quote_from_page>",\n'
             '          "importance": 1|2|3\n'
             '        }\n'
@@ -717,6 +811,7 @@ class ExtractionV2Pipeline:
         if not uncovered_candidates or not self.client:
             return []
 
+        VALID_CUES = {"defined_as", "known_as", "called", "refers_to", "termed", "means", "other"}
         prompt = (
             f"Document Title: {doc_title}\n"
             f"=== PAGE {page.page_num} ===\n"
@@ -724,10 +819,20 @@ class ExtractionV2Pipeline:
             f"The following candidate key concepts were flagged as potentially missing from this page:\n"
             f"{', '.join(uncovered_candidates)}\n\n"
             "For each candidate, verify if it is an actual key educational concept discussed on this page. "
-            "If yes, extract its definition from the page text and provide an exact quote. "
+            "For every concept, search the notes for explicit definitions or naming phrases such as 'is defined as', 'is known as', 'is called', 'refers to', 'is termed', 'means', 'is the process of'. "
+            "If no explicit definition is in the notes, set definition to null. Never write a definition from your own knowledge.\n"
             "Respond strictly in JSON format:\n"
             "[\n"
-            '  {"name": "<name>", "definition": "<definition_or_empty>", "quote": "<exact_quote>", "importance": 1|2|3}\n'
+            '  {\n'
+            '    "name": "<name>",\n'
+            '    "definition": "<definition_or_null>",\n'
+            '    "definition_cue": "<defined_as|known_as|called|refers_to|termed|means|other|null>",\n'
+            '    "aliases": ["<alias>"],\n'
+            '    "source_sentence": "<exact_sentence_from_notes_or_null>",\n'
+            '    "location": "<page_num_or_position>",\n'
+            '    "quote": "<exact_quote>",\n'
+            '    "importance": 1|2|3\n'
+            '  }\n'
             "]"
         )
         candidate_models = [self.model_name]
@@ -752,12 +857,26 @@ class ExtractionV2Pipeline:
                     name = item.get("name", "").strip()
                     if not name or is_junk_concept(name):
                         continue
-                    defn = item.get("definition") or item.get("definition_from_text") or "no definition in notes"
+                    defn = item.get("definition")
+                    if isinstance(defn, str):
+                        defn_clean = defn.strip()
+                        defn = None if defn_clean.lower() in ("no definition in notes", "none", "null", "") else defn_clean
+                    else:
+                        defn = None
+                    raw_cue = item.get("definition_cue")
+                    cue = raw_cue.strip().lower() if isinstance(raw_cue, str) and raw_cue.strip().lower() in VALID_CUES else ("defined_as" if defn else None)
+                    aliases = [str(a).strip() for a in item.get("aliases", []) if str(a).strip() and not is_junk_concept(str(a))]
+                    src_sent = item.get("source_sentence") or (item.get("quote") if defn else None)
+                    loc = str(item.get("location")) if item.get("location") is not None else str(page.page_num)
                     quote = item.get("quote", "").strip()
                     repaired.append({
                         "name": name,
                         "definition": defn,
                         "definition_from_text": defn,
+                        "definition_cue": cue,
+                        "aliases": aliases,
+                        "source_sentence": src_sent,
+                        "location": loc,
                         "quote": quote,
                         "importance": int(item.get("importance", 2)),
                         "repaired": True
@@ -770,7 +889,7 @@ class ExtractionV2Pipeline:
     def _extract_page_code_only(self, page: LayoutAwarePage, total_pages: int = 1) -> Dict[str, Any]:
         """
         Fast, zero-API code fallback extractor that extracts genuine candidates
-        per page with real definitions and quotes (NO fake placeholders!).
+        per page with real definitions, cues, aliases, and quotes (NO fake placeholders!).
         """
         if not self._has_usable_topic_content(page, total_pages=total_pages):
             return {
@@ -787,14 +906,22 @@ class ExtractionV2Pipeline:
             clean_cand = re.sub(r"\s+", " ", cand).strip()
             if not clean_cand or is_junk_concept(clean_cand):
                 continue
-            # Detect definition sentence on this page
-            defn, quote = self._find_definition_in_text(clean_cand, page.cleaned_text)
-            c_def = defn if defn else "no definition in notes"
+            # Detect definition metadata on this page
+            def_meta = self._extract_definition_metadata(clean_cand, page.cleaned_text)
+            c_def = def_meta.get("definition")
+            c_cue = def_meta.get("definition_cue")
+            c_aliases = def_meta.get("aliases") or []
+            c_sent = def_meta.get("source_sentence")
+            quote = def_meta.get("quote") or (page.cleaned_text[:120] if page.cleaned_text else clean_cand)
             concepts.append({
                 "name": clean_cand.title(),
                 "definition": c_def,
                 "definition_from_text": c_def,
-                "quote": quote if quote else (page.cleaned_text[:120] if page.cleaned_text else clean_cand),
+                "definition_cue": c_cue,
+                "aliases": c_aliases,
+                "source_sentence": c_sent,
+                "location": str(page.page_num),
+                "quote": quote,
                 "importance": 3 if clean_cand in page.headings else 2
             })
 
@@ -802,26 +929,40 @@ class ExtractionV2Pipeline:
             lines = [l.strip() for l in page.cleaned_text.split("\n") if len(l.strip()) >= 4]
             for line in lines[:8]:
                 cand_name = None
-                cand_defn = line
+                cand_defn = None
+                cue = None
+                src_sent = None
                 if ":" in line:
                     parts = line.split(":", 1)
                     if 1 <= len(parts[0].split()) <= 6:
                         cand_name = parts[0].strip()
-                        cand_defn = parts[1].strip() or line
+                        cand_defn = parts[1].strip() or None
+                        cue = "other" if cand_defn else None
+                        src_sent = line
                 elif " - " in line:
                     parts = line.split(" - ", 1)
                     if 1 <= len(parts[0].split()) <= 6:
                         cand_name = parts[0].strip()
-                        cand_defn = parts[1].strip() or line
+                        cand_defn = parts[1].strip() or None
+                        cue = "other" if cand_defn else None
+                        src_sent = line
                 elif 1 <= len(line.split()) <= 5 and not is_junk_concept(line):
                     cand_name = line.strip()
-                    cand_defn = line
 
                 if cand_name and not is_junk_concept(cand_name):
+                    def_meta = self._extract_definition_metadata(cand_name, line)
+                    final_def = def_meta.get("definition") or cand_defn
+                    final_cue = def_meta.get("definition_cue") or cue
+                    final_aliases = def_meta.get("aliases") or []
+                    final_sent = def_meta.get("source_sentence") or src_sent
                     concepts.append({
                         "name": cand_name.title(),
-                        "definition": cand_defn if cand_defn else "no definition in notes",
-                        "definition_from_text": cand_defn if cand_defn else "no definition in notes",
+                        "definition": final_def,
+                        "definition_from_text": final_def,
+                        "definition_cue": final_cue,
+                        "aliases": final_aliases,
+                        "source_sentence": final_sent,
+                        "location": str(page.page_num),
                         "quote": line[:120],
                         "importance": 2
                     })
@@ -854,9 +995,17 @@ class ExtractionV2Pipeline:
         # 2. Regex definition patterns
         for pat in DEFINITION_PATTERNS:
             for m in pat.finditer(page.cleaned_text):
-                term = m.group(1).strip()
-                if not is_junk_concept(term):
-                    candidates.append(term)
+                try:
+                    term = m.group(1).strip()
+                    if not is_junk_concept(term):
+                        candidates.append(term)
+                    # For reverse patterns where term is in group 2
+                    if m.lastindex and m.lastindex >= 2:
+                        term2 = m.group(2).strip()
+                        if not is_junk_concept(term2) and len(term2.split()) <= 4:
+                            candidates.append(term2)
+                except Exception:
+                    pass
 
         # 3. YAKE keyword extractor
         try:
@@ -878,18 +1027,13 @@ class ExtractionV2Pipeline:
                 unique.append(c)
         return unique
 
+    def _extract_definition_metadata(self, term: str, text: str) -> Dict[str, Any]:
+        return extract_definition_metadata(term, text)
+
     def _find_definition_in_text(self, term: str, text: str) -> Tuple[str, str]:
-        """Extracts definition sentence and quote for a term from text."""
-        sentences = re.split(r"(?<=[.!?])\s+", text)
-        term_lower = term.lower()
-        for s in sentences:
-            s_clean = s.strip()
-            if term_lower in s_clean.lower():
-                # Check if it has definitional phrasing
-                if any(kw in s_clean.lower() for kw in ("is defined as", "refers to", "is a", "are ", "represents")):
-                    return s_clean, s_clean
-                return "", s_clean
-        return "", ""
+        """Extracts definition sentence and quote for a term from text (backward compatible)."""
+        meta = self._extract_definition_metadata(term, text)
+        return (meta.get("definition") or "", meta.get("quote") or "")
 
     def _consolidate_chapters_and_relations(
         self,
@@ -992,3 +1136,172 @@ class ExtractionV2Pipeline:
                 visited.add(curr)
                 queue.extend(adj_list.get(curr, []))
         return False
+
+
+def extract_definition_metadata(term: str, text: str) -> Dict[str, Any]:
+    """
+    Searches text for explicit definitions or naming phrases for `term`:
+    - 'is defined as' -> cue: 'defined_as'
+    - 'is known as', 'also known as' -> cue: 'known_as'
+    - 'is called' -> cue: 'called'
+    - 'refers to' -> cue: 'refers_to'
+    - 'is termed' -> cue: 'termed'
+    - 'means' -> cue: 'means'
+    - 'is the process of' -> cue: 'defined_as'
+    Returns dict with definition, definition_cue, aliases, source_sentence, quote.
+    """
+    sentences = re.split(r"(?<=[.!?])\s+", text)
+    term_clean = term.strip().lower()
+    term_pattern = re.escape(term_clean)
+
+    for s in sentences:
+        s_clean = s.strip()
+        if not s_clean:
+            continue
+        s_lower = s_clean.lower()
+
+        # 1. "is defined as" or "are defined as" or "can be defined as"
+        m = re.search(rf"\b{term_pattern}\s+(?:is|are|can be|may be)\s+defined\s+as\s+([^.!?;\n]+)", s_lower)
+        if m:
+            raw_def = s_clean[m.start(1):m.end(1)].strip()
+            return {
+                "definition": raw_def.rstrip(". "),
+                "definition_cue": "defined_as",
+                "aliases": [],
+                "source_sentence": s_clean,
+                "quote": s_clean
+            }
+
+        # 2. "is the process of"
+        m = re.search(rf"\b{term_pattern}\s+(?:is|are)\s+the\s+process\s+of\s+([^.!?;\n]+)", s_lower)
+        if m:
+            raw_def = "the process of " + s_clean[m.start(1):m.end(1)].strip()
+            return {
+                "definition": raw_def.rstrip(". "),
+                "definition_cue": "defined_as",
+                "aliases": [],
+                "source_sentence": s_clean,
+                "quote": s_clean
+            }
+
+        # 3. "also known as" / "is known as"
+        m = re.search(rf"\b{term_pattern}\s+(?:is|are)?\s*(?:also\s+)?known\s+as\s+([^.!?;\n]+)", s_lower)
+        if m:
+            raw_alias = s_clean[m.start(1):m.end(1)].strip().rstrip(". ")
+            clean_alias = re.sub(r"^(?:a|an|the)\s+", "", raw_alias, flags=re.IGNORECASE).strip()
+            return {
+                "definition": raw_alias,
+                "definition_cue": "known_as",
+                "aliases": [clean_alias] if clean_alias else [],
+                "source_sentence": s_clean,
+                "quote": s_clean
+            }
+
+        # Reverse "known as": "<other> is also known as <term>"
+        m = re.search(rf"([^.!?;\n]{{2,100}}?)\s+(?:is|are)?\s*(?:also\s+)?known\s+as\s+{term_pattern}\b", s_lower)
+        if m:
+            pre_term = s_clean[m.start(1):m.end(1)].strip().rstrip(". ")
+            clean_pre = re.sub(r"^(?:a|an|the)\s+", "", pre_term, flags=re.IGNORECASE).strip()
+            return {
+                "definition": f"alternative name for {clean_pre}",
+                "definition_cue": "known_as",
+                "aliases": [clean_pre] if clean_pre else [],
+                "source_sentence": s_clean,
+                "quote": s_clean
+            }
+
+        # 4. Reverse "is called" - e.g. "A shift in wavelength toward the red end is called redshift."
+        m = re.search(rf"([^.!?;\n]{{5,150}}?)\s+(?:is|are)\s+called\s+{term_pattern}\b", s_lower)
+        if m:
+            raw_def = s_clean[m.start(1):m.end(1)].strip().lstrip("-• ")
+            return {
+                "definition": raw_def.rstrip(". "),
+                "definition_cue": "called",
+                "aliases": [],
+                "source_sentence": s_clean,
+                "quote": s_clean
+            }
+
+        # Direct "is called" - e.g. "Redshift is called a shift in wavelength..."
+        m = re.search(rf"\b{term_pattern}\s+(?:is|are)\s+called\s+([^.!?;\n]+)", s_lower)
+        if m:
+            raw_def = s_clean[m.start(1):m.end(1)].strip()
+            return {
+                "definition": raw_def.rstrip(". "),
+                "definition_cue": "called",
+                "aliases": [],
+                "source_sentence": s_clean,
+                "quote": s_clean
+            }
+
+        # 5. Reverse "is termed"
+        m = re.search(rf"([^.!?;\n]{{5,150}}?)\s+(?:is|are)\s+termed\s+{term_pattern}\b", s_lower)
+        if m:
+            raw_def = s_clean[m.start(1):m.end(1)].strip().lstrip("-• ")
+            return {
+                "definition": raw_def.rstrip(". "),
+                "definition_cue": "termed",
+                "aliases": [],
+                "source_sentence": s_clean,
+                "quote": s_clean
+            }
+
+        # Direct "is termed"
+        m = re.search(rf"\b{term_pattern}\s+(?:is|are)\s+termed\s+([^.!?;\n]+)", s_lower)
+        if m:
+            raw_def = s_clean[m.start(1):m.end(1)].strip()
+            return {
+                "definition": raw_def.rstrip(". "),
+                "definition_cue": "termed",
+                "aliases": [],
+                "source_sentence": s_clean,
+                "quote": s_clean
+            }
+
+        # 6. "refers to"
+        m = re.search(rf"\b{term_pattern}\s+refers\s+to\s+([^.!?;\n]+)", s_lower)
+        if m:
+            raw_def = s_clean[m.start(1):m.end(1)].strip()
+            return {
+                "definition": raw_def.rstrip(". "),
+                "definition_cue": "refers_to",
+                "aliases": [],
+                "source_sentence": s_clean,
+                "quote": s_clean
+            }
+
+        # 7. "means"
+        m = re.search(rf"\b{term_pattern}\s+(?:means|denotes|represents)\s+([^.!?;\n]+)", s_lower)
+        if m:
+            raw_def = s_clean[m.start(1):m.end(1)].strip()
+            return {
+                "definition": raw_def.rstrip(". "),
+                "definition_cue": "means",
+                "aliases": [],
+                "source_sentence": s_clean,
+                "quote": s_clean
+            }
+
+    # If term is simply in sentence without explicit cue:
+    for s in sentences:
+        s_clean = s.strip()
+        if term_clean in s_clean.lower():
+            return {
+                "definition": None,
+                "definition_cue": None,
+                "aliases": [],
+                "source_sentence": None,
+                "quote": s_clean
+            }
+
+    return {
+        "definition": None,
+        "definition_cue": None,
+        "aliases": [],
+        "source_sentence": None,
+        "quote": ""
+    }
+
+
+# Backwards compatibility alias
+_extract_definition_metadata = extract_definition_metadata

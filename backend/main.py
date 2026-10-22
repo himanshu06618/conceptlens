@@ -1440,6 +1440,8 @@ def get_document_progress_endpoint(
 
 @app.post("/api/documents/{doc_id}/reanalyze")
 @app.post("/documents/{doc_id}/reanalyze")
+@app.post("/api/documents/{doc_id}/re-extract")
+@app.post("/documents/{doc_id}/re-extract")
 async def reanalyze_document_endpoint(
     doc_id: str,
     actor: Dict[str, Any] = Depends(get_current_user_or_guest)

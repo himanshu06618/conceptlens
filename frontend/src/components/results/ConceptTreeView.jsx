@@ -96,6 +96,8 @@ function ConceptLeafNode({ data }) {
   const isSelected = data.isSelected;
   const isStudied = data.status === 'studied';
   const importance = Math.max(1, Math.min(3, Number(data.importance) || 1));
+  const concept = data.concept || {};
+  const hasDefinition = Boolean(concept.definition);
 
   return (
     <div
@@ -136,6 +138,41 @@ function ConceptLeafNode({ data }) {
       <strong className="concept-node-title" title={data.label}>
         {data.label}
       </strong>
+      {hasDefinition && (
+        <div 
+          className="concept-node-definition"
+          style={{
+            fontSize: '0.70rem',
+            color: 'var(--text-secondary, #9ca3af)',
+            marginTop: '3px',
+            lineHeight: 1.25,
+            display: '-webkit-box',
+            WebkitLineClamp: 1,
+            WebkitBoxOrient: 'vertical',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis'
+          }}
+          title={concept.definition}
+        >
+          {concept.definition_cue && (
+            <span 
+              style={{
+                fontSize: '0.62rem',
+                padding: '1px 4px',
+                borderRadius: '3px',
+                background: 'rgba(212, 248, 40, 0.16)',
+                color: 'var(--accent-lime, #d4f828)',
+                fontWeight: 600,
+                marginRight: '4px',
+                textTransform: 'lowercase'
+              }}
+            >
+              {concept.definition_cue.replace(/_/g, ' ')}
+            </span>
+          )}
+          <span>{concept.definition}</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -317,6 +354,8 @@ function TreeInner({
       } else if (node.type === 'chapterGroup') {
         width = 230;
         height = 64;
+      } else if (node.type === 'conceptLeaf' && node.data?.concept?.definition) {
+        height = 84;
       }
       g.setNode(node.id, { width, height });
     });
@@ -329,11 +368,12 @@ function TreeInner({
 
     return rawNodes.map((node) => {
       const nodeWithPosition = g.node(node.id);
+      const isDefNode = node.type === 'conceptLeaf' && node.data?.concept?.definition;
       return {
         ...node,
         position: {
           x: nodeWithPosition.x - (node.type === 'documentRoot' ? 120 : 110),
-          y: nodeWithPosition.y - 32,
+          y: nodeWithPosition.y - (isDefNode ? 42 : 32),
         },
       };
     });
