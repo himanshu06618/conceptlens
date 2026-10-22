@@ -29,6 +29,9 @@ const NotesAnalysisView = React.lazy(() => import('./pages/NotesAnalysisView'));
 const MyFilesView = React.lazy(() => import('./pages/MyFilesView'));
 const FileDashboardView = React.lazy(() => import('./pages/FileDashboardView'));
 const LoaderShowcase = React.lazy(() => import('./components/dev/LoaderShowcase'));
+// COMPARE-START
+const CompareView = React.lazy(() => import('./compare/CompareView'));
+// COMPARE-END
 import { useAuth } from './context/AuthContext';
 import { 
   uploadDocument, 
@@ -931,6 +934,10 @@ export default function App() {
               />
 
               <Route path="/_dev/loader" element={<LoaderShowcase />} />
+
+              {/* COMPARE-START */}
+              <Route path="/compare" element={<CompareView onToast={addToast} />} />
+              {/* COMPARE-END */}
 
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

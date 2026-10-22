@@ -391,6 +391,15 @@ app.include_router(notes_router, prefix="/notes", tags=["notes"])
 app.include_router(graph_router, prefix="/api")
 app.include_router(graph_router)
 
+# COMPARE-START
+if os.getenv("ENABLE_COMPARE", "false").lower() == "true":
+    try:
+        from backend.compare.api import router as compare_router
+        app.include_router(compare_router)
+    except ImportError:
+        pass
+# COMPARE-END
+
 def process_document_background(
     doc_id: str,
     file_path: Path,

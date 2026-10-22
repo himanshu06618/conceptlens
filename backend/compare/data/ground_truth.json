@@ -1,0 +1,25 @@
+{
+  "sorting_algorithms.txt": [
+    "Sorting algorithms",
+    "Quick Sort",
+    "divide-and-conquer algorithm",
+    "pivot",
+    "time complexity",
+    "Merge Sort",
+    "stability",
+    "Bubble Sort",
+    "Binary Search"
+  ],
+  "graph_theory.txt": [
+    "graph theory",
+    "vertices",
+    "edges",
+    "Directed Graph",
+    "Undirected Graph",
+    "Adjacency Matrix",
+    "Depth-First Search",
+    "Breadth-First Search",
+    "Dijkstra's Algorithm",
+    "queue"
+  ]
+}

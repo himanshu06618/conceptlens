@@ -1,0 +1,21 @@
+Graph Theory Fundamentals
+
+In discrete mathematics and computer science, graph theory is the study of graphs, which are mathematical structures used to model pairwise relations between objects.
+
+A graph is composed of vertices (or nodes) and edges (or links) that connect pairs of vertices.
+
+Key Concepts:
+1. Directed Graph and Undirected Graph:
+In an undirected graph, edges have no orientation; the edge (u, v) is identical to (v, u). In a directed graph (or digraph), edges possess a direction from a source vertex to a target vertex.
+
+2. Adjacency Matrix:
+An adjacency matrix is a square matrix used to represent a finite graph. The elements of the matrix indicate whether pairs of vertices are adjacent or not in the graph.
+
+3. Depth-First Search (DFS):
+Depth-First Search is an algorithm for traversing or searching tree or graph data structures. The algorithm starts at the root node (selecting some arbitrary node as the root node in the case of a graph) and explores as far as possible along each branch before backtracking.
+
+4. Breadth-First Search (BFS):
+Breadth-First Search traverses a graph level by level, exploring all neighbor nodes at the present depth prior to moving on to nodes at the next depth level. BFS uses a queue data structure.
+
+5. Dijkstra's Algorithm:
+Dijkstra's algorithm is an algorithm for finding the shortest paths between nodes in a weighted graph, which may represent, for example, road networks.

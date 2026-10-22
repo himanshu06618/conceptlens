@@ -1,0 +1,15 @@
+Sorting Algorithms Overview
+
+Sorting algorithms are fundamental procedures in computer science used to rearrange a sequence of elements into a specified order, typically ascending or descending.
+
+1. Quick Sort:
+Quick Sort is a divide-and-conquer algorithm. It works by selecting a 'pivot' element from the array and partitioning the other elements into two sub-arrays, according to whether they are less than or greater than the pivot. The sub-arrays are then sorted recursively. The average time complexity of Quick Sort is O(n log n), while its worst-case performance is O(n^2).
+
+2. Merge Sort:
+Merge Sort is also an efficient divide-and-conquer comparison-based sorting algorithm. It divides the unsorted list into n sublists, each containing one element, and then repeatedly merges sublists to produce new sorted sublists until there is only one sublist remaining. Merge Sort guarantees a worst-case time complexity of O(n log n) and exhibits stability, meaning that equal keys retain their relative input order.
+
+3. Bubble Sort:
+Bubble Sort is a simple comparison algorithm that repeatedly steps through the input list, compares adjacent elements, and swaps them if they are in the wrong order. It has an average and worst-case complexity of O(n^2), making it inefficient on large lists.
+
+4. Binary Search:
+Although not a sorting algorithm, Binary Search is a fast search algorithm with runtime complexity of O(log n) that requires the target array to be sorted beforehand. It works by repeatedly halving the search interval.
