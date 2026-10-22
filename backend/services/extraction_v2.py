@@ -359,6 +359,43 @@ class ExtractionV2Pipeline:
                     if c_verified:
                         existing["source_verified"] = True
 
+        if not deduped_concepts_map and pages:
+            for p in pages:
+                if p.cleaned_text and len(p.cleaned_text.strip()) >= 15:
+                    lines = [l.strip() for l in p.cleaned_text.split("\n") if len(l.strip()) >= 4]
+                    for line in lines[:8]:
+                        cand_name = None
+                        cand_defn = line
+                        if ":" in line:
+                            parts = line.split(":", 1)
+                            if 1 <= len(parts[0].split()) <= 6:
+                                cand_name = parts[0].strip()
+                                cand_defn = parts[1].strip() or line
+                        elif " - " in line:
+                            parts = line.split(" - ", 1)
+                            if 1 <= len(parts[0].split()) <= 6:
+                                cand_name = parts[0].strip()
+                                cand_defn = parts[1].strip() or line
+                        elif 1 <= len(line.split()) <= 5 and not is_junk_concept(line):
+                            cand_name = line.strip()
+                            cand_defn = line
+
+                        if cand_name and not is_junk_concept(cand_name):
+                            norm_k = normalize_concept_name(cand_name)
+                            if norm_k and norm_k not in deduped_concepts_map:
+                                deduped_concepts_map[norm_k] = {
+                                    "name": cand_name.title(),
+                                    "definition": cand_defn or "Concept from notes",
+                                    "importance": 2,
+                                    "source_excerpt": line[:150],
+                                    "source_quote": line[:150],
+                                    "source_page": p.page_num,
+                                    "page": p.page_num,
+                                    "pages": [p.page_num],
+                                    "source_verified": True,
+                                    "topic": "General"
+                                }
+
         final_concepts: List[Dict[str, Any]] = []
         for idx, (k, c_obj) in enumerate(deduped_concepts_map.items()):
             c_obj["id"] = f"c_{idx + 1}"
@@ -530,12 +567,29 @@ class ExtractionV2Pipeline:
             "}"
         )
 
+        contents_parts: List[Any] = [prompt]
+        if getattr(layout_ext, "file_path", None) and layout_ext.file_path.suffix.lower() in ('.png', '.jpg', '.jpeg', '.webp'):
+            try:
+                img_bytes = layout_ext.file_path.read_bytes()
+                mime = "image/png" if layout_ext.file_path.suffix.lower() == ".png" else "image/jpeg"
+                if layout_ext.file_path.suffix.lower() == ".webp":
+                    mime = "image/webp"
+                contents_parts.append(types.Part.from_bytes(data=img_bytes, mime_type=mime))
+            except Exception as e_img:
+                logger.warning(f"Could not attach image bytes to Gemini contents: {e_img}")
+
+        candidate_models = [self.model_name]
+        for m in ["gemini-3.8-flash", "gemini-3.5-flash", "gemini-3.7-flash"]:
+            if m not in candidate_models:
+                candidate_models.append(m)
+
         # Call with exponential backoff for 429 / 5xx
-        max_attempts = 3
+        max_attempts = max(3, len(candidate_models))
         backoff = 2.0
         last_exception = None
 
         for attempt in range(max_attempts):
+            model_to_use = candidate_models[attempt % len(candidate_models)]
             try:
                 config = types.GenerateContentConfig(
                     system_instruction=system_instruction,
@@ -543,8 +597,8 @@ class ExtractionV2Pipeline:
                     response_mime_type="application/json"
                 )
                 response = self.client.models.generate_content(
-                    model=self.model_name,
-                    contents=prompt,
+                    model=model_to_use,
+                    contents=contents_parts,
                     config=config
                 )
 
@@ -578,15 +632,15 @@ class ExtractionV2Pipeline:
                 last_exception = api_err
                 err_str = str(api_err)
                 if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
-                    logger.warning(f"Gemini 429 Resource Exhausted on attempt {attempt + 1}/{max_attempts}.")
+                    logger.warning(f"Gemini 429 Resource Exhausted on attempt {attempt + 1}/{max_attempts} with {model_to_use}.")
                     if attempt < max_attempts - 1:
                         time.sleep(backoff)
-                        backoff *= 2.0
+                        backoff *= 1.5
                     else:
                         return None, True
                 else:
-                    logger.warning(f"Gemini API error: {api_err}")
-                    time.sleep(backoff)
+                    logger.warning(f"Gemini API error with {model_to_use}: {api_err}")
+                    time.sleep(1.0)
             except json.JSONDecodeError as json_err:
                 logger.warning(f"Invalid JSON received from Gemini: {json_err}")
                 if len(batch) > 1 and retry_split:
@@ -600,7 +654,7 @@ class ExtractionV2Pipeline:
                     return merged, (q1 or q2)
                 return None, False
             except Exception as e:
-                logger.warning(f"Unexpected error calling Gemini: {e}")
+                logger.warning(f"Unexpected error calling Gemini ({model_to_use}): {e}")
                 time.sleep(1.0)
 
         return None, False
@@ -614,10 +668,13 @@ class ExtractionV2Pipeline:
         if not getattr(page, "is_content_eligible", lambda: True)():
             return False
 
-        if page.page_type in ("title", "agenda", "references", "blank", "low_text", "exercise"):
+        if total_pages > 2 and page.page_type in ("title", "agenda", "references", "blank", "low_text", "exercise"):
             return False
 
-        if page.char_count < 80:
+        if total_pages <= 2:
+            return page.char_count >= 15
+
+        if page.char_count < 40:
             return False
 
         text_lower = page.cleaned_text.lower()
@@ -673,36 +730,42 @@ class ExtractionV2Pipeline:
             '  {"name": "<name>", "definition": "<definition_or_empty>", "quote": "<exact_quote>", "importance": 1|2|3}\n'
             "]"
         )
-        try:
-            config = types.GenerateContentConfig(
-                temperature=0.0,
-                response_mime_type="application/json"
-            )
-            response = self.client.models.generate_content(
-                model=self.model_name,
-                contents=prompt,
-                config=config
-            )
-            items = json.loads(response.text.strip())
-            repaired: List[Dict[str, Any]] = []
-            for item in items:
-                name = item.get("name", "").strip()
-                if not name or is_junk_concept(name):
-                    continue
-                defn = item.get("definition") or item.get("definition_from_text") or "no definition in notes"
-                quote = item.get("quote", "").strip()
-                repaired.append({
-                    "name": name,
-                    "definition": defn,
-                    "definition_from_text": defn,
-                    "quote": quote,
-                    "importance": int(item.get("importance", 2)),
-                    "repaired": True
-                })
-            return repaired
-        except Exception as e:
-            logger.warning(f"Repair pass error on page {page.page_num}: {e}")
-            return []
+        candidate_models = [self.model_name]
+        for m in ["gemini-3.8-flash", "gemini-3.5-flash", "gemini-3.7-flash"]:
+            if m not in candidate_models:
+                candidate_models.append(m)
+
+        for m_name in candidate_models:
+            try:
+                config = types.GenerateContentConfig(
+                    temperature=0.0,
+                    response_mime_type="application/json"
+                )
+                response = self.client.models.generate_content(
+                    model=m_name,
+                    contents=prompt,
+                    config=config
+                )
+                items = json.loads(response.text.strip())
+                repaired: List[Dict[str, Any]] = []
+                for item in items:
+                    name = item.get("name", "").strip()
+                    if not name or is_junk_concept(name):
+                        continue
+                    defn = item.get("definition") or item.get("definition_from_text") or "no definition in notes"
+                    quote = item.get("quote", "").strip()
+                    repaired.append({
+                        "name": name,
+                        "definition": defn,
+                        "definition_from_text": defn,
+                        "quote": quote,
+                        "importance": int(item.get("importance", 2)),
+                        "repaired": True
+                    })
+                return repaired
+            except Exception as e:
+                logger.warning(f"Repair pass with {m_name} failed: {e}")
+        return []
 
     def _extract_page_code_only(self, page: LayoutAwarePage, total_pages: int = 1) -> Dict[str, Any]:
         """
@@ -734,6 +797,34 @@ class ExtractionV2Pipeline:
                 "quote": quote if quote else (page.cleaned_text[:120] if page.cleaned_text else clean_cand),
                 "importance": 3 if clean_cand in page.headings else 2
             })
+
+        if not concepts and page.cleaned_text and len(page.cleaned_text.strip()) >= 15:
+            lines = [l.strip() for l in page.cleaned_text.split("\n") if len(l.strip()) >= 4]
+            for line in lines[:8]:
+                cand_name = None
+                cand_defn = line
+                if ":" in line:
+                    parts = line.split(":", 1)
+                    if 1 <= len(parts[0].split()) <= 6:
+                        cand_name = parts[0].strip()
+                        cand_defn = parts[1].strip() or line
+                elif " - " in line:
+                    parts = line.split(" - ", 1)
+                    if 1 <= len(parts[0].split()) <= 6:
+                        cand_name = parts[0].strip()
+                        cand_defn = parts[1].strip() or line
+                elif 1 <= len(line.split()) <= 5 and not is_junk_concept(line):
+                    cand_name = line.strip()
+                    cand_defn = line
+
+                if cand_name and not is_junk_concept(cand_name):
+                    concepts.append({
+                        "name": cand_name.title(),
+                        "definition": cand_defn if cand_defn else "no definition in notes",
+                        "definition_from_text": cand_defn if cand_defn else "no definition in notes",
+                        "quote": line[:120],
+                        "importance": 2
+                    })
 
         return {
             "page": page.page_num,

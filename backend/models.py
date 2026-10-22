@@ -89,6 +89,7 @@ class UploadResponse(BaseModel):
     progress: Optional[int] = 0
     stage_message: Optional[str] = "Document uploaded successfully. Processing started."
     message: str
+    guest_id: Optional[str] = None
 
 # User & Auth Models
 class UserRegisterRequest(BaseModel):

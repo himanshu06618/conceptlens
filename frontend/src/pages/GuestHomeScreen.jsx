@@ -12,7 +12,13 @@ import {
 } from 'lucide-react';
 import LogoMark from '../components/ui/LogoMark';
 import { compressImageIfNeeded } from '../utils/imageCompressor';
-import { uploadDocument, getDocumentStatus, getDocumentConcepts } from '../api/client';
+import { 
+  uploadDocument, 
+  getDocumentStatus, 
+  getDocumentConcepts, 
+  getGuestStatus, 
+  getOrCreateGuestSession 
+} from '../api/client';
 import '../styles/guest-home.css';
 
 // Default sample data matching target design (media_1792322365820.png)
@@ -114,6 +120,23 @@ export default function GuestHomeScreen({
     return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
   }, []);
 
+  // Initialize guest session and sync guest quota status on mount
+  useEffect(() => {
+    getOrCreateGuestSession();
+    let isMounted = true;
+    getGuestStatus().then(status => {
+      if (isMounted && status && typeof status.remaining === 'number') {
+        setDemoRemaining(status.remaining);
+        try {
+          localStorage.setItem('conceptlens_guest_demo_count', String(status.remaining));
+        } catch {}
+      }
+    }).catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const handleInstallApp = async () => {
     if (deferredPrompt) {
       deferredPrompt.prompt();
@@ -195,26 +218,45 @@ export default function GuestHomeScreen({
       if (resp.status === 'completed') {
         completeExtraction(docId, fileToUpload.name);
       } else {
-        // Poll for completion
+        // Poll for completion with a generous timeout (80 attempts * 1.5s = 120s)
         let attempts = 0;
+        const maxAttempts = 80;
+        let consecutiveErrors = 0;
+
         pollingRef.current = setInterval(async () => {
           attempts += 1;
-          setUploadProgress((prev) => Math.min(prev + 5, 92));
+          setUploadProgress((prev) => Math.min(prev + (attempts < 15 ? 3 : 1), 94));
+
+          if (attempts > maxAttempts) {
+            clearInterval(pollingRef.current);
+            setIsUploading(false);
+            setUploadError('Extraction timed out. Please try again.');
+            return;
+          }
+
           try {
             const status = await getDocumentStatus(docId);
+            consecutiveErrors = 0;
+
+            if (status.stage_message) {
+              setUploadStage(status.stage_message);
+            }
+
             if (status.status === 'completed') {
               clearInterval(pollingRef.current);
               completeExtraction(docId, fileToUpload.name);
             } else if (status.status === 'failed') {
               clearInterval(pollingRef.current);
               setIsUploading(false);
-              setUploadError('Failed to extract concepts from this document. Please try another file.');
+              setUploadError(status.error || 'Failed to extract concepts from this document. Please try another file.');
             }
           } catch (err) {
-            if (attempts > 30) {
+            consecutiveErrors += 1;
+            // Only fail polling if there are repeated persistent network/server errors
+            if (consecutiveErrors >= 6) {
               clearInterval(pollingRef.current);
               setIsUploading(false);
-              setUploadError('Extraction timed out. Please try again.');
+              setUploadError(err.message || 'Failed to extract concepts from this document. Please try again.');
             }
           }
         }, 1500);
@@ -227,6 +269,7 @@ export default function GuestHomeScreen({
 
   const completeExtraction = async (docId, filename) => {
     try {
+      setUploadStage('Finalizing concept breakdown...');
       const conceptsResp = await getDocumentConcepts(docId);
       const rawConcepts = conceptsResp.concepts || [];
       const conceptsList = rawConcepts.length > 0 ? rawConcepts.slice(0, 8).map(c => ({
@@ -238,11 +281,11 @@ export default function GuestHomeScreen({
 
       setDemoResult({
         filename: filename || DEFAULT_DEMO_RESULT.filename,
-        totalConcepts: rawConcepts.length || 56,
+        totalConcepts: rawConcepts.length || DEFAULT_DEMO_RESULT.totalConcepts,
         concepts: conceptsList
       });
 
-      // Decrement demo extractions
+      // Decrement demo extractions and re-sync status
       setDemoRemaining((prev) => {
         const next = Math.max(0, prev - 1);
         try {
@@ -250,6 +293,16 @@ export default function GuestHomeScreen({
         } catch {}
         return next;
       });
+
+      // Fetch official remaining count from backend asynchronously
+      getGuestStatus().then(status => {
+        if (status && typeof status.remaining === 'number') {
+          setDemoRemaining(status.remaining);
+          try {
+            localStorage.setItem('conceptlens_guest_demo_count', String(status.remaining));
+          } catch {}
+        }
+      }).catch(() => {});
     } catch (err) {
       // Fallback to sample preview if concepts endpoint fails
       setDemoResult({

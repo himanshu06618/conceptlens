@@ -20,11 +20,22 @@ Key Responsibilities:
 8. Page image extraction for vision-based extraction on low_text / scanned pages.
 """
 
+import os
 import re
 import hashlib
+import logging
 from typing import List, Dict, Any, Optional, Tuple
 from pathlib import Path
 import pymupdf as fitz
+
+logger = logging.getLogger("conceptlens.layout_extractor")
+
+def clean_page_text(text: str) -> str:
+    text = re.sub(r"\r\n?", "\n", text)
+    text = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", text)
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
 
 # Regex patterns for headers, footers, boilerplate, and course logistics
 BOILERPLATE_PATTERNS = [
@@ -122,11 +133,15 @@ class LayoutExtractor:
 
     def extract_document_pages(self) -> Tuple[List[LayoutAwarePage], Dict[int, str]]:
         """
-        Extracts all pages from the PDF with layout awareness and classification.
+        Extracts all pages from the document with layout awareness and classification.
         Returns:
             pages: List of LayoutAwarePage objects
             toc_map: Map of page_num -> TOC/Bookmark heading
         """
+        ext = self.file_path.suffix.lower()
+        if ext in ('.png', '.jpg', '.jpeg', '.webp'):
+            return self._extract_image_file()
+
         doc = fitz.open(str(self.file_path))
         total_pages = len(doc)
         
@@ -265,6 +280,32 @@ class LayoutExtractor:
             cleaned_text = "\n\n".join(page_text_lines).strip()
             char_count = len(cleaned_text)
 
+            # If page has very little or no extracted text, run OCR
+            if char_count < 40 and (len(page.get_images()) > 0 or total_pages <= 5):
+                try:
+                    try:
+                        from backend.services.ocr import run_ocr_on_image
+                    except ImportError:
+                        from services.ocr import run_ocr_on_image
+                    pix = page.get_pixmap(dpi=150)
+                    pix_bytes = pix.tobytes("png")
+                    gemini_key = os.getenv("GEMINI_API_KEY", "").strip()
+                    ocr_text = run_ocr_on_image(
+                        pix_bytes,
+                        prefer_cloud=bool(gemini_key),
+                        gemini_api_key=gemini_key,
+                        gemini_model=os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
+                    )
+                    if ocr_text and len(ocr_text.strip()) > char_count:
+                        cleaned_text = clean_page_text(ocr_text)
+                        char_count = len(cleaned_text)
+                        raw_text = ocr_text
+                        for ocr_l in [l.strip() for l in cleaned_text.split("\n") if l.strip()]:
+                            if len(ocr_l) < 60 and not ocr_l.endswith(".") and ocr_l not in detected_headings:
+                                detected_headings.append(ocr_l)
+                except Exception as e_ocr:
+                    logger.warning(f"Could not perform OCR on page {page_num}: {e_ocr}")
+
             # Determine title: Prefer TOC bookmark, then candidate title, then first heading
             final_title = None
             if page_num in toc_map:
@@ -307,6 +348,43 @@ class LayoutExtractor:
         doc.close()
         return pages, toc_map
 
+    def _extract_image_file(self) -> Tuple[List[LayoutAwarePage], Dict[int, str]]:
+        """Extracts text from an image file using OCR."""
+        try:
+            from backend.services.ocr import run_ocr_on_image
+        except ImportError:
+            from services.ocr import run_ocr_on_image
+
+        gemini_key = os.getenv("GEMINI_API_KEY", "").strip()
+        ocr_text = run_ocr_on_image(
+            self.file_path,
+            prefer_cloud=bool(gemini_key),
+            gemini_api_key=gemini_key,
+            gemini_model=os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
+        )
+        cleaned_text = clean_page_text(ocr_text) if ocr_text else ""
+        lines = [line.strip() for line in cleaned_text.split("\n") if line.strip()]
+        detected_headings = []
+        candidate_title = lines[0] if lines else self.file_path.stem.replace("_", " ").title()
+        for line in lines[:5]:
+            if len(line) < 60 and not line.endswith("."):
+                detected_headings.append(line)
+
+        char_count = len(cleaned_text)
+        page = LayoutAwarePage(
+            page_num=1,
+            raw_text=ocr_text or "",
+            cleaned_text=cleaned_text,
+            title=candidate_title,
+            page_type="content" if char_count >= 15 else "low_text",
+            headings=detected_headings,
+            text_hash=compute_text_hash(cleaned_text),
+            char_count=char_count,
+            is_scanned_or_low_text=(char_count < 15),
+            blocks=[{"text": l, "font_size": 12.0, "is_bold": False, "is_heading": False, "bbox": (0, 0, 0, 0)} for l in lines]
+        )
+        return [page], {1: candidate_title}
+
     def _classify_page(
         self,
         page_num: int,
@@ -318,11 +396,11 @@ class LayoutExtractor:
     ) -> str:
         """Classifies page into one of the canonical categories."""
         # 1. Scanned / image-only / diagram-heavy page (has image and little/no text)
-        if has_images and char_count < 80:
+        if total_pages > 2 and has_images and char_count < 40:
             return "low_text"
 
-        # 2. Blank page (< 20 characters)
-        if char_count < 20:
+        # 2. Blank page (< 15 characters)
+        if char_count < 15:
             return "blank"
 
         text_lower = text.lower()

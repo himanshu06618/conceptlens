@@ -23,6 +23,27 @@ const getApiBase = () => {
 const API_BASE = getApiBase();
 
 /**
+ * Retrieve or generate a persistent guest session ID stored in localStorage.
+ */
+export function getOrCreateGuestSession() {
+  if (typeof window === 'undefined' || !window.localStorage) {
+    return null;
+  }
+  if (localStorage.getItem('conceptlens_token')) {
+    return null;
+  }
+  let session = localStorage.getItem('conceptlens_guest_session');
+  if (!session || typeof session !== 'string' || !session.startsWith('guest_')) {
+    const randomHex = (typeof crypto !== 'undefined' && crypto.randomUUID)
+      ? crypto.randomUUID().replace(/-/g, '')
+      : `${Date.now()}${Math.random().toString(36).slice(2)}`;
+    session = `guest_${randomHex}`;
+    localStorage.setItem('conceptlens_guest_session', session);
+  }
+  return session;
+}
+
+/**
  * Enhanced fetch wrapper with credentials: 'include' and automatic 401 interceptor.
  */
 async function apiFetch(endpoint, options = {}) {
@@ -35,10 +56,12 @@ async function apiFetch(endpoint, options = {}) {
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  // Attach guest session ID from localStorage if available
-  const guestSession = localStorage.getItem('conceptlens_guest_session');
-  if (guestSession && !headers['X-Guest-Session']) {
-    headers['X-Guest-Session'] = guestSession;
+  // Attach guest session ID from localStorage if available and not logged in
+  if (!token) {
+    const guestSession = getOrCreateGuestSession();
+    if (guestSession && !headers['X-Guest-Session']) {
+      headers['X-Guest-Session'] = guestSession;
+    }
   }
 
   // Attach user's local timezone (e.g. Asia/Kolkata)
@@ -123,7 +146,11 @@ export async function uploadDocument(file, { password = null, mode = null, idemp
     throw error;
   }
 
-  return res.json();
+  const data = await res.json();
+  if (data && data.guest_id) {
+    localStorage.setItem('conceptlens_guest_session', data.guest_id);
+  }
+  return data;
 }
 
 export async function getDocumentStatus(docId) {

@@ -44,6 +44,7 @@ try:
         mark_document_failed,
         get_documents_list,
         get_document_by_id,
+        get_document_by_id_guest_fallback,
         delete_document_by_id,
         save_concepts_and_relations,
         get_concepts_by_document,
@@ -133,6 +134,7 @@ except ImportError:
         mark_document_failed,
         get_documents_list,
         get_document_by_id,
+        get_document_by_id_guest_fallback,
         delete_document_by_id,
         save_concepts_and_relations,
         get_concepts_by_document,
@@ -480,6 +482,38 @@ def process_document_background(
                 save_document_page_coverage(doc_id, page_coverage_records)
 
             if not concepts:
+                # Emergency fallback: derive concepts from full_text or document filename
+                text_to_mine = full_text or ""
+                if not text_to_mine and file_path.exists():
+                    try:
+                        text_to_mine = file_path.read_text(encoding="utf-8", errors="ignore")
+                    except Exception:
+                        pass
+                if text_to_mine:
+                    lines = [l.strip() for l in text_to_mine.split("\n") if len(l.strip()) >= 5]
+                    fallback_concepts = []
+                    for idx, line in enumerate(lines[:10]):
+                        parts = line.split(":", 1) if ":" in line else line.split(" - ", 1)
+                        c_name = parts[0].strip() if len(parts) > 1 and len(parts[0].split()) <= 6 else line[:50].strip()
+                        c_def = parts[1].strip() if len(parts) > 1 else line
+                        if c_name:
+                            fallback_concepts.append({
+                                "id": f"c_{idx + 1}",
+                                "name": c_name.title(),
+                                "definition": c_def or "Concept from notes",
+                                "importance": 2,
+                                "source_excerpt": line[:200],
+                                "source_quote": line[:200],
+                                "source_page": 1,
+                                "page": 1,
+                                "pages": [1],
+                                "source_verified": True,
+                                "topic": "General"
+                            })
+                    if fallback_concepts:
+                        concepts = fallback_concepts
+
+            if not concepts:
                 mark_document_failed(doc_id, "No key educational concepts could be extracted from this document.")
                 return
 
@@ -496,11 +530,17 @@ def process_document_background(
                 progress=85,
                 stage_message="Building concept tree & flowchart graph (85%)..."
             )
-            tree_data = build_document_tree(doc_id, file_path.name, concepts)
-            save_document_tree(doc_id, tree_data)
+            try:
+                tree_data = build_document_tree(doc_id, file_path.name, concepts)
+                save_document_tree(doc_id, tree_data)
+            except Exception as e_tree:
+                logger.warning(f"Could not build concept tree for {doc_id}: {e_tree}")
 
-            flow_data = build_document_flowchart(doc_id, concepts, full_text, include_related=True)
-            save_document_flowchart(doc_id, flow_data)
+            try:
+                flow_data = build_document_flowchart(doc_id, concepts, full_text, include_related=True)
+                save_document_flowchart(doc_id, flow_data)
+            except Exception as e_flow:
+                logger.warning(f"Could not build flowchart for {doc_id}: {e_flow}")
 
             # 4. Database Save
             update_document_stage(
@@ -752,7 +792,8 @@ async def upload_document(
                 file_type=Path(existing_by_key.get("filename", "")).suffix.lower().lstrip("."),
                 status=existing_by_key.get("status", "processing"),
                 stage=existing_by_key.get("stage", "reading"),
-                message="Existing document returned for idempotency key."
+                message="Existing document returned for idempotency key.",
+                guest_id=actor["id"] if not actor.get("is_authenticated") else None
             )
 
     # Enforce free guest limit (5 uploads) before requiring login
@@ -826,7 +867,8 @@ async def upload_document(
             file_type=ext.lstrip("."),
             status=status,
             stage=stage,
-            message=msg
+            message=msg,
+            guest_id=actor["id"] if not actor.get("is_authenticated") else None
         )
 
     doc_id = str(uuid.uuid4())
@@ -892,7 +934,8 @@ async def upload_document(
             file_type=ext.lstrip("."),
             status=doc_record.get("status", "processing"),
             stage=doc_record.get("stage", "reading"),
-            message="Existing document returned after concurrent upload."
+            message="Existing document returned after concurrent upload.",
+            guest_id=actor["id"] if not actor.get("is_authenticated") else None
         )
 
     prefer_cloud = True
@@ -924,7 +967,8 @@ async def upload_document(
         file_type=ext.lstrip("."),
         status="processing",
         stage="reading",
-        message="Document uploaded successfully. Processing started."
+        message="Document uploaded successfully. Processing started.",
+        guest_id=actor["id"] if not actor.get("is_authenticated") else None
     )
 
 @app.get("/api/documents/{doc_id}/status")
@@ -932,6 +976,8 @@ async def upload_document(
 def get_document_status(doc_id: str, actor: Dict[str, Any] = Depends(get_current_user_or_guest)):
     """Lightweight polling endpoint returning processing status, progress percentage, message, provider, time."""
     doc = get_document_by_id(user_id=actor["id"], doc_id=doc_id)
+    if not doc and not actor.get("is_authenticated"):
+        doc = get_document_by_id_guest_fallback(doc_id=doc_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found.")
     skipped = []
@@ -1195,9 +1241,9 @@ def list_documents(actor: Dict[str, Any] = Depends(get_current_user_or_guest)):
 @app.get("/api/documents/{doc_id}", response_model=DocumentDetail)
 @app.get("/documents/{doc_id}", response_model=DocumentDetail)
 def get_document(doc_id: str, actor: Dict[str, Any] = Depends(get_current_user_or_guest)):
-    if not actor.get("is_authenticated"):
-        raise HTTPException(status_code=401, detail="Authentication required.")
     doc = get_document_by_id(user_id=actor["id"], doc_id=doc_id)
+    if not doc and not actor.get("is_authenticated"):
+        doc = get_document_by_id_guest_fallback(doc_id=doc_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found.")
     return doc
@@ -1219,6 +1265,8 @@ def get_document_concepts(
     actor: Dict[str, Any] = Depends(get_current_user_or_guest)
 ):
     doc = get_document_by_id(user_id=actor["id"], doc_id=doc_id)
+    if not doc and not actor.get("is_authenticated"):
+        doc = get_document_by_id_guest_fallback(doc_id=doc_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found.")
 

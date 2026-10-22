@@ -276,19 +276,25 @@ def get_current_user_or_guest(request: Request, response: Response) -> Dict[str,
             pass
 
     # Unauthenticated -> persistent guest session
-    guest_id = request.cookies.get("guest_session_id") or request.cookies.get("guest_id")
+    guest_id = request.headers.get("x-guest-session")
     if not guest_id:
-        guest_id = request.headers.get("x-guest-session")
+        guest_id = request.cookies.get("guest_session_id") or request.cookies.get("guest_id")
     if not guest_id or not re.match(r"^guest_[a-zA-Z0-9_-]{10,64}$", guest_id):
         guest_id = f"guest_{secrets.token_hex(16)}"
+
+    origin = request.headers.get("origin") or ""
+    host = request.headers.get("host") or ""
+    is_cross_site = bool(origin and not origin.endswith(host))
+    cookie_samesite = "none" if (is_cross_site or COOKIE_SECURE) else "lax"
+    cookie_secure = True if cookie_samesite == "none" else COOKIE_SECURE
 
     response.set_cookie(
         key="guest_session_id",
         value=guest_id,
         max_age=30 * 24 * 3600,
         httponly=False,
-        samesite="lax",
-        secure=COOKIE_SECURE,
+        samesite=cookie_samesite,
+        secure=cookie_secure,
         path="/"
     )
 

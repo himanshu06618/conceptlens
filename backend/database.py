@@ -1684,6 +1684,41 @@ def get_document_by_id(user_id: str, doc_id: str) -> Optional[Dict[str, Any]]:
     finally:
         conn.close()
 
+def get_document_by_id_guest_fallback(doc_id: str) -> Optional[Dict[str, Any]]:
+    """Returns document by id if and only if the document belongs to a guest user (starts with 'guest_')."""
+    conn = get_connection()
+    try:
+        cursor = conn.execute("""
+            SELECT 
+                d.id,
+                d.filename,
+                d.file_type,
+                d.status,
+                d.stage,
+                d.progress,
+                d.stage_message,
+                d.ocr_current_page,
+                d.ocr_total_pages,
+                d.error,
+                d.page_count,
+                d.raw_text,
+                d.processing_time_sec,
+                d.provider_used,
+                d.skipped_pages,
+                d.file_hash,
+                d.user_id,
+                d.created_at,
+                COUNT(c.id) AS concept_count
+            FROM documents d
+            LEFT JOIN concepts c ON d.id = c.document_id
+            WHERE d.id = ? AND d.user_id LIKE 'guest_%'
+            GROUP BY d.id
+        """, (doc_id,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
 def check_table_exists(conn, table_name: str) -> bool:
     """Safely checks if a table exists in SQLite or PostgreSQL without aborting transactions."""
     try:
