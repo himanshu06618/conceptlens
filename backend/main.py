@@ -1588,12 +1588,19 @@ def delete_document(
     verify_csrf(request)
     doc = get_document_by_id(user_id=actor["id"], doc_id=doc_id)
     if not doc:
-        # Check if doc exists with unassigned user_id or matching actor
+        # Check if doc exists with unassigned user_id, matching actor, or guest doc for authenticated user
         conn = get_connection()
         try:
             row = conn.execute("SELECT id, filename, user_id FROM documents WHERE id = ?", (doc_id,)).fetchone()
-            if row and (row["user_id"] is None or row["user_id"] == actor["id"] or actor.get("role") == "admin"):
-                doc = dict(row)
+            if row:
+                row_user = row["user_id"]
+                if (
+                    row_user is None
+                    or row_user == actor["id"]
+                    or actor.get("role") == "admin"
+                    or (actor.get("is_authenticated") and str(row_user).startswith("guest_"))
+                ):
+                    doc = dict(row)
         finally:
             conn.close()
 
@@ -1617,8 +1624,16 @@ def delete_document(
     except Exception as e:
         logger.warning(f"Could not remove file for doc {doc_id}: {e}")
 
-    deleted = delete_document_by_id(user_id=owner_id, doc_id=doc_id)
+    try:
+        deleted = delete_document_by_id(user_id=owner_id, doc_id=doc_id)
+    except Exception as e:
+        logger.exception(f"Unexpected error while deleting document {doc_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete document from database.")
+
     if not deleted:
+        check = get_document_by_id(user_id=owner_id, doc_id=doc_id)
+        if not check:
+            return {"success": True, "message": f"Document '{filename}' was already removed."}
         raise HTTPException(status_code=500, detail="Failed to delete document from database.")
 
     return {"success": True, "message": f"Document '{filename}' and all its extracted concepts were removed."}

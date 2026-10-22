@@ -887,13 +887,21 @@ def cleanup_document_graph(doc_id: str, user_id: str, conn=None) -> None:
             ).fetchall()
 
             for o_ent in orphan_entities:
-                conn.execute("DELETE FROM concept_entities WHERE id = ?", (o_ent["id"],))
-                # Cleanup merge suggestions referencing this entity
+                ent_id = o_ent["id"]
+                # 4a. Cleanup merge suggestions referencing this entity first
                 if check_table_exists(conn, "merge_suggestions"):
                     conn.execute(
                         "DELETE FROM merge_suggestions WHERE entity_a = ? OR entity_b = ?",
-                        (o_ent["id"], o_ent["id"])
+                        (ent_id, ent_id)
                     )
+                # 4b. Cleanup any concept_edges referencing this entity
+                if check_table_exists(conn, "concept_edges"):
+                    conn.execute(
+                        "DELETE FROM concept_edges WHERE source_entity_id = ? OR target_entity_id = ?",
+                        (ent_id, ent_id)
+                    )
+                # 4c. Delete the orphan concept_entity
+                conn.execute("DELETE FROM concept_entities WHERE id = ?", (ent_id,))
 
         # 5. Remove document_chunks
         if check_table_exists(conn, "document_chunks"):
