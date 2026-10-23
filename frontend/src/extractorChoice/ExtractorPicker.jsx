@@ -53,7 +53,7 @@ export default function ExtractorPicker({
   documents = [],
   isUploading = false,
   onChange,
-  variant = 'dark',
+  variant = 'light',
 }) {
   const [selectedMethod, setSelectedMethod] = useState(() => {
     try {
@@ -65,7 +65,7 @@ export default function ExtractorPicker({
     }
   });
 
-  // Default all 3 supported methods to true so choices appear immediately
+  // Default all supported methods to true so choices appear immediately
   const [availableMethods, setAvailableMethods] = useState({
     gemini: true,
     yake: true,
@@ -74,7 +74,7 @@ export default function ExtractorPicker({
   const [isLoading, setIsLoading] = useState(true);
   const [lastExtraction, setLastExtraction] = useState(null);
 
-  // Sync window global on mount
+  // Sync window global on mount and selection changes
   useEffect(() => {
     if (typeof window !== 'undefined') {
       window.__conceptlens_extractor = selectedMethod;
@@ -125,10 +125,9 @@ export default function ExtractorPicker({
     };
   }, []);
 
-  // 2. Listen to upload-started event to reset selection to Gemini if desired
+  // 2. Listen to upload-started event
   useEffect(() => {
     const handleUploadStarted = () => {
-      // Optional: keep current selection or notify parent
       if (onChange) onChange(selectedMethod);
     };
 
@@ -184,23 +183,20 @@ export default function ExtractorPicker({
     return found ? found.title : id;
   };
 
-  const isLime = variant === 'lime';
-
   return (
     <div
       className="extractor-picker-box"
       style={{
-        marginTop: isLime ? '14px' : '1.25rem',
+        marginTop: '14px',
         width: '100%',
-        maxWidth: isLime ? '440px' : '540px',
+        maxWidth: '460px',
         marginInline: 'auto',
         textAlign: 'left',
-        background: isLime ? 'rgba(255, 255, 255, 0.42)' : 'rgba(15, 23, 42, 0.4)',
-        border: `1px solid ${isLime ? 'rgba(17, 17, 19, 0.16)' : 'rgba(255, 255, 255, 0.08)'}`,
-        borderRadius: '16px',
-        padding: '14px 16px',
-        backdropFilter: 'blur(12px)',
-        boxShadow: isLime ? '0 4px 18px rgba(0, 0, 0, 0.04)' : '0 4px 20px rgba(0, 0, 0, 0.25)',
+        background: '#FFFFFF',
+        border: '1px solid rgba(17, 17, 19, 0.12)',
+        borderRadius: '20px',
+        padding: '16px 18px',
+        boxShadow: '0 8px 26px rgba(17, 17, 19, 0.08)',
       }}
       onClick={(e) => e.stopPropagation()}
     >
@@ -212,36 +208,34 @@ export default function ExtractorPicker({
             display: 'inline-flex',
             alignItems: 'center',
             gap: '6px',
-            padding: '5px 10px',
+            padding: '5px 12px',
             borderRadius: '999px',
-            marginBottom: '0.75rem',
+            marginBottom: '10px',
             fontSize: '0.76rem',
             fontWeight: 600,
             background: lastExtraction.fallback
-              ? isLime ? 'rgba(217, 119, 6, 0.15)' : 'rgba(245, 158, 11, 0.12)'
-              : isLime ? 'rgba(17, 17, 19, 0.09)' : 'rgba(163, 230, 53, 0.12)',
+              ? '#FEF3C7'
+              : 'rgba(215, 242, 92, 0.35)',
             border: `1px solid ${
               lastExtraction.fallback
-                ? 'rgba(217, 119, 6, 0.35)'
-                : isLime ? 'rgba(17, 17, 19, 0.2)' : 'rgba(163, 230, 53, 0.35)'
+                ? '#F59E0B'
+                : 'rgba(17, 17, 19, 0.18)'
             }`,
-            color: lastExtraction.fallback
-              ? isLime ? '#b45309' : '#fbbf24'
-              : isLime ? '#111113' : '#bef264',
+            color: lastExtraction.fallback ? '#92400E' : '#111113',
           }}
           role="status"
           aria-live="polite"
         >
           {lastExtraction.fallback ? (
             <>
-              <AlertCircle size={13} style={{ flexShrink: 0 }} />
+              <AlertCircle size={13} style={{ flexShrink: 0, color: '#D97706' }} />
               <span>
                 Used Gemini instead: {lastExtraction.fallback_reason || 'Fallback triggered'}
               </span>
             </>
           ) : (
             <>
-              <Check size={13} style={{ flexShrink: 0 }} />
+              <Check size={13} style={{ flexShrink: 0, color: '#16A34A' }} />
               <span>
                 Extracted with: {getMethodTitle(lastExtraction.extractor_used)}
               </span>
@@ -251,24 +245,35 @@ export default function ExtractorPicker({
       )}
 
       {/* Label & Description (Sentence case) */}
-      <div style={{ marginBottom: '0.65rem' }}>
+      <div style={{ marginBottom: '10px' }}>
         <div
           style={{
-            fontSize: '0.86rem',
-            fontWeight: 700,
-            color: isLime ? '#111113' : '#f8fafc',
-            letterSpacing: isLime ? '-0.01em' : '0.01em',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
+            marginBottom: '3px',
           }}
         >
-          <span>Extraction method</span>
           <span
             style={{
-              fontSize: '0.7rem',
-              fontWeight: 500,
-              color: isLime ? 'rgba(17, 17, 19, 0.55)' : '#94a3b8',
+              fontSize: '0.92rem',
+              fontWeight: 700,
+              color: '#111113',
+              letterSpacing: '-0.015em',
+            }}
+          >
+            Extraction method
+          </span>
+          <span
+            style={{
+              fontSize: '0.72rem',
+              fontWeight: 600,
+              color: '#111113',
+              background: 'rgba(215, 242, 92, 0.4)',
+              padding: '2px 8px',
+              borderRadius: '999px',
+              border: '1px solid rgba(17, 17, 19, 0.12)',
+              letterSpacing: '0.01em',
             }}
           >
             {visibleOptions.length} available
@@ -276,9 +281,10 @@ export default function ExtractorPicker({
         </div>
         <div
           style={{
-            fontSize: '0.75rem',
-            color: isLime ? 'rgba(17, 17, 19, 0.72)' : '#94a3b8',
-            marginTop: '2px',
+            fontSize: '0.78rem',
+            fontWeight: 500,
+            color: '#52525B',
+            lineHeight: 1.3,
           }}
         >
           Choose how concepts are extracted from your file
@@ -292,7 +298,7 @@ export default function ExtractorPicker({
         style={{
           display: 'flex',
           flexDirection: 'column',
-          gap: '7px',
+          gap: '8px',
           width: '100%',
         }}
       >
@@ -315,54 +321,45 @@ export default function ExtractorPicker({
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                padding: '9px 12px',
-                borderRadius: '11px',
-                background: isLime
-                  ? isSelected
-                    ? '#111113'
-                    : 'rgba(255, 255, 255, 0.75)'
-                  : isSelected
-                    ? 'rgba(163, 230, 53, 0.09)'
-                    : 'rgba(255, 255, 255, 0.03)',
-                border: isLime
-                  ? `1.5px solid ${isSelected ? '#111113' : 'rgba(17, 17, 19, 0.12)'}`
-                  : `1px solid ${isSelected ? 'rgba(163, 230, 53, 0.55)' : 'rgba(255, 255, 255, 0.08)'}`,
-                boxShadow: isLime
-                  ? isSelected
-                    ? '0 4px 14px rgba(0, 0, 0, 0.2)'
-                    : '0 1px 3px rgba(0, 0, 0, 0.03)'
-                  : isSelected
-                    ? '0 0 16px rgba(163, 230, 53, 0.12)'
-                    : 'none',
+                padding: '11px 14px',
+                borderRadius: '13px',
+                background: isSelected
+                  ? '#FFFFFF'
+                  : '#F8F9FA',
+                border: isSelected
+                  ? '2px solid #111113'
+                  : '1.5px solid rgba(17, 17, 19, 0.09)',
+                boxShadow: isSelected
+                  ? '0 4px 14px rgba(17, 17, 19, 0.08)'
+                  : 'none',
                 cursor: 'pointer',
-                transition: 'all 0.15s ease',
+                transition: 'all 0.16s ease',
                 outline: 'none',
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
                 {/* Custom radio button */}
                 <div
                   style={{
-                    width: '16px',
-                    height: '16px',
+                    width: '18px',
+                    height: '18px',
                     borderRadius: '50%',
-                    border: isLime
-                      ? `2px solid ${isSelected ? '#D7F25C' : 'rgba(17, 17, 19, 0.35)'}`
-                      : `2px solid ${isSelected ? '#a3e635' : 'rgba(255, 255, 255, 0.3)'}`,
+                    border: `2px solid ${isSelected ? '#111113' : 'rgba(17, 17, 19, 0.3)'}`,
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     flexShrink: 0,
+                    background: '#FFFFFF',
                     transition: 'all 0.15s ease',
                   }}
                 >
                   {isSelected && (
                     <div
                       style={{
-                        width: '7px',
-                        height: '7px',
+                        width: '8px',
+                        height: '8px',
                         borderRadius: '50%',
-                        background: isLime ? '#D7F25C' : '#a3e635',
+                        background: '#111113',
                       }}
                     />
                   )}
@@ -372,30 +369,22 @@ export default function ExtractorPicker({
                 <div style={{ minWidth: 0 }}>
                   <div
                     style={{
-                      fontSize: '0.84rem',
+                      fontSize: '0.88rem',
                       fontWeight: isSelected ? 700 : 600,
-                      color: isLime
-                        ? isSelected
-                          ? '#FFFFFF'
-                          : '#111113'
-                        : isSelected
-                          ? '#ffffff'
-                          : '#e2e8f0',
+                      color: '#111113',
                       lineHeight: 1.25,
+                      letterSpacing: '-0.01em',
                     }}
                   >
                     {opt.title}
                   </div>
                   <div
                     style={{
-                      fontSize: '0.72rem',
-                      color: isLime
-                        ? isSelected
-                          ? 'rgba(255, 255, 255, 0.72)'
-                          : 'rgba(17, 17, 19, 0.65)'
-                        : '#94a3b8',
-                      marginTop: '1px',
-                      lineHeight: 1.2,
+                      fontSize: '0.76rem',
+                      fontWeight: isSelected ? 500 : 450,
+                      color: isSelected ? '#3F3F46' : '#64748B',
+                      marginTop: '2px',
+                      lineHeight: 1.25,
                     }}
                   >
                     {opt.subtitle}
@@ -404,33 +393,29 @@ export default function ExtractorPicker({
               </div>
 
               {/* Tag / Badge */}
-              <div style={{ flexShrink: 0, marginLeft: '8px' }}>
+              <div style={{ flexShrink: 0, marginLeft: '10px' }}>
                 <span
                   style={{
-                    fontSize: '0.68rem',
+                    fontSize: '0.72rem',
                     fontWeight: 700,
-                    padding: '2px 7px',
-                    borderRadius: '5px',
-                    background: isLime
-                      ? isSelected
-                        ? 'rgba(215, 242, 92, 0.22)'
-                        : opt.badgeVariant === 'default'
-                          ? 'rgba(17, 17, 19, 0.08)'
-                          : 'rgba(17, 17, 19, 0.05)'
-                      : opt.badgeVariant === 'default'
-                        ? 'rgba(163, 230, 53, 0.15)'
-                        : 'rgba(255, 255, 255, 0.08)',
-                    color: isLime
-                      ? isSelected
-                        ? '#D7F25C'
-                        : '#111113'
-                      : opt.badgeVariant === 'default'
-                        ? '#bef264'
-                        : '#cbd5e1',
-                    border: isLime
-                      ? `1px solid ${isSelected ? 'rgba(215, 242, 92, 0.45)' : 'rgba(17, 17, 19, 0.12)'}`
-                      : `1px solid ${opt.badgeVariant === 'default' ? 'rgba(163, 230, 53, 0.3)' : 'rgba(255, 255, 255, 0.1)'}`,
-                    letterSpacing: '0.02em',
+                    padding: '3px 8px',
+                    borderRadius: '6px',
+                    background: opt.badgeVariant === 'default'
+                      ? '#D7F25C'
+                      : isSelected
+                        ? '#111113'
+                        : '#EDEDF0',
+                    color: opt.badgeVariant === 'default'
+                      ? '#111113'
+                      : isSelected
+                        ? '#FFFFFF'
+                        : '#3F3F46',
+                    border: opt.badgeVariant === 'default'
+                      ? '1px solid rgba(17, 17, 19, 0.2)'
+                      : isSelected
+                        ? '1px solid #111113'
+                        : '1px solid rgba(17, 17, 19, 0.08)',
+                    letterSpacing: '0.01em',
                   }}
                 >
                   {opt.badge}
