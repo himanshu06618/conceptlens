@@ -207,12 +207,12 @@ def build_document_tree(
         parent_to_subs: Dict[int, List[Dict[str, Any]]] = defaultdict(list)
 
         # A concept c_sub is a sub-concept of c_parent if:
-        # - c_parent has higher or equal importance / score
-        # - c_sub contains c_parent's name or definition mentions c_parent
         for i, c_sub in enumerate(topic_concepts):
             c_sub_id = c_sub.get("id") or id(c_sub)
             sub_name_lower = c_sub["name"].lower()
-            sub_def_lower = c_sub.get("definition", "").lower()
+            # EXTRACTOR-CHOICE-START
+            sub_def_lower = (c_sub.get("definition") or "").lower()
+            # EXTRACTOR-CHOICE-END
 
             best_parent = None
             if c_sub.get("parent_name"):

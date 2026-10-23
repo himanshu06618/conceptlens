@@ -391,12 +391,27 @@ app.include_router(notes_router, prefix="/notes", tags=["notes"])
 app.include_router(graph_router, prefix="/api")
 app.include_router(graph_router)
 
+# EXTRACTOR-CHOICE-START
+try:
+    from backend.extractor_choice.api import router as extractor_router
+    app.include_router(extractor_router)
+except ImportError:
+    try:
+        from extractor_choice.api import router as extractor_router
+        app.include_router(extractor_router)
+    except ImportError:
+        pass
+# EXTRACTOR-CHOICE-END
+
 def process_document_background(
     doc_id: str,
     file_path: Path,
     pdf_password: Optional[str] = None,
     prefer_cloud: bool = True,
-    user_id: Optional[str] = None
+    user_id: Optional[str] = None,
+    # EXTRACTOR-CHOICE-START
+    extractor: str = "gemini"
+    # EXTRACTOR-CHOICE-END
 ):
     """Background task to extract concepts with Gemini API, build tree & flowchart, and protect memory."""
     t_start = time.perf_counter()
@@ -449,33 +464,72 @@ def process_document_background(
                 stage_message="Extracting educational concepts & definitions with Gemini AI..."
             )
 
-            # 2. Extract concepts via Pipeline v2 with full layout awareness & coverage guarantee
-            update_document_stage(
-                doc_id,
-                stage="extracting",
-                status="processing",
-                progress=30,
-                stage_message="Extracting educational concepts with Pipeline v2 (page-batched)..."
-            )
+            # EXTRACTOR-CHOICE-START
+            extractor_used = "gemini"
+            fallback = False
+            fallback_reason = None
+            concepts = []
+            relations = []
+            provider_used = "Pipeline-v2"
+            page_coverage_records = []
 
-            pipeline_v2 = ExtractionV2Pipeline()
-            v2_result = pipeline_v2.extract_document(
-                file_path=file_path,
-                doc_id=doc_id,
-                user_id=user_id,
-                on_progress=lambda msg, pct: update_document_stage(
+            enable_extractor_choice = os.getenv("ENABLE_EXTRACTOR_CHOICE", "").strip().lower() in ("true", "1", "yes", "on")
+            if enable_extractor_choice and extractor and extractor.strip().lower() != "gemini":
+                update_document_stage(
                     doc_id,
                     stage="extracting",
                     status="processing",
-                    progress=pct,
-                    stage_message=msg
+                    progress=35,
+                    stage_message=f"Extracting concepts using {extractor}..."
                 )
-            )
+                try:
+                    from backend.extractor_choice.service import run_extraction
+                except ImportError:
+                    try:
+                        from extractor_choice.service import run_extraction
+                    except ImportError:
+                        run_extraction = None
 
-            concepts = v2_result.get("concepts", [])
-            relations = v2_result.get("relations", [])
-            provider_used = v2_result.get("provider_used", "Pipeline-v2")
-            page_coverage_records = v2_result.get("page_coverage", [])
+                if run_extraction:
+                    choice_res = run_extraction(file_path, extractor, pdf_password=pdf_password)
+                    if choice_res and not choice_res.get("fallback") and choice_res.get("concepts"):
+                        concepts = choice_res["concepts"]
+                        extractor_used = choice_res.get("extractor_used", extractor)
+                        provider_used = extractor_used
+                    elif choice_res and choice_res.get("fallback"):
+                        fallback = True
+                        fallback_reason = choice_res.get("fallback_reason")
+                        logger.info(f"Extractor '{extractor}' requested fallback: {fallback_reason}. Running Gemini.")
+            # EXTRACTOR-CHOICE-END
+
+            if not concepts:
+                # 2. Extract concepts via Pipeline v2 with full layout awareness & coverage guarantee
+                update_document_stage(
+                    doc_id,
+                    stage="extracting",
+                    status="processing",
+                    progress=30,
+                    stage_message="Extracting educational concepts with Pipeline v2 (page-batched)..."
+                )
+
+                pipeline_v2 = ExtractionV2Pipeline()
+                v2_result = pipeline_v2.extract_document(
+                    file_path=file_path,
+                    doc_id=doc_id,
+                    user_id=user_id,
+                    on_progress=lambda msg, pct: update_document_stage(
+                        doc_id,
+                        stage="extracting",
+                        status="processing",
+                        progress=pct,
+                        stage_message=msg
+                    )
+                )
+
+                concepts = v2_result.get("concepts", [])
+                relations = v2_result.get("relations", [])
+                provider_used = v2_result.get("provider_used", "Pipeline-v2")
+                page_coverage_records = v2_result.get("page_coverage", [])
 
             # Save page coverage tracking
             if page_coverage_records:
@@ -652,6 +706,23 @@ def process_document_background(
                 provider_used=provider_used
             )
 
+            # EXTRACTOR-CHOICE-START
+            try:
+                meta_payload = json.dumps({
+                    "extractor_used": extractor_used,
+                    "fallback": fallback,
+                    "fallback_reason": fallback_reason
+                })
+                conn_meta = get_connection()
+                try:
+                    with conn_meta:
+                        conn_meta.execute("UPDATE documents SET result_json = ? WHERE id = ?", (meta_payload, doc_id))
+                finally:
+                    conn_meta.close()
+            except Exception as e_m:
+                logger.warning(f"Could not persist extractor metadata in result_json: {e_m}")
+            # EXTRACTOR-CHOICE-END
+
             logger.info(f"Document {doc_id} processing completed successfully in {t_total:.2f}s ({len(concepts)} concepts).")
 
         except EncryptedPdfError as enc_err:
@@ -775,6 +846,9 @@ async def upload_document(
     file: UploadFile = File(...),
     pdf_password: Optional[str] = Form(None),
     extraction_mode: Optional[str] = Form(None),
+    # EXTRACTOR-CHOICE-START
+    extractor: Optional[str] = Form("gemini"),
+    # EXTRACTOR-CHOICE-END
     idempotency_key: Optional[str] = Form(None),
     x_idempotency_key: Optional[str] = Header(None, alias="X-Idempotency-Key"),
     actor: Dict[str, Any] = Depends(get_current_user_or_guest)
@@ -958,7 +1032,10 @@ async def upload_document(
         save_path,
         pdf_password=pdf_password,
         prefer_cloud=prefer_cloud,
-        user_id=actor["id"]
+        user_id=actor["id"],
+        # EXTRACTOR-CHOICE-START
+        extractor=extractor or "gemini"
+        # EXTRACTOR-CHOICE-END
     )
 
     return UploadResponse(
@@ -968,7 +1045,10 @@ async def upload_document(
         status="processing",
         stage="reading",
         message="Document uploaded successfully. Processing started.",
-        guest_id=actor["id"] if not actor.get("is_authenticated") else None
+        guest_id=actor["id"] if not actor.get("is_authenticated") else None,
+        # EXTRACTOR-CHOICE-START
+        extractor_used=extractor or "gemini"
+        # EXTRACTOR-CHOICE-END
     )
 
 @app.get("/api/documents/{doc_id}/status")
@@ -986,6 +1066,14 @@ def get_document_status(doc_id: str, actor: Dict[str, Any] = Depends(get_current
             skipped = json.loads(doc["skipped_pages"])
         except Exception:
             skipped = []
+    # EXTRACTOR-CHOICE-START
+    meta_info = {}
+    if doc.get("result_json"):
+        try:
+            meta_info = json.loads(doc["result_json"])
+        except Exception:
+            pass
+    # EXTRACTOR-CHOICE-END
     return {
         "id": doc["id"],
         "filename": doc["filename"],
@@ -1000,7 +1088,12 @@ def get_document_status(doc_id: str, actor: Dict[str, Any] = Depends(get_current
         "processing_time_sec": doc.get("processing_time_sec", 0.0),
         "provider_used": doc.get("provider_used", "on-device"),
         "skipped_pages": skipped,
-        "concept_count": doc.get("concept_count", 0)
+        "concept_count": doc.get("concept_count", 0),
+        # EXTRACTOR-CHOICE-START
+        "extractor_used": meta_info.get("extractor_used", doc.get("provider_used", "gemini")),
+        "fallback": meta_info.get("fallback", False),
+        "fallback_reason": meta_info.get("fallback_reason", None)
+        # EXTRACTOR-CHOICE-END
     }
 
 @app.get("/api/documents/{doc_id}/file")
@@ -1246,6 +1339,16 @@ def get_document(doc_id: str, actor: Dict[str, Any] = Depends(get_current_user_o
         doc = get_document_by_id_guest_fallback(doc_id=doc_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found.")
+    # EXTRACTOR-CHOICE-START
+    if doc.get("result_json"):
+        try:
+            m = json.loads(doc["result_json"])
+            doc["extractor_used"] = m.get("extractor_used", doc.get("provider_used", "gemini"))
+            doc["fallback"] = m.get("fallback", False)
+            doc["fallback_reason"] = m.get("fallback_reason", None)
+        except Exception:
+            pass
+    # EXTRACTOR-CHOICE-END
     return doc
 
 class ConceptProgressUpdate(BaseModel):
@@ -1311,12 +1414,31 @@ def get_document_concepts(
             or term in c.get("source_excerpt", "").lower()
         ]
 
+    # EXTRACTOR-CHOICE-START
+    ext_used = "gemini"
+    is_fallback = False
+    fb_reason = None
+    if doc.get("result_json"):
+        try:
+            m = json.loads(doc["result_json"])
+            ext_used = m.get("extractor_used", doc.get("provider_used", "gemini"))
+            is_fallback = m.get("fallback", False)
+            fb_reason = m.get("fallback_reason", None)
+        except Exception:
+            pass
+    # EXTRACTOR-CHOICE-END
+
     return DocumentConceptsResponse(
         document_id=doc_id,
         total_concepts=len(filtered),
         topics=topics,
         concepts=filtered,
-        schema_version=SCHEMA_VERSION
+        schema_version=SCHEMA_VERSION,
+        # EXTRACTOR-CHOICE-START
+        extractor_used=ext_used,
+        fallback=is_fallback,
+        fallback_reason=fb_reason
+        # EXTRACTOR-CHOICE-END
     )
 
 @app.get("/api/documents/{doc_id}/tree")

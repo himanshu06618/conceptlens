@@ -60,3 +60,6 @@ Thumbs.db
 .idea/
 other than project/
 backups/
+
+# Extractor choice NLTK data
+.nltk_data/

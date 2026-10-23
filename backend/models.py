@@ -76,6 +76,11 @@ class DocumentDetail(BaseModel):
     user_id: Optional[str] = None
     created_at: str
     concept_count: int = 0
+    # EXTRACTOR-CHOICE-START
+    extractor_used: Optional[str] = "gemini"
+    fallback: Optional[bool] = False
+    fallback_reason: Optional[str] = None
+    # EXTRACTOR-CHOICE-END
 
 class DocumentConceptsResponse(BaseModel):
     document_id: str
@@ -83,6 +88,11 @@ class DocumentConceptsResponse(BaseModel):
     topics: List[str]
     concepts: List[ConceptItem]
     schema_version: Optional[int] = 3
+    # EXTRACTOR-CHOICE-START
+    extractor_used: Optional[str] = "gemini"
+    fallback: Optional[bool] = False
+    fallback_reason: Optional[str] = None
+    # EXTRACTOR-CHOICE-END
 
 class UploadResponse(BaseModel):
     id: str
@@ -94,6 +104,11 @@ class UploadResponse(BaseModel):
     stage_message: Optional[str] = "Document uploaded successfully. Processing started."
     message: str
     guest_id: Optional[str] = None
+    # EXTRACTOR-CHOICE-START
+    extractor_used: Optional[str] = "gemini"
+    fallback: Optional[bool] = False
+    fallback_reason: Optional[str] = None
+    # EXTRACTOR-CHOICE-END
 
 # User & Auth Models
 class UserRegisterRequest(BaseModel):

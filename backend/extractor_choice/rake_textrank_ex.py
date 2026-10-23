@@ -1,0 +1,129 @@
+"""
+rake_textrank_ex.py - Hybrid RAKE + TextRank keyword extractor.
+Combines Rapid Automatic Keyword Extraction (RAKE) and graph-based TextRank.
+Configurable parameters at the top of the file.
+"""
+
+import logging
+from pathlib import Path
+from typing import List, Optional
+import nltk
+from rake_nltk import Rake
+from summa import keywords as summa_keywords
+
+from .base import Extractor, clean_phrases
+
+logger = logging.getLogger("conceptlens.extractor.rake_textrank")
+
+# --- Configuration Constants ---
+TOP_K: int = 30
+MIN_PHRASE_LENGTH: int = 1
+MAX_PHRASE_LENGTH: int = 3
+LANGUAGE: str = "english"
+
+# NLTK data path isolated strictly inside this folder
+NLTK_DATA_DIR: Path = Path(__file__).resolve().parent / ".nltk_data"
+
+_nltk_initialized = False
+
+
+def ensure_nltk_resources() -> None:
+    """
+    Ensures required NLTK resources (stopwords, punkt) are available in the isolated directory.
+    Downloads resources safely on first use, never at import time.
+    """
+    global _nltk_initialized
+    if _nltk_initialized:
+        return
+
+    data_dir_str = str(NLTK_DATA_DIR)
+    NLTK_DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+    if data_dir_str not in nltk.data.path:
+        nltk.data.path.insert(0, data_dir_str)
+
+    # Download required NLTK corpuses on first run
+    for resource in ["stopwords", "punkt", "punkt_tab"]:
+        try:
+            nltk.download(resource, download_dir=data_dir_str, quiet=True)
+        except Exception as e:
+            logger.warning(f"Could not download NLTK '{resource}' to {data_dir_str}: {e}")
+
+    _nltk_initialized = True
+
+
+class RakeTextRankExtractor(Extractor):
+    """
+    Hybrid extractor combining RAKE (co-occurrence statistics) and TextRank (graph ranking).
+    Merges both lists, handles short text gracefully, and deduplicates phrases.
+    """
+
+    def __init__(
+        self,
+        top_k: int = TOP_K,
+        min_length: int = MIN_PHRASE_LENGTH,
+        max_length: int = MAX_PHRASE_LENGTH,
+        language: str = LANGUAGE
+    ):
+        self.top_k = top_k
+        self.min_length = min_length
+        self.max_length = max_length
+        self.language = language
+
+    def _extract_rake(self, text: str) -> List[str]:
+        """Extract phrases using RAKE."""
+        try:
+            try:
+                stopwords_list = nltk.corpus.stopwords.words(self.language)
+            except Exception:
+                stopwords_list = None
+
+            r = Rake(
+                stopwords=stopwords_list,
+                min_length=self.min_length,
+                max_length=self.max_length
+            )
+            r.extract_keywords_from_text(text)
+            return r.get_ranked_phrases()[:self.top_k]
+        except Exception as e:
+            logger.warning(f"RAKE extraction error: {e}")
+            return []
+
+    def _extract_textrank(self, text: str) -> List[str]:
+        """Extract phrases using TextRank (Summa)."""
+        try:
+            raw = summa_keywords.keywords(text, language=self.language, words=self.top_k)
+            if not raw or not raw.strip():
+                return []
+            return [line.strip() for line in raw.split("\n") if line.strip()]
+        except Exception as e:
+            logger.warning(f"TextRank extraction error: {e}")
+            return []
+
+    def extract(self, text: str) -> List[str]:
+        if not text or not text.strip():
+            return []
+
+        # Download/verify NLTK data on first extraction call
+        ensure_nltk_resources()
+
+        rake_phrases = self._extract_rake(text)
+        textrank_phrases = self._extract_textrank(text)
+
+        # If TextRank returns nothing (e.g. short text), use RAKE only
+        if not textrank_phrases:
+            combined = rake_phrases
+        elif not rake_phrases:
+            combined = textrank_phrases
+        else:
+            # Interleave top phrases to balance both statistical and graph methods
+            combined = []
+            max_len = max(len(rake_phrases), len(textrank_phrases))
+            for i in range(max_len):
+                if i < len(rake_phrases):
+                    combined.append(rake_phrases[i])
+                if i < len(textrank_phrases):
+                    combined.append(textrank_phrases[i])
+
+        cleaned = clean_phrases(combined)
+        return cleaned[:self.top_k]

@@ -228,6 +228,32 @@ export default function UploadView({
       return;
     }
 
+    // EXTRACTOR-CHOICE-START
+    try {
+      const chosenExtractor = (typeof window !== 'undefined' && window.__conceptlens_extractor) || 'gemini';
+      const uploadOpts = chosenExtractor !== 'gemini' ? { extractor: chosenExtractor } : {};
+      if (typeof window !== 'undefined') {
+        window.__conceptlens_extractor = 'gemini';
+        window.dispatchEvent(new CustomEvent('conceptlens:upload-started'));
+      }
+      if (file.type.startsWith('image/')) {
+        setIsCompressing(true);
+        try {
+          const compressed = await compressImageIfNeeded(file);
+          onUpload(compressed, uploadOpts);
+        } catch (err) {
+          console.warn('Image compression fallback:', err);
+          onUpload(file, uploadOpts);
+        } finally {
+          setIsCompressing(false);
+        }
+      } else {
+        onUpload(file, uploadOpts);
+      }
+      return;
+    } catch (_) {}
+    // EXTRACTOR-CHOICE-END
+
     if (file.type.startsWith('image/')) {
       setIsCompressing(true);
       try {
@@ -558,6 +584,31 @@ Quantum entanglement is the physical phenomenon where two or more particles beco
             Take photo
           </Button>
         </div>
+
+        {/* EXTRACTOR-CHOICE-START */}
+        {(() => {
+          try {
+            const mods = import.meta.glob('../extractorChoice/ExtractorPicker.jsx', { eager: true });
+            const PickerComp = Object.values(mods)[0]?.default;
+            if (!PickerComp) return null;
+            return (
+              <div onClick={(e) => e.stopPropagation()} style={{ width: '100%' }}>
+                <PickerComp
+                  documents={documents}
+                  isUploading={isUploading}
+                  onChange={(method) => {
+                    if (typeof window !== 'undefined') {
+                      window.__conceptlens_extractor = method;
+                    }
+                  }}
+                />
+              </div>
+            );
+          } catch (_) {
+            return null;
+          }
+        })()}
+        {/* EXTRACTOR-CHOICE-END */}
       </div>
 
       {isCameraOpen && (
