@@ -31,22 +31,6 @@ try:
 except Exception as e:
     logger.warning(f"Could not register 'rake_textrank' extractor: {e}")
 
-# 3. spaCy Noun Chunks Extractor
-try:
-    import spacy
-    from .spacy_ex import SpacyExtractor, MODEL_NAME
-    # Verify model is installed/accessible without loading it fully into memory
-    if spacy.util.is_package(MODEL_NAME):
-        AVAILABLE_EXTRACTORS["spacy"] = SpacyExtractor
-        logger.info(f"Registered 'spacy' extractor successfully with model '{MODEL_NAME}'.")
-    else:
-        logger.warning(
-            f"spaCy is installed, but model '{MODEL_NAME}' is missing. "
-            f"Run: python -m spacy download {MODEL_NAME}"
-        )
-except Exception as e:
-    logger.warning(f"Could not register 'spacy' extractor: {e}")
-
 
 def available() -> Dict[str, bool]:
     """
@@ -56,8 +40,7 @@ def available() -> Dict[str, bool]:
     return {
         "gemini": True,
         "yake": "yake" in AVAILABLE_EXTRACTORS,
-        "rake_textrank": "rake_textrank" in AVAILABLE_EXTRACTORS,
-        "spacy": "spacy" in AVAILABLE_EXTRACTORS
+        "rake_textrank": "rake_textrank" in AVAILABLE_EXTRACTORS
     }
 
 

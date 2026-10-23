@@ -13,7 +13,7 @@ from .text_reader import read_text_from_file
 
 logger = logging.getLogger("conceptlens.extractor.service")
 
-SUPPORTED_LOCAL_METHODS = {"yake", "rake_textrank", "spacy"}
+SUPPORTED_LOCAL_METHODS = {"yake", "rake_textrank"}
 
 
 def _format_concept_item(phrase: str, index: int) -> Dict[str, Any]:

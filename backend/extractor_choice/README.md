@@ -4,26 +4,21 @@ This optional module enables users to choose their concept extraction engine whe
 1. **Google Gemini API** (Default; multimodal & digital PDFs read with PyMuPDF)
 2. **YAKE** (Statistical keywords, 1-3 grams, unsupervised, 100% local)
 3. **RAKE / TextRank** (Hybrid phrase co-occurrence statistics & graph ranking, 100% local)
-4. **spaCy noun chunks** (Grammar-based noun phrase chunking, 100% local)
 
 ---
 
 ## 1. Installation
 
-To install all optional extractor dependencies:
+To install the optional extractor dependencies:
 
 ```bash
 # In your virtual environment:
 pip install -r backend/requirements-extractors.txt
-
-# Download the small spaCy English model:
-python -m spacy download en_core_web_sm
 ```
 
 ### Dependency Breakdown:
 - **YAKE**: `yake>=0.4.8` (already included in `backend/requirements.txt`)
 - **RAKE / TextRank**: `rake-nltk>=1.0.6`, `nltk>=3.8.1`, `summa>=1.2.0`
-- **spaCy**: `spacy>=3.7.0` plus `en_core_web_sm`
 - **PDF Reading**: `pymupdf>=1.23.0` (already included in `backend/requirements.txt`)
 
 ---

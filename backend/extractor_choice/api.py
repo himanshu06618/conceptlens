@@ -15,9 +15,9 @@ router = APIRouter(tags=["extractors"])
 
 
 def is_extractor_choice_enabled() -> bool:
-    """Checks the ENABLE_EXTRACTOR_CHOICE feature flag."""
-    val = os.getenv("ENABLE_EXTRACTOR_CHOICE", "").strip().lower()
-    return val in ("true", "1", "yes", "on")
+    """Checks the ENABLE_EXTRACTOR_CHOICE feature flag (default: true unless set to false)."""
+    val = os.getenv("ENABLE_EXTRACTOR_CHOICE", "true").strip().lower()
+    return val not in ("false", "0", "no", "off")
 
 
 @router.get("/extractors")

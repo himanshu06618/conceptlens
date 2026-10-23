@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, Check, AlertCircle, Cpu, Zap, Layers } from 'lucide-react';
+import { Sparkles, Check, AlertCircle, Zap, Layers } from 'lucide-react';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
-const IS_FEATURE_ENABLED = String(import.meta.env.VITE_ENABLE_EXTRACTOR_CHOICE || '').toLowerCase() === 'true';
+const IS_FEATURE_ENABLED = String(import.meta.env.VITE_ENABLE_EXTRACTOR_CHOICE ?? 'true').toLowerCase() !== 'false';
 
 const EXTRACTOR_OPTIONS = [
   {
@@ -28,14 +28,6 @@ const EXTRACTOR_OPTIONS = [
     badge: 'Free',
     badgeVariant: 'free',
     icon: Layers,
-  },
-  {
-    id: 'spacy',
-    title: 'spaCy noun chunks',
-    subtitle: 'Grammar-based noun phrases',
-    badge: 'Free',
-    badgeVariant: 'free',
-    icon: Cpu,
   },
 ];
 
