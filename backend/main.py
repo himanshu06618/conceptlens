@@ -473,7 +473,7 @@ def process_document_background(
             provider_used = "Pipeline-v2"
             page_coverage_records = []
 
-            enable_extractor_choice = os.getenv("ENABLE_EXTRACTOR_CHOICE", "").strip().lower() in ("true", "1", "yes", "on")
+            enable_extractor_choice = os.getenv("ENABLE_EXTRACTOR_CHOICE", "true").strip().lower() not in ("0", "false", "no")
             if enable_extractor_choice and extractor and extractor.strip().lower() != "gemini":
                 update_document_stage(
                     doc_id,

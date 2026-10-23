@@ -35,6 +35,8 @@ The files containing marked blocks are:
 3. `backend/services/tree_builder.py`
 4. `frontend/src/components/UploadView.jsx`
 5. `frontend/src/api/client.js`
+6. `frontend/src/pages/GuestHomeScreen.jsx`
+7. `frontend/src/components/planner/CompactUploadCard.jsx`
 
 ### Step 4: Remove Environment Variables
 - In Render dashboard: delete or unset `ENABLE_EXTRACTOR_CHOICE`.

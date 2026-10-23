@@ -21,6 +21,11 @@ import {
 } from '../api/client';
 import '../styles/guest-home.css';
 
+// EXTRACTOR-CHOICE-START
+const _extractorModules = import.meta.glob('../extractorChoice/ExtractorPicker.jsx', { eager: true });
+const ExtractorPicker = Object.values(_extractorModules)[0]?.default || null;
+// EXTRACTOR-CHOICE-END
+
 // Default sample data matching target design (media_1792322365820.png)
 const DEFAULT_DEMO_RESULT = {
   filename: 'Lecture_18_Pseudopolynomial.pdf',
@@ -527,6 +532,21 @@ export default function GuestHomeScreen({
                           <span>Take photo</span>
                         </button>
                       </div>
+
+                      {/* EXTRACTOR-CHOICE-START */}
+                      {ExtractorPicker && (
+                        <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: '440px', marginTop: '12px' }}>
+                          <ExtractorPicker
+                            variant="lime"
+                            onChange={(method) => {
+                              if (typeof window !== 'undefined') {
+                                window.__conceptlens_extractor = method;
+                              }
+                            }}
+                          />
+                        </div>
+                      )}
+                      {/* EXTRACTOR-CHOICE-END */}
                     </>
                   )}
 

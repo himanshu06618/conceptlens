@@ -63,3 +63,4 @@ backups/
 
 # Extractor choice NLTK data
 .nltk_data/
+backend/compare/

@@ -9,6 +9,11 @@ import {
 } from 'lucide-react';
 import { compressImageIfNeeded } from '../../utils/imageCompressor';
 
+// EXTRACTOR-CHOICE-START
+const _extractorModules = import.meta.glob('../../extractorChoice/ExtractorPicker.jsx', { eager: true });
+const ExtractorPicker = Object.values(_extractorModules)[0]?.default || null;
+// EXTRACTOR-CHOICE-END
+
 const ACCEPTED_TYPES = '.pdf,.png,.jpg,.jpeg,.webp,.txt,.md';
 const ALLOWED_EXTS = ['pdf', 'png', 'jpg', 'jpeg', 'webp', 'txt', 'md'];
 const MAX_FILE_SIZE_MB = 10;
@@ -413,6 +418,21 @@ const CompactUploadCard = React.forwardRef(function CompactUploadCard({
                   <span>Take photo</span>
                 </button>
               </div>
+
+              {/* EXTRACTOR-CHOICE-START */}
+              {ExtractorPicker && (
+                <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: '380px', marginTop: '10px' }}>
+                  <ExtractorPicker
+                    variant="compact"
+                    onChange={(method) => {
+                      if (typeof window !== 'undefined') {
+                        window.__conceptlens_extractor = method;
+                      }
+                    }}
+                  />
+                </div>
+              )}
+              {/* EXTRACTOR-CHOICE-END */}
             </>
           )}
         </div>

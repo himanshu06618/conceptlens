@@ -13,6 +13,11 @@ import confetti from 'canvas-confetti';
 import { compressImageIfNeeded } from '../utils/imageCompressor';
 import { Button, Stepper, PaperSurface, Badge, BookshelfLoader } from './ui';
 
+// EXTRACTOR-CHOICE-START
+const _extractorModules = import.meta.glob('../extractorChoice/ExtractorPicker.jsx', { eager: true });
+const ExtractorPicker = Object.values(_extractorModules)[0]?.default || null;
+// EXTRACTOR-CHOICE-END
+
 const ACCEPTED_TYPES = '.pdf,.png,.jpg,.jpeg,.webp,.txt,.md';
 
 const FRIENDLY_MICROCOPY = [
@@ -586,28 +591,19 @@ Quantum entanglement is the physical phenomenon where two or more particles beco
         </div>
 
         {/* EXTRACTOR-CHOICE-START */}
-        {(() => {
-          try {
-            const mods = import.meta.glob('../extractorChoice/ExtractorPicker.jsx', { eager: true });
-            const PickerComp = Object.values(mods)[0]?.default;
-            if (!PickerComp) return null;
-            return (
-              <div onClick={(e) => e.stopPropagation()} style={{ width: '100%' }}>
-                <PickerComp
-                  documents={documents}
-                  isUploading={isUploading}
-                  onChange={(method) => {
-                    if (typeof window !== 'undefined') {
-                      window.__conceptlens_extractor = method;
-                    }
-                  }}
-                />
-              </div>
-            );
-          } catch (_) {
-            return null;
-          }
-        })()}
+        {ExtractorPicker && (
+          <div onClick={(e) => e.stopPropagation()} style={{ width: '100%' }}>
+            <ExtractorPicker
+              documents={documents}
+              isUploading={isUploading}
+              onChange={(method) => {
+                if (typeof window !== 'undefined') {
+                  window.__conceptlens_extractor = method;
+                }
+              }}
+            />
+          </div>
+        )}
         {/* EXTRACTOR-CHOICE-END */}
       </div>
 

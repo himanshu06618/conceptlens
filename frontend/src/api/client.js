@@ -130,8 +130,11 @@ export async function uploadDocument(file, { password = null, mode = null, idemp
     formData.append('extraction_mode', mode);
   }
   // EXTRACTOR-CHOICE-START
-  if (rest && rest.extractor) {
-    formData.append('extractor', rest.extractor);
+  const chosenExtractor = (rest && rest.extractor)
+    || (typeof window !== 'undefined' && window.__conceptlens_extractor)
+    || (typeof localStorage !== 'undefined' && localStorage.getItem('conceptlens_selected_extractor'));
+  if (chosenExtractor) {
+    formData.append('extractor', chosenExtractor);
   }
   // EXTRACTOR-CHOICE-END
 
