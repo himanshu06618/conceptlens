@@ -156,7 +156,7 @@ export default function CompareView() {
               Concept Extractor Benchmark
             </h1>
             <p style={{ margin: 0, color: '#94a3b8', fontSize: '0.9rem' }}>
-              Comparing statistical unsupervised extraction (YAKE) vs generative LLM (Gemini) on course notes.
+              Comparing statistical unsupervised extraction (RAKE, TextRank) vs generative LLM (Gemini) on course notes.
             </p>
           </div>
         </div>
@@ -189,7 +189,7 @@ export default function CompareView() {
               {error}
             </div>
             <div style={{ marginTop: '0.75rem', fontSize: '0.8rem', color: '#94a3b8' }}>
-              CLI Command to generate: <code>python -m backend.compare.run_benchmark --extractors yake gemini</code>
+              CLI Command to generate: <code>python -m backend.compare.run_benchmark --extractors rake textrank gemini</code>
             </div>
           </div>
         </div>

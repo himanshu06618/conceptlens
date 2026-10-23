@@ -60,3 +60,4 @@ Thumbs.db
 .idea/
 other than project/
 backups/
+.nltk_data/

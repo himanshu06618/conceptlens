@@ -1,0 +1,182 @@
+{
+  "extractor": "yake",
+  "summary": {
+    "precision": 0.2666,
+    "recall": 0.8389,
+    "f1": 0.4045,
+    "avg_concepts_returned": 30.0,
+    "avg_time_seconds": 0.1808,
+    "total_notes": 2
+  },
+  "row": {
+    "Extractor": "yake",
+    "Precision": 0.2666,
+    "Recall": 0.8389,
+    "F1": 0.4045,
+    "Avg Concepts": 30.0,
+    "Avg Time (s)": 0.1808,
+    "Notes Count": 2
+  },
+  "notes_detail": {
+    "graph_theory.txt": {
+      "concepts": [
+        "Graph Theory Fundamentals",
+        "Theory Fundamentals",
+        "model pairwise relations",
+        "Fundamentals In discrete",
+        "Graph Theory",
+        "Graph",
+        "Theory",
+        "computer science",
+        "relations between objects",
+        "discrete mathematics",
+        "mathematics and computer",
+        "model pairwise",
+        "pairwise relations",
+        "Fundamentals",
+        "Search",
+        "algorithm",
+        "Undirected Graph",
+        "Dijkstra Algorithm",
+        "Matrix",
+        "Depth-First Search",
+        "Breadth-First Search",
+        "Adjacency Matrix",
+        "nodes",
+        "Directed Graph",
+        "vertices",
+        "edges",
+        "mathematical structures",
+        "node",
+        "BFS",
+        "Dijkstra"
+      ],
+      "precision": 0.3,
+      "recall": 0.9,
+      "f1": 0.45,
+      "time_seconds": 0.1397,
+      "matched_pairs": [
+        {
+          "prediction": "Graph Theory Fundamentals",
+          "ground_truth": "graph theory",
+          "score": 100.0
+        },
+        {
+          "prediction": "Graph",
+          "ground_truth": "Directed Graph",
+          "score": 100.0
+        },
+        {
+          "prediction": "Search",
+          "ground_truth": "Depth-First Search",
+          "score": 100.0
+        },
+        {
+          "prediction": "algorithm",
+          "ground_truth": "Dijkstra's Algorithm",
+          "score": 100.0
+        },
+        {
+          "prediction": "Undirected Graph",
+          "ground_truth": "Undirected Graph",
+          "score": 100.0
+        },
+        {
+          "prediction": "Matrix",
+          "ground_truth": "Adjacency Matrix",
+          "score": 100.0
+        },
+        {
+          "prediction": "Breadth-First Search",
+          "ground_truth": "Breadth-First Search",
+          "score": 100.0
+        },
+        {
+          "prediction": "vertices",
+          "ground_truth": "vertices",
+          "score": 100.0
+        },
+        {
+          "prediction": "edges",
+          "ground_truth": "edges",
+          "score": 100.0
+        }
+      ]
+    },
+    "sorting_algorithms.txt": {
+      "concepts": [
+        "Quick Sort",
+        "Sorting Algorithms Overview",
+        "Algorithms Overview Sorting",
+        "Overview Sorting algorithms",
+        "Sort",
+        "Merge Sort",
+        "Overview Sorting",
+        "Algorithms Overview",
+        "Bubble Sort",
+        "typically ascending",
+        "ascending or descending",
+        "fundamental procedures",
+        "procedures in computer",
+        "computer science",
+        "rearrange a sequence",
+        "Overview",
+        "Quick",
+        "algorithm",
+        "Binary Search",
+        "Sorting",
+        "Merge Sort guarantees",
+        "Search",
+        "complexity",
+        "Sorting Algorithms",
+        "sorting algorithm",
+        "Merge",
+        "Bubble",
+        "log",
+        "elements",
+        "order"
+      ],
+      "precision": 0.2333,
+      "recall": 0.7778,
+      "f1": 0.359,
+      "time_seconds": 0.2219,
+      "matched_pairs": [
+        {
+          "prediction": "Quick Sort",
+          "ground_truth": "Quick Sort",
+          "score": 100.0
+        },
+        {
+          "prediction": "Sorting Algorithms Overview",
+          "ground_truth": "Sorting algorithms",
+          "score": 100.0
+        },
+        {
+          "prediction": "Sort",
+          "ground_truth": "Merge Sort",
+          "score": 100.0
+        },
+        {
+          "prediction": "Bubble Sort",
+          "ground_truth": "Bubble Sort",
+          "score": 100.0
+        },
+        {
+          "prediction": "algorithm",
+          "ground_truth": "divide-and-conquer algorithm",
+          "score": 100.0
+        },
+        {
+          "prediction": "Binary Search",
+          "ground_truth": "Binary Search",
+          "score": 100.0
+        },
+        {
+          "prediction": "complexity",
+          "ground_truth": "time complexity",
+          "score": 100.0
+        }
+      ]
+    }
+  }
+}

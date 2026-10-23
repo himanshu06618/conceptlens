@@ -1,6 +1,6 @@
 # ConceptLens Extractor Benchmark Module
 
-An isolated, flag-gated research module comparing unsupervised keyword/concept extractors (such as **YAKE**) against the production **Gemini** extractor on course notes.
+An isolated, flag-gated research module comparing unsupervised keyword/concept extractors (such as **RAKE** and **TextRank**) against the production **Gemini** extractor on course notes.
 
 ---
 
@@ -15,14 +15,17 @@ pip install -r backend/requirements-research.txt
 ### 2. Run Benchmark CLI
 Run the benchmark across all sample notes in `backend/compare/data/samples/`:
 ```bash
-# Evaluate both YAKE and Gemini (default)
-python -m backend.compare.run_benchmark --extractors yake gemini
+# Evaluate RAKE, TextRank, and Gemini (default)
+python -m backend.compare.run_benchmark --extractors rake textrank gemini
 
-# Evaluate YAKE only (runs completely offline without API keys)
-python -m backend.compare.run_benchmark --extractors yake
+# Include archived extractors alongside live extractors in chart and summary
+python -m backend.compare.run_benchmark --extractors rake textrank gemini --include-archive
+
+# Evaluate statistical extractors only (runs completely offline without API keys)
+python -m backend.compare.run_benchmark --extractors rake textrank
 
 # Force re-running extractions (bypassing cached raw responses)
-python -m backend.compare.run_benchmark --extractors yake gemini --force
+python -m backend.compare.run_benchmark --extractors rake textrank gemini --force
 ```
 
 ### 3. Generated Artifacts
@@ -31,6 +34,7 @@ Results are generated in `backend/compare/results/`:
 - `summary.csv`: Tabular CSV of macro metrics.
 - `comparison_bar.png`: Dark-mode visualization comparing Precision, Recall, and F1 across extractors.
 - `raw_<extractor>.json`: Cached raw responses per extractor to avoid re-calling Gemini during iterative tests.
+- `archive/<extractor>/`: Preserved archives of prior benchmark runs for historical comparison.
 
 ---
 
@@ -60,4 +64,4 @@ When `ENABLE_COMPARE` is unset or `false`, the API endpoints return `404 Not Fou
 ---
 
 ## 🧹 Removal
-See [REMOVE.md](file:///D:/ConceptFinder/backend/compare/REMOVE.md) for 4 simple steps to completely uninstall this module.
+See [REMOVE.md](file:///d:/ConceptFinder/backend/compare/REMOVE.md) for steps to cleanly uninstall extractors or the entire module.

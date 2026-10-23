@@ -1,6 +1,12 @@
 # Research & Benchmark Module Dependencies
 # Note: These are isolated from production backend/requirements.txt
-yake>=0.4.8
 rapidfuzz>=3.0.0
 pandas>=2.0.0
 matplotlib>=3.7.0
+
+# rake extractor: rake-nltk, nltk
+rake-nltk
+nltk
+
+# textrank extractor: summa
+summa

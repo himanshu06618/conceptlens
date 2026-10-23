@@ -45,13 +45,35 @@ def save_raw_cache(cache_file: Path, data: Dict[str, Any]) -> None:
         json.dump(data, f, indent=2, ensure_ascii=False)
 
 
+def load_archived_summaries(archive_dir: Path) -> List[Dict[str, Any]]:
+    """
+    Scans results/archive/ for archived extractor summaries.
+    Each archived subfolder (e.g., results/archive/<extractor>/) may contain a *_summary.json file.
+    """
+    archived = []
+    if not archive_dir.exists():
+        return archived
+
+    for subfolder in sorted(archive_dir.iterdir()):
+        if subfolder.is_dir():
+            for summary_path in subfolder.glob("*_summary.json"):
+                try:
+                    with open(summary_path, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    archived.append(data)
+                except Exception as e:
+                    print(f"    [WARN] Failed to load archived summary from {summary_path}: {e}")
+    return archived
+
+
 def run_benchmark(
     extractor_names: List[str],
     samples_dir: Path = DEFAULT_SAMPLES_DIR,
     gt_file: Path = DEFAULT_GROUND_TRUTH_FILE,
     results_dir: Path = DEFAULT_RESULTS_DIR,
     delay: float = 2.0,
-    force: bool = False
+    force: bool = False,
+    include_archive: bool = False
 ):
     results_dir.mkdir(parents=True, exist_ok=True)
     ground_truth = load_ground_truth(gt_file)
@@ -65,6 +87,8 @@ def run_benchmark(
     print(f"==================================================")
     print(f" Starting Benchmark on {len(sample_files)} sample note(s)")
     print(f" Extractors requested: {', '.join(extractor_names)}")
+    if include_archive:
+        print(f" Mode: Including archived extractor summaries")
     print(f"==================================================\n")
 
     summary_data = {}
@@ -145,6 +169,41 @@ def run_benchmark(
         })
         print(f"    => Macro Avg F1: {macro_avg['f1']} | Precision: {macro_avg['precision']} | Recall: {macro_avg['recall']}\n")
 
+    # Merge archived extractors if flag is enabled
+    if include_archive:
+        archive_dir = results_dir / "archive"
+        archived_items = load_archived_summaries(archive_dir)
+        for item in archived_items:
+            ext_name = item.get("extractor") or item.get("row", {}).get("Extractor")
+            if not ext_name or ext_name in summary_data:
+                continue
+
+            macro_avg = item.get("summary", {})
+            row = item.get("row", {})
+            if not row and macro_avg:
+                row = {
+                    "Extractor": ext_name,
+                    "Precision": macro_avg.get("precision", 0.0),
+                    "Recall": macro_avg.get("recall", 0.0),
+                    "F1": macro_avg.get("f1", 0.0),
+                    "Avg Concepts": macro_avg.get("avg_concepts_returned", 0.0),
+                    "Avg Time (s)": macro_avg.get("avg_time_seconds", 0.0),
+                    "Notes Count": macro_avg.get("total_notes", 0)
+                }
+
+            if row:
+                table_rows.append(row)
+            if macro_avg:
+                summary_data[ext_name] = macro_avg
+
+            for note_name, nd in item.get("notes_detail", {}).items():
+                if note_name in detailed_notes_data:
+                    detailed_notes_data[note_name][ext_name] = nd
+                else:
+                    detailed_notes_data[note_name] = {ext_name: nd}
+
+            print(f"    [ARCHIVE] Loaded archived metrics for '{ext_name}'")
+
     if not table_rows:
         print("[WARN] No extractors succeeded. Exiting.")
         return
@@ -189,15 +248,15 @@ def generate_comparison_chart(df: pd.DataFrame, output_path: Path):
 
     extractors = df["Extractor"].tolist()
     metrics = ["Precision", "Recall", "F1"]
-    
+
     # Modern dark/glass friendly palette
     colors = ["#38bdf8", "#a3e635", "#f59e0b"]  # sky blue, lime, amber
-    
+
     import numpy as np
     x = np.arange(len(extractors))
     width = 0.25
 
-    fig, ax = plt.subplots(figsize=(8, 5), dpi=150)
+    fig, ax = plt.subplots(figsize=(max(8, len(extractors) * 2), 5), dpi=150)
     fig.patch.set_facecolor("#0f172a")
     ax.set_facecolor("#1e293b")
 
@@ -221,14 +280,14 @@ def generate_comparison_chart(df: pd.DataFrame, output_path: Path):
     ax.set_xticklabels(extractors, color="#f8fafc", fontsize=11, fontweight="bold")
     ax.set_ylim(0, 1.15)
     ax.grid(axis="y", linestyle="--", alpha=0.2, color="#94a3b8")
-    
+
     # Styling borders
     for spine in ax.spines.values():
         spine.set_color("#334155")
-        
+
     ax.tick_params(colors="#94a3b8")
     legend = ax.legend(frameon=True, facecolor="#0f172a", edgecolor="#334155", labelcolor="#f8fafc")
-    
+
     plt.tight_layout()
     fig.savefig(output_path, facecolor=fig.get_facecolor(), edgecolor="none")
     plt.close(fig)
@@ -239,8 +298,13 @@ def main():
     parser.add_argument(
         "--extractors",
         nargs="+",
-        default=["yake", "gemini"],
-        help="Extractors to run (e.g. yake gemini)"
+        default=["rake", "textrank", "gemini"],
+        help="Extractors to run (e.g. rake textrank gemini)"
+    )
+    parser.add_argument(
+        "--include-archive",
+        action="store_true",
+        help="Include archived extractor summaries in the report and chart"
     )
     parser.add_argument(
         "--force",
@@ -280,7 +344,8 @@ def main():
         gt_file=Path(args.ground_truth),
         results_dir=Path(args.results_dir),
         delay=args.delay,
-        force=args.force
+        force=args.force,
+        include_archive=args.include_archive
     )
 
 
