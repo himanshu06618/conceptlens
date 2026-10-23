@@ -14,7 +14,9 @@ import {
   CheckCircle2,
   AlertCircle,
   Plus,
-  ChevronRight
+  ChevronRight,
+  Zap,
+  Layers
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { listDocuments, deleteDocument, uploadDocument, getDocumentStatus } from '../api/client';
@@ -287,6 +289,70 @@ export default function MyFilesView({ onToast = () => {} }) {
     );
   };
 
+  const getExtractorBadgeConfig = (extractorUsed, providerUsed, fallback) => {
+    const raw = (extractorUsed || providerUsed || 'gemini').toLowerCase().trim();
+    if (raw.includes('yake')) {
+      return {
+        label: 'YAKE',
+        fullName: fallback ? 'YAKE (Fell back to Gemini)' : 'YAKE Keyword Extractor',
+        icon: Zap,
+        bg: 'rgba(245, 158, 11, 0.14)',
+        color: '#B45309',
+        borderColor: 'rgba(245, 158, 11, 0.35)',
+      };
+    }
+    if (raw.includes('rake') || raw.includes('textrank')) {
+      return {
+        label: 'RAKE',
+        fullName: fallback ? 'RAKE / TextRank (Fell back to Gemini)' : 'RAKE / TextRank Extractor',
+        icon: Layers,
+        bg: 'rgba(16, 185, 129, 0.14)',
+        color: '#047857',
+        borderColor: 'rgba(16, 185, 129, 0.35)',
+      };
+    }
+    return {
+      label: 'GEMINI',
+      fullName: 'Google Gemini Multimodal AI',
+      icon: Sparkles,
+      bg: 'rgba(183, 169, 242, 0.22)',
+      color: '#493796',
+      borderColor: 'rgba(183, 169, 242, 0.45)',
+    };
+  };
+
+  const renderExtractorBadge = (extractorUsed, providerUsed, fallback) => {
+    const badge = getExtractorBadgeConfig(extractorUsed, providerUsed, fallback);
+    const IconComp = badge.icon;
+    return (
+      <div
+        className={`my-files-extractor-badge extractor-badge--${badge.label.toLowerCase()}`}
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '5px',
+          padding: '4px 11px',
+          borderRadius: '9999px',
+          background: badge.bg,
+          color: badge.color,
+          border: `1px solid ${badge.borderColor}`,
+          fontSize: '11px',
+          fontWeight: 700,
+          letterSpacing: '0.4px',
+          lineHeight: 1.2,
+          flexShrink: 0,
+          userSelect: 'none',
+          boxShadow: '0 1px 2px rgba(0, 0, 0, 0.02)'
+        }}
+        title={`Extracted using ${badge.fullName}`}
+        aria-label={`Extraction engine: ${badge.label}`}
+      >
+        <IconComp size={11} strokeWidth={2.4} aria-hidden="true" />
+        <span>{badge.label}</span>
+      </div>
+    );
+  };
+
   return (
     <div className="planner-container" style={{ paddingBottom: '40px' }}>
       {/* 1. Page Header */}
@@ -524,6 +590,18 @@ export default function MyFilesView({ onToast = () => {} }) {
                             <span>{formatDate(doc.created_at)}</span>
                           </span>
                         </div>
+                      </div>
+
+                      {/* Tool/Model (GEMINI / YAKE / RAKE) Badge - Red Pointed Area */}
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          flexShrink: 0,
+                          margin: '0 4px'
+                        }}
+                      >
+                        {renderExtractorBadge(doc.extractor_used, doc.provider_used, doc.fallback)}
                       </div>
 
                       {/* Middle: Concept Count & Page Count */}

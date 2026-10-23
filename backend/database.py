@@ -517,6 +517,7 @@ def init_db() -> None:
                         file_hash TEXT,
                         concept_count INTEGER DEFAULT 0,
                         chapter_count INTEGER DEFAULT 0,
+                        extractor_used TEXT DEFAULT 'gemini',
                         created_at TEXT NOT NULL
                     );
                 """)
@@ -605,6 +606,7 @@ def init_db() -> None:
                 conn.execute("ALTER TABLE documents ADD COLUMN IF NOT EXISTS ocr_total_pages INTEGER DEFAULT 0;")
                 conn.execute("ALTER TABLE documents ADD COLUMN IF NOT EXISTS file_hash TEXT;")
                 conn.execute("ALTER TABLE documents ADD COLUMN IF NOT EXISTS result_json TEXT;")
+                conn.execute("ALTER TABLE documents ADD COLUMN IF NOT EXISTS extractor_used TEXT DEFAULT 'gemini';")
                 conn.execute("ALTER TABLE documents ADD COLUMN IF NOT EXISTS concept_count INTEGER DEFAULT 0;")
                 conn.execute("ALTER TABLE documents ADD COLUMN IF NOT EXISTS chapter_count INTEGER DEFAULT 0;")
                 conn.execute("ALTER TABLE documents ADD COLUMN IF NOT EXISTS idempotency_key TEXT;")
@@ -804,6 +806,8 @@ def init_db() -> None:
                     conn.execute("ALTER TABLE documents ADD COLUMN file_hash TEXT;")
                 if "result_json" not in columns:
                     conn.execute("ALTER TABLE documents ADD COLUMN result_json TEXT;")
+                if "extractor_used" not in columns:
+                    conn.execute("ALTER TABLE documents ADD COLUMN extractor_used TEXT DEFAULT 'gemini';")
                 if "concept_count" not in columns:
                     conn.execute("ALTER TABLE documents ADD COLUMN concept_count INTEGER DEFAULT 0;")
                 if "chapter_count" not in columns:
@@ -1536,9 +1540,11 @@ def create_document(
     stage: str = "reading",
     file_hash: Optional[str] = None,
     subject_id: Optional[str] = None,
-    idempotency_key: Optional[str] = None
+    idempotency_key: Optional[str] = None,
+    extractor_used: Optional[str] = "gemini"
 ) -> Dict[str, Any]:
     created_at = datetime.now(timezone.utc).isoformat()
+    clean_extractor = extractor_used or "gemini"
     conn = get_connection()
     try:
         try:
@@ -1547,11 +1553,11 @@ def create_document(
                     """
                     INSERT INTO documents (
                         id, user_id, subject_id, filename, file_type, status, stage, page_count, raw_text,
-                        progress, stage_message, ocr_current_page, ocr_total_pages, file_hash, idempotency_key, created_at
+                        progress, stage_message, ocr_current_page, ocr_total_pages, file_hash, idempotency_key, extractor_used, created_at
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, 1, '', 5, 'Initializing document analysis...', 0, 0, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 1, '', 5, 'Initializing document analysis...', 0, 0, ?, ?, ?, ?)
                     """,
-                    (doc_id, user_id, subject_id, filename, file_type, status, stage, file_hash, idempotency_key, created_at)
+                    (doc_id, user_id, subject_id, filename, file_type, status, stage, file_hash, idempotency_key, clean_extractor, created_at)
                 )
             return {
                 "id": doc_id,
@@ -1568,6 +1574,7 @@ def create_document(
                 "page_count": 1,
                 "file_hash": file_hash,
                 "idempotency_key": idempotency_key,
+                "extractor_used": clean_extractor,
                 "created_at": created_at
             }
         except Exception as exc:
@@ -1633,22 +1640,36 @@ def mark_document_completed(
     raw_text: str,
     processing_time_sec: float = 0.0,
     provider_used: str = "on-device",
-    skipped_pages: Optional[List[int]] = None
+    skipped_pages: Optional[List[int]] = None,
+    extractor_used: Optional[str] = None
 ) -> None:
     conn = get_connection()
     try:
         with conn:
-            conn.execute(
-                """
-                UPDATE documents 
-                SET status = 'completed', stage = 'completed', progress = 100,
-                    stage_message = 'Extraction completed successfully!',
-                    page_count = ?, raw_text = ?,
-                    processing_time_sec = ?, provider_used = ?, skipped_pages = ?, error = NULL
-                WHERE id = ?
-                """,
-                (page_count, raw_text, round(processing_time_sec, 2), provider_used, json.dumps(skipped_pages or []), doc_id)
-            )
+            if extractor_used:
+                conn.execute(
+                    """
+                    UPDATE documents 
+                    SET status = 'completed', stage = 'completed', progress = 100,
+                        stage_message = 'Extraction completed successfully!',
+                        page_count = ?, raw_text = ?,
+                        processing_time_sec = ?, provider_used = ?, skipped_pages = ?, extractor_used = ?, error = NULL
+                    WHERE id = ?
+                    """,
+                    (page_count, raw_text, round(processing_time_sec, 2), provider_used, json.dumps(skipped_pages or []), extractor_used, doc_id)
+                )
+            else:
+                conn.execute(
+                    """
+                    UPDATE documents 
+                    SET status = 'completed', stage = 'completed', progress = 100,
+                        stage_message = 'Extraction completed successfully!',
+                        page_count = ?, raw_text = ?,
+                        processing_time_sec = ?, provider_used = ?, skipped_pages = ?, error = NULL
+                    WHERE id = ?
+                    """,
+                    (page_count, raw_text, round(processing_time_sec, 2), provider_used, json.dumps(skipped_pages or []), doc_id)
+                )
     finally:
         conn.close()
 
@@ -1667,6 +1688,33 @@ def mark_document_failed(doc_id: str, error_message: str) -> None:
             )
     finally:
         conn.close()
+
+def _format_document_extractor(doc: Dict[str, Any]) -> Dict[str, Any]:
+    """Helper to ensure extractor_used, fallback, and fallback_reason are populated."""
+    ext_used = doc.get("extractor_used")
+    fallback = False
+    fallback_reason = None
+    if doc.get("result_json"):
+        try:
+            m = json.loads(doc["result_json"])
+            if not ext_used or ext_used == "gemini":
+                ext_used = m.get("extractor_used", ext_used)
+            fallback = m.get("fallback", False)
+            fallback_reason = m.get("fallback_reason", None)
+        except Exception:
+            pass
+    if not ext_used or ext_used == "gemini":
+        p = (doc.get("provider_used") or "").lower()
+        if "yake" in p:
+            ext_used = "yake"
+        elif "rake" in p or "textrank" in p:
+            ext_used = "rake_textrank"
+        else:
+            ext_used = "gemini"
+    doc["extractor_used"] = ext_used or "gemini"
+    doc["fallback"] = fallback
+    doc["fallback_reason"] = fallback_reason
+    return doc
 
 def get_documents_list(user_id: str) -> List[Dict[str, Any]]:
     """Returns documents strictly owned by the specified user."""
@@ -1689,6 +1737,8 @@ def get_documents_list(user_id: str) -> List[Dict[str, Any]]:
                 d.provider_used,
                 d.skipped_pages,
                 d.created_at,
+                d.extractor_used,
+                d.result_json,
                 COUNT(DISTINCT c.id) AS concept_count
             FROM documents d
             LEFT JOIN concepts c ON d.id = c.document_id
@@ -1696,7 +1746,7 @@ def get_documents_list(user_id: str) -> List[Dict[str, Any]]:
             GROUP BY d.id
             ORDER BY d.created_at DESC
         """, (user_id,))
-        return [dict(row) for row in cursor.fetchall()]
+        return [_format_document_extractor(dict(row)) for row in cursor.fetchall()]
     finally:
         conn.close()
 
@@ -1724,6 +1774,8 @@ def get_document_by_id(user_id: str, doc_id: str) -> Optional[Dict[str, Any]]:
                 d.file_hash,
                 d.user_id,
                 d.created_at,
+                d.extractor_used,
+                d.result_json,
                 COUNT(c.id) AS concept_count
             FROM documents d
             LEFT JOIN concepts c ON d.id = c.document_id
@@ -1731,7 +1783,7 @@ def get_document_by_id(user_id: str, doc_id: str) -> Optional[Dict[str, Any]]:
             GROUP BY d.id
         """, (doc_id, user_id))
         row = cursor.fetchone()
-        return dict(row) if row else None
+        return _format_document_extractor(dict(row)) if row else None
     finally:
         conn.close()
 
@@ -1759,6 +1811,8 @@ def get_document_by_id_guest_fallback(doc_id: str) -> Optional[Dict[str, Any]]:
                 d.file_hash,
                 d.user_id,
                 d.created_at,
+                d.extractor_used,
+                d.result_json,
                 COUNT(c.id) AS concept_count
             FROM documents d
             LEFT JOIN concepts c ON d.id = c.document_id
@@ -1766,7 +1820,7 @@ def get_document_by_id_guest_fallback(doc_id: str) -> Optional[Dict[str, Any]]:
             GROUP BY d.id
         """, (doc_id,))
         row = cursor.fetchone()
-        return dict(row) if row else None
+        return _format_document_extractor(dict(row)) if row else None
     finally:
         conn.close()
 

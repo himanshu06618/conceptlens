@@ -55,6 +55,11 @@ class DocumentItem(BaseModel):
     skipped_pages: Optional[str] = "[]"
     created_at: str
     concept_count: int = 0
+    # EXTRACTOR-CHOICE-START
+    extractor_used: Optional[str] = "gemini"
+    fallback: Optional[bool] = False
+    fallback_reason: Optional[str] = None
+    # EXTRACTOR-CHOICE-END
 
 class DocumentDetail(BaseModel):
     id: str

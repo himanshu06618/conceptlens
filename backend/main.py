@@ -703,7 +703,8 @@ def process_document_background(
                 page_count=page_count,
                 raw_text=full_text,
                 processing_time_sec=t_total,
-                provider_used=provider_used
+                provider_used=provider_used,
+                extractor_used=extractor_used
             )
 
             # EXTRACTOR-CHOICE-START
@@ -987,7 +988,8 @@ async def upload_document(
         stage="reading",
         file_hash=file_hash,
         subject_id=subject_id,
-        idempotency_key=effective_key
+        idempotency_key=effective_key,
+        extractor_used=extractor or "gemini"
     )
 
     # Persist file bytes directly into database BLOB for permanent durability across restarts

@@ -466,12 +466,30 @@ export default function FileDashboardView({ onToast = () => {} }) {
           </h1>
           <div className="flux-page-subtitle-row">
             <span className="flux-page-subtitle">
-              This file only · {fileConceptsCount} {fileConceptsCount === 1 ? 'concept' : 'concepts'} · 1 chapter · {(documentData.file_type || 'PDF').toUpperCase()}
+              This file only · {fileConceptsCount} {fileConceptsCount === 1 ? 'concept' : 'concepts'} · 1 chapter · {(documentData.file_type || 'PDF').toUpperCase()} · Model: {(documentData.extractor_used || 'gemini').toUpperCase()}
             </span>
           </div>
         </div>
 
         <div className="flux-page-header-right">
+          <div
+            className="flux-today-pill"
+            style={{
+              background: (documentData.extractor_used || '').toLowerCase().includes('yake')
+                ? 'rgba(245, 158, 11, 0.16)'
+                : (documentData.extractor_used || '').toLowerCase().includes('rake')
+                ? 'rgba(16, 185, 129, 0.16)'
+                : 'rgba(183, 169, 242, 0.22)',
+              color: 'var(--text)',
+              fontWeight: 700,
+              fontSize: '12px',
+              letterSpacing: '0.4px',
+              border: '1px solid rgba(0, 0, 0, 0.08)'
+            }}
+            title={`Extracted using ${(documentData.extractor_used || 'gemini').toUpperCase()}`}
+          >
+            <span>{(documentData.extractor_used || 'gemini').toUpperCase()}</span>
+          </div>
           <div
             className="flux-today-pill"
             style={{

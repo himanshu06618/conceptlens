@@ -3851,3 +3851,30 @@
   outline: 2px solid var(--lime, #D7F25C);
   outline-offset: 2px;
 }
+
+/* Extractor Engine Badges in My Files */
+.my-files-extractor-badge {
+  transition: transform 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.my-files-row:hover .my-files-extractor-badge {
+  transform: scale(1.03);
+}
+
+[data-theme="dark"] .my-files-extractor-badge.extractor-badge--gemini {
+  background: rgba(183, 169, 242, 0.22) !important;
+  color: #D4C9FD !important;
+  border-color: rgba(183, 169, 242, 0.45) !important;
+}
+
+[data-theme="dark"] .my-files-extractor-badge.extractor-badge--yake {
+  background: rgba(245, 158, 11, 0.22) !important;
+  color: #FCD34D !important;
+  border-color: rgba(245, 158, 11, 0.45) !important;
+}
+
+[data-theme="dark"] .my-files-extractor-badge.extractor-badge--rake {
+  background: rgba(16, 185, 129, 0.22) !important;
+  color: #6EE7B7 !important;
+  border-color: rgba(16, 185, 129, 0.45) !important;
+}
