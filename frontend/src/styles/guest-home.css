@@ -6,21 +6,22 @@
 .guest-home-shell {
   min-height: 100vh;
   background: var(--canvas);
-  padding: 16px;
+  padding: 12px 16px;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
   overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .guest-home-panel {
-  border-radius: 28px;
+  border-radius: 24px;
   background: var(--panel);
-  padding: 24px 40px 32px;
-  min-height: calc(100vh - 32px);
+  padding: 16px 28px 20px;
+  min-height: calc(100vh - 24px);
   display: flex;
   flex-direction: column;
-  gap: 22px;
+  gap: 12px;
   box-sizing: border-box;
   width: 100%;
   position: relative;
@@ -132,15 +133,15 @@
 .guest-hero-section {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 4px;
   max-width: 780px;
-  padding-top: 4px;
+  padding-top: 0px;
 }
 
 .guest-hero-h1 {
-  font-size: 46px;
+  font-size: clamp(26px, 2.6vw, 34px);
   font-weight: 700;
-  letter-spacing: -1.8px;
+  letter-spacing: -1.2px;
   line-height: 1.15;
   color: var(--text);
   margin: 0;
@@ -151,9 +152,9 @@
 }
 
 .guest-hero-subtitle {
-  font-size: 14px;
+  font-size: 13px;
   color: var(--muted);
-  line-height: 1.5;
+  line-height: 1.4;
   margin: 0;
 }
 
@@ -167,7 +168,7 @@
 .guest-main-grid-row {
   display: grid;
   grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
-  gap: 16px;
+  gap: 14px;
   align-items: stretch;
 }
 
@@ -175,8 +176,8 @@
 .guest-lime-card {
   background: var(--lime);
   color: #111113;
-  border-radius: 28px;
-  padding: 24px;
+  border-radius: 22px;
+  padding: 16px;
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -185,16 +186,16 @@
 
 .guest-dashed-dropzone {
   border: 1.5px dashed rgba(17, 17, 19, 0.35);
-  border-radius: 22px;
-  min-height: 300px;
+  border-radius: 18px;
+  min-height: 200px;
   flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   text-align: center;
-  gap: 14px;
-  padding: 32px 24px;
+  gap: 8px;
+  padding: 14px 16px;
   transition: background 0.18s ease, border-color 0.18s ease;
   cursor: pointer;
   position: relative;
@@ -211,26 +212,26 @@
 }
 
 .guest-dark-upload-icon {
-  width: 52px;
-  height: 52px;
-  border-radius: 16px;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
   background: #1B1B1D;
   color: #FFFFFF;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 2px;
+  margin-bottom: 0px;
 }
 
 .guest-dropzone-heading {
-  font-size: 20px;
+  font-size: 17px;
   font-weight: 700;
   color: #111113;
   margin: 0;
 }
 
 .guest-dropzone-formats {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
   color: rgba(17, 17, 19, 0.7);
   margin: 0;
@@ -238,28 +239,28 @@
 
 .guest-dropzone-buttons {
   display: flex;
-  gap: 12px;
+  gap: 10px;
   align-items: center;
   justify-content: center;
   flex-wrap: wrap;
-  margin-top: 4px;
+  margin-top: 2px;
 }
 
 .guest-btn-black-pill {
   background: #1B1B1D;
   color: #FFFFFF;
   border-radius: 999px;
-  padding: 10px 22px;
+  padding: 8px 18px;
   font-weight: 600;
-  font-size: 13px;
+  font-size: 12px;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
   border: none;
   cursor: pointer;
   transition: transform 0.15s ease, background 0.15s ease;
   font-family: inherit;
-  min-height: 42px;
+  min-height: 36px;
 }
 
 .guest-btn-black-pill:hover {
@@ -271,18 +272,18 @@
   background: #FFFFFF;
   color: #111113;
   border-radius: 999px;
-  padding: 10px 22px;
+  padding: 8px 18px;
   font-weight: 600;
-  font-size: 13px;
+  font-size: 12px;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
   border: none;
   cursor: pointer;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
   transition: transform 0.15s ease;
   font-family: inherit;
-  min-height: 42px;
+  min-height: 36px;
 }
 
 .guest-btn-white-pill:hover {
@@ -330,53 +331,53 @@
 .guest-dark-counter-card {
   background: #1B1B1D;
   color: #FFFFFF;
-  border-radius: 28px;
-  padding: 28px;
+  border-radius: 22px;
+  padding: 18px 20px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  min-height: 300px;
+  min-height: 200px;
   min-width: 0;
   overflow: hidden;
 }
 
 .guest-counter-title {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 700;
   color: #FFFFFF;
   margin: 0;
 }
 
 .guest-counter-stats {
-  margin-top: 14px;
+  margin-top: 8px;
   display: flex;
   align-items: baseline;
   gap: 6px;
 }
 
 .guest-counter-big-num {
-  font-size: 44px;
+  font-size: 36px;
   font-weight: 700;
   color: #FFFFFF;
   line-height: 1;
 }
 
 .guest-counter-denom {
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 500;
   color: #A8A8B0;
 }
 
 .guest-segments-bar-row {
   display: flex;
-  gap: 6px;
+  gap: 5px;
   width: 100%;
-  margin: 16px 0 20px;
+  margin: 10px 0 14px;
 }
 
 .guest-segment-cell {
   flex: 1;
-  height: 8px;
+  height: 6px;
   border-radius: 999px;
   transition: background 0.2s ease;
 }
@@ -390,9 +391,9 @@
 }
 
 .guest-counter-desc {
-  font-size: 13px;
+  font-size: 12px;
   color: #A8A8B0;
-  line-height: 1.5;
+  line-height: 1.4;
   margin: 0;
 }
 
@@ -400,9 +401,9 @@
   background: #D7F25C;
   color: #111113;
   border-radius: 999px;
-  padding: 12px 20px;
-  font-weight: 600;
-  font-size: 14px;
+  padding: 9px 18px;
+  font-weight: 700;
+  font-size: 13px;
   width: 100%;
   display: flex;
   align-items: center;
@@ -412,8 +413,8 @@
   cursor: pointer;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
   font-family: inherit;
-  margin-top: 24px;
-  min-height: 44px;
+  margin-top: 14px;
+  min-height: 38px;
 }
 
 .guest-counter-unlock-btn:hover {
@@ -955,6 +956,8 @@
 .guest-page-wrapper {
   width: 100%;
   max-width: 100%;
+  min-height: 100vh;
+  overflow-y: auto;
   overflow-x: hidden;
   box-sizing: border-box;
 }

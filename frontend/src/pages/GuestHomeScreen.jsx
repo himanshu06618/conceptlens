@@ -535,7 +535,7 @@ export default function GuestHomeScreen({
 
                       {/* EXTRACTOR-CHOICE-START */}
                       {ExtractorPicker && (
-                        <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: '440px', marginTop: '12px' }}>
+                        <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: '540px', marginTop: '8px' }}>
                           <ExtractorPicker
                             variant="lime"
                             onChange={(method) => {

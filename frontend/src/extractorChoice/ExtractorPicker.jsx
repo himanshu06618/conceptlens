@@ -25,8 +25,8 @@ const IS_FEATURE_ENABLED = String(import.meta.env.VITE_ENABLE_EXTRACTOR_CHOICE ?
 const EXTRACTOR_OPTIONS = [
   {
     id: 'gemini',
-    title: 'Google Gemini API',
-    subtitle: 'PDFs read with PyMuPDF, then Gemini',
+    title: 'Google Gemini',
+    subtitle: 'PyMuPDF + Gemini',
     badge: 'Default',
     badgeVariant: 'default',
     icon: Sparkles,
@@ -42,7 +42,7 @@ const EXTRACTOR_OPTIONS = [
   {
     id: 'rake_textrank',
     title: 'RAKE / TextRank',
-    subtitle: 'Keyword phrases and graph ranking',
+    subtitle: 'Graph phrase ranking',
     badge: 'Free',
     badgeVariant: 'free',
     icon: Layers,
@@ -187,16 +187,16 @@ export default function ExtractorPicker({
     <div
       className="extractor-picker-box"
       style={{
-        marginTop: '14px',
+        marginTop: '8px',
         width: '100%',
-        maxWidth: '460px',
+        maxWidth: '540px',
         marginInline: 'auto',
         textAlign: 'left',
         background: '#FFFFFF',
         border: '1px solid rgba(17, 17, 19, 0.12)',
-        borderRadius: '20px',
-        padding: '16px 18px',
-        boxShadow: '0 8px 26px rgba(17, 17, 19, 0.08)',
+        borderRadius: '16px',
+        padding: '10px 14px',
+        boxShadow: '0 4px 18px rgba(17, 17, 19, 0.06)',
       }}
       onClick={(e) => e.stopPropagation()}
     >
@@ -208,10 +208,10 @@ export default function ExtractorPicker({
             display: 'inline-flex',
             alignItems: 'center',
             gap: '6px',
-            padding: '5px 12px',
+            padding: '3px 10px',
             borderRadius: '999px',
-            marginBottom: '10px',
-            fontSize: '0.76rem',
+            marginBottom: '6px',
+            fontSize: '0.72rem',
             fontWeight: 600,
             background: lastExtraction.fallback
               ? '#FEF3C7'
@@ -228,14 +228,14 @@ export default function ExtractorPicker({
         >
           {lastExtraction.fallback ? (
             <>
-              <AlertCircle size={13} style={{ flexShrink: 0, color: '#D97706' }} />
+              <AlertCircle size={12} style={{ flexShrink: 0, color: '#D97706' }} />
               <span>
-                Used Gemini instead: {lastExtraction.fallback_reason || 'Fallback triggered'}
+                Used Gemini: {lastExtraction.fallback_reason || 'Fallback triggered'}
               </span>
             </>
           ) : (
             <>
-              <Check size={13} style={{ flexShrink: 0, color: '#16A34A' }} />
+              <Check size={12} style={{ flexShrink: 0, color: '#16A34A' }} />
               <span>
                 Extracted with: {getMethodTitle(lastExtraction.extractor_used)}
               </span>
@@ -244,19 +244,19 @@ export default function ExtractorPicker({
         </div>
       )}
 
-      {/* Label & Description (Sentence case) */}
-      <div style={{ marginBottom: '10px' }}>
+      {/* Header: Label & Count */}
+      <div style={{ marginBottom: '6px' }}>
         <div
           style={{
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            marginBottom: '3px',
+            marginBottom: '1px',
           }}
         >
           <span
             style={{
-              fontSize: '0.92rem',
+              fontSize: '0.82rem',
               fontWeight: 700,
               color: '#111113',
               letterSpacing: '-0.015em',
@@ -266,11 +266,11 @@ export default function ExtractorPicker({
           </span>
           <span
             style={{
-              fontSize: '0.72rem',
+              fontSize: '0.68rem',
               fontWeight: 600,
               color: '#111113',
               background: 'rgba(215, 242, 92, 0.4)',
-              padding: '2px 8px',
+              padding: '1px 7px',
               borderRadius: '999px',
               border: '1px solid rgba(17, 17, 19, 0.12)',
               letterSpacing: '0.01em',
@@ -281,24 +281,24 @@ export default function ExtractorPicker({
         </div>
         <div
           style={{
-            fontSize: '0.78rem',
+            fontSize: '0.72rem',
             fontWeight: 500,
             color: '#52525B',
-            lineHeight: 1.3,
+            lineHeight: 1.2,
           }}
         >
           Choose how concepts are extracted from your file
         </div>
       </div>
 
-      {/* Radio-style cards: one per line, mobile friendly */}
+      {/* Compact 3-Column Grid for Options */}
       <div
         role="radiogroup"
         aria-label="Extraction method"
         style={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '8px',
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(135px, 1fr))',
+          gap: '6px',
           width: '100%',
         }}
       >
@@ -319,87 +319,75 @@ export default function ExtractorPicker({
               }}
               style={{
                 display: 'flex',
-                alignItems: 'center',
+                flexDirection: 'column',
                 justifyContent: 'space-between',
-                padding: '11px 14px',
-                borderRadius: '13px',
-                background: isSelected
-                  ? '#FFFFFF'
-                  : '#F8F9FA',
+                padding: '7px 9px',
+                borderRadius: '10px',
+                background: isSelected ? '#FFFFFF' : '#F8F9FA',
                 border: isSelected
                   ? '2px solid #111113'
                   : '1.5px solid rgba(17, 17, 19, 0.09)',
                 boxShadow: isSelected
-                  ? '0 4px 14px rgba(17, 17, 19, 0.08)'
+                  ? '0 3px 10px rgba(17, 17, 19, 0.08)'
                   : 'none',
                 cursor: 'pointer',
-                transition: 'all 0.16s ease',
+                transition: 'all 0.15s ease',
                 outline: 'none',
+                minHeight: '50px',
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
-                {/* Custom radio button */}
-                <div
-                  style={{
-                    width: '18px',
-                    height: '18px',
-                    borderRadius: '50%',
-                    border: `2px solid ${isSelected ? '#111113' : 'rgba(17, 17, 19, 0.3)'}`,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0,
-                    background: '#FFFFFF',
-                    transition: 'all 0.15s ease',
-                  }}
-                >
-                  {isSelected && (
-                    <div
-                      style={{
-                        width: '8px',
-                        height: '8px',
-                        borderRadius: '50%',
-                        background: '#111113',
-                      }}
-                    />
-                  )}
-                </div>
-
-                {/* Title & subtitle */}
-                <div style={{ minWidth: 0 }}>
+              {/* Top row: Radio + Title + Badge */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '4px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px', minWidth: 0 }}>
                   <div
                     style={{
-                      fontSize: '0.88rem',
+                      width: '13px',
+                      height: '13px',
+                      borderRadius: '50%',
+                      border: `2px solid ${isSelected ? '#111113' : 'rgba(17, 17, 19, 0.3)'}`,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0,
+                      background: '#FFFFFF',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    {isSelected && (
+                      <div
+                        style={{
+                          width: '5px',
+                          height: '5px',
+                          borderRadius: '50%',
+                          background: '#111113',
+                        }}
+                      />
+                    )}
+                  </div>
+                  <span
+                    style={{
+                      fontSize: '0.78rem',
                       fontWeight: isSelected ? 700 : 600,
                       color: '#111113',
-                      lineHeight: 1.25,
+                      lineHeight: 1.2,
                       letterSpacing: '-0.01em',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
                     }}
+                    title={opt.title}
                   >
                     {opt.title}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: '0.76rem',
-                      fontWeight: isSelected ? 500 : 450,
-                      color: isSelected ? '#3F3F46' : '#64748B',
-                      marginTop: '2px',
-                      lineHeight: 1.25,
-                    }}
-                  >
-                    {opt.subtitle}
-                  </div>
+                  </span>
                 </div>
-              </div>
 
-              {/* Tag / Badge */}
-              <div style={{ flexShrink: 0, marginLeft: '10px' }}>
                 <span
                   style={{
-                    fontSize: '0.72rem',
+                    fontSize: '0.62rem',
                     fontWeight: 700,
-                    padding: '3px 8px',
-                    borderRadius: '6px',
+                    padding: '1px 5px',
+                    borderRadius: '4px',
+                    flexShrink: 0,
                     background: opt.badgeVariant === 'default'
                       ? '#D7F25C'
                       : isSelected
@@ -420,6 +408,23 @@ export default function ExtractorPicker({
                 >
                   {opt.badge}
                 </span>
+              </div>
+
+              {/* Subtitle */}
+              <div
+                style={{
+                  fontSize: '0.68rem',
+                  fontWeight: isSelected ? 500 : 450,
+                  color: isSelected ? '#3F3F46' : '#64748B',
+                  marginTop: '3px',
+                  lineHeight: 1.2,
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}
+                title={opt.subtitle}
+              >
+                {opt.subtitle}
               </div>
             </div>
           );
