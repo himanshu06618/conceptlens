@@ -79,6 +79,7 @@ export default function AuthModal({ onSuccess }) {
 
   const [tab, setTab] = useState(authModalTab || 'signin');
   const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -221,7 +222,7 @@ export default function AuthModal({ onSuccess }) {
 
   // Safe close request
   const handleCloseRequest = useCallback(() => {
-    if (tab === 'signup' && (username || password || confirmPassword || displayName)) {
+    if (tab === 'signup' && (username || email || password || confirmPassword || displayName)) {
       if (!window.confirm('Discard unsaved registration details?')) {
         return;
       }
@@ -230,14 +231,17 @@ export default function AuthModal({ onSuccess }) {
     setTimeout(() => {
       closeAuthModal();
       setIsClosing(false);
+      setUsername('');
+      setEmail('');
       setPassword('');
       setConfirmPassword('');
+      setDisplayName('');
       setServerError('');
       setFieldErrors({});
       setGoogleNeedsRole(false);
       setGooglePendingUser(null);
     }, 160);
-  }, [tab, username, password, confirmPassword, displayName, closeAuthModal]);
+  }, [tab, username, email, password, confirmPassword, displayName, closeAuthModal]);
 
   // Focus trap and Escape key listener
   useEffect(() => {
@@ -302,14 +306,6 @@ export default function AuthModal({ onSuccess }) {
       setUsernameStatus(null);
       return;
     }
-    if (clean.includes('@')) {
-      if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean)) {
-        setUsernameStatus({ available: true, message: 'Valid email' });
-      } else {
-        setUsernameStatus({ valid: false, message: 'Invalid email address' });
-      }
-      return;
-    }
     if (clean.length < 3 || clean.length > 24) {
       setUsernameStatus({ valid: false, message: 'Must be 3 to 24 characters' });
       return;
@@ -338,33 +334,47 @@ export default function AuthModal({ onSuccess }) {
     setServerError('');
     const errors = {};
 
-    const cleanInput = username.trim();
-    if (!cleanInput) {
-      errors.username = tab === 'signin' ? 'Please enter your username or email.' : 'Please enter a username or email.';
-    }
-
-    if (!password) {
-      errors.password = 'Please enter a password.';
-    }
-
     if (tab === 'signup') {
-      const isEmail = cleanInput.includes('@');
-      if (cleanInput && !isEmail && (cleanInput.length < 3 || cleanInput.length > 24)) {
-        errors.username = 'Username must be between 3 and 24 characters.';
-      } else if (cleanInput && !isEmail && !/^[a-zA-Z0-9_.]+$/.test(cleanInput)) {
-        errors.username = 'Username can only contain letters, numbers, underscores, and dots.';
-      } else if (cleanInput && isEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanInput)) {
-        errors.username = 'Please enter a valid email address.';
+      const cleanName = displayName.trim();
+      const cleanUsername = username.trim().toLowerCase();
+      const cleanEmail = email.trim().toLowerCase();
+
+      if (!cleanName) {
+        errors.displayName = 'Please enter your name.';
       }
 
-      if (password && password.length < 8) {
+      if (!cleanUsername) {
+        errors.username = 'Please choose a username.';
+      } else if (cleanUsername.length < 3 || cleanUsername.length > 24) {
+        errors.username = 'Username must be between 3 and 24 characters.';
+      } else if (!/^[a-zA-Z0-9_.]+$/.test(cleanUsername)) {
+        errors.username = 'Username can only contain letters, numbers, underscores, and dots.';
+      }
+
+      if (!cleanEmail) {
+        errors.email = 'Please enter your email address.';
+      } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+        errors.email = 'Please enter a valid email address.';
+      }
+
+      if (!password) {
+        errors.password = 'Please enter a password.';
+      } else if (password.length < 8) {
         errors.password = 'Password must be at least 8 characters long.';
       }
 
-      if (password && confirmPassword && password !== confirmPassword) {
-        errors.confirmPassword = 'Passwords do not match.';
-      } else if (!confirmPassword) {
+      if (!confirmPassword) {
         errors.confirmPassword = 'Please confirm your password.';
+      } else if (password !== confirmPassword) {
+        errors.confirmPassword = 'Passwords do not match.';
+      }
+    } else {
+      const cleanInput = username.trim();
+      if (!cleanInput) {
+        errors.username = 'Please enter your username or email.';
+      }
+      if (!password) {
+        errors.password = 'Please enter a password.';
       }
     }
 
@@ -379,17 +389,17 @@ export default function AuthModal({ onSuccess }) {
     try {
       let userData;
       if (tab === 'signup') {
-        const isEmail = cleanInput.includes('@');
         userData = await signUp({
-          email: isEmail ? cleanInput : undefined,
-          username: !isEmail ? cleanInput : undefined,
+          name: displayName.trim(),
+          displayName: displayName.trim(),
+          username: username.trim().toLowerCase(),
+          email: email.trim().toLowerCase(),
           password,
           confirmPassword,
-          displayName: displayName.trim() || undefined,
           role: role || 'student',
         });
       } else {
-        userData = await signIn(cleanInput, password);
+        userData = await signIn(username.trim(), password);
       }
 
       setIsSuccess(true);
@@ -702,11 +712,11 @@ export default function AuthModal({ onSuccess }) {
                     </div>
                   )}
 
-                  {/* Create Account: Optional Display Name */}
+                  {/* Create Account: Full Name */}
                   {tab === 'signup' && (
                     <div className="auth-field-group">
                       <label htmlFor="auth-display-name" className="auth-field-label">
-                        Display name <span className="auth-optional-tag">(optional)</span>
+                        Full Name
                       </label>
                       <input
                         id="auth-display-name"
@@ -714,17 +724,28 @@ export default function AuthModal({ onSuccess }) {
                         autoComplete="name"
                         placeholder="e.g. Himanshu"
                         value={displayName}
-                        onChange={(e) => setDisplayName(e.target.value)}
-                        className="auth-pill-input"
+                        onChange={(e) => {
+                          setDisplayName(e.target.value);
+                          if (fieldErrors.displayName) {
+                            setFieldErrors((prev) => ({ ...prev, displayName: null }));
+                          }
+                        }}
+                        className={`auth-pill-input ${fieldErrors.displayName ? 'has-field-error' : ''}`}
+                        aria-invalid={!!fieldErrors.displayName}
                         disabled={loading || isSuccess}
                       />
+                      {fieldErrors.displayName && (
+                        <span className="auth-field-error-pill" role="alert">
+                          {fieldErrors.displayName}
+                        </span>
+                      )}
                     </div>
                   )}
 
-                  {/* Username or Email Field */}
+                  {/* Username Field (or Username/Email for sign in) */}
                   <div className="auth-field-group">
                     <label htmlFor="auth-username-field" className="auth-field-label">
-                      {tab === 'signin' ? 'Username' : 'Username or Email'}
+                      {tab === 'signin' ? 'Username or Email' : 'Username'}
                     </label>
                     <input
                       ref={firstInputRef}
@@ -732,7 +753,7 @@ export default function AuthModal({ onSuccess }) {
                       type="text"
                       autoComplete={tab === 'signin' ? 'username email' : 'username'}
                       autoFocus
-                      placeholder={tab === 'signin' ? 'your username' : 'Choose a username or enter email'}
+                      placeholder={tab === 'signin' ? 'Enter your username or email' : 'Choose a username (e.g. himanshu06618)'}
                       value={username}
                       onChange={(e) => {
                         setUsername(e.target.value);
@@ -760,6 +781,37 @@ export default function AuthModal({ onSuccess }) {
                       </span>
                     )}
                   </div>
+
+                  {/* Create Account: Email Field */}
+                  {tab === 'signup' && (
+                    <div className="auth-field-group">
+                      <label htmlFor="auth-email-field" className="auth-field-label">
+                        Email
+                      </label>
+                      <input
+                        id="auth-email-field"
+                        type="email"
+                        autoComplete="email"
+                        placeholder="e.g. himanshu06618@gmail.com"
+                        value={email}
+                        onChange={(e) => {
+                          setEmail(e.target.value);
+                          if (fieldErrors.email) {
+                            setFieldErrors((prev) => ({ ...prev, email: null }));
+                          }
+                        }}
+                        className={`auth-pill-input ${fieldErrors.email ? 'has-field-error' : ''}`}
+                        aria-invalid={!!fieldErrors.email}
+                        disabled={loading || isSuccess}
+                      />
+
+                      {fieldErrors.email && (
+                        <span className="auth-field-error-pill" role="alert">
+                          {fieldErrors.email}
+                        </span>
+                      )}
+                    </div>
+                  )}
 
                   {/* Password Field */}
                   <div className="auth-field-group">

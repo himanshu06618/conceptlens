@@ -5850,11 +5850,11 @@ mark.search-highlight {
   flex: 1 1 55%;
   background: var(--card, #FFFFFF);
   color: var(--text, #111113);
-  padding: 44px 44px 36px;
+  padding: 32px 38px 28px;
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  gap: 16px;
+  justify-content: flex-start;
+  gap: 14px;
   overflow-y: auto;
   box-sizing: border-box;
   position: relative;

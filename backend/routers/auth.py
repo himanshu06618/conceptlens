@@ -31,9 +31,11 @@ try:
         get_user_by_id,
         get_user_by_username,
         get_user_by_email,
+        get_user_by_email_prefix,
         get_user_by_google_sub,
         update_user_last_login,
         update_user_display_name,
+        update_user_email,
         update_user_password,
         update_user_role,
         link_google_account,
@@ -72,9 +74,11 @@ except ImportError:
         get_user_by_id,
         get_user_by_username,
         get_user_by_email,
+        get_user_by_email_prefix,
         get_user_by_google_sub,
         update_user_last_login,
         update_user_display_name,
+        update_user_email,
         update_user_password,
         update_user_role,
         link_google_account,
@@ -96,6 +100,7 @@ import os
 
 router = APIRouter()
 RATE_LIMIT_ENABLED = os.getenv("RATE_LIMIT_ENABLED", "true").lower() not in ("false", "0", "no")
+AUTH_RATE_LIMIT = os.getenv("AUTH_RATE_LIMIT", "5/minute")
 limiter = Limiter(key_func=get_remote_address, enabled=RATE_LIMIT_ENABLED)
 
 EMAIL_REGEX = re.compile(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$")
@@ -158,7 +163,7 @@ async def check_username(request: Request, username: str):
     return {"available": True, "valid": True, "message": "Username is available."}
 
 @router.post("/register")
-@limiter.limit("5/minute")
+@limiter.limit(AUTH_RATE_LIMIT)
 async def register_user(
     request: Request,
     response: Response,
@@ -168,6 +173,14 @@ async def register_user(
 
     # 1. Email validation if provided
     clean_email = (payload.email or "").strip().lower()
+    raw_username = (payload.username or "").strip().lower()
+
+    # If username was entered as an email, normalize cleanly
+    if raw_username and "@" in raw_username:
+        if not clean_email:
+            clean_email = raw_username
+        raw_username = raw_username.split("@")[0]
+
     if clean_email:
         if not EMAIL_REGEX.match(clean_email):
             raise HTTPException(status_code=400, detail="Invalid email format.")
@@ -176,7 +189,6 @@ async def register_user(
             raise HTTPException(status_code=400, detail="An account with this email already exists.")
 
     # 2. Username resolution and validation
-    raw_username = (payload.username or "").strip().lower()
     if not raw_username and clean_email:
         raw_username = clean_email.split("@")[0]
         raw_username = re.sub(r"[^a-zA-Z0-9_.]", "", raw_username)
@@ -238,7 +250,7 @@ async def register_user(
     return create_auth_response(user, token, is_new=True)
 
 @router.post("/login")
-@limiter.limit("5/minute")
+@limiter.limit(AUTH_RATE_LIMIT)
 async def login_user(
     request: Request,
     response: Response,
@@ -250,10 +262,32 @@ async def login_user(
     if not identifier:
         raise HTTPException(status_code=400, detail="Email or username is required.")
 
-    # Find by email first, fallback to username
+    # 1. Find by exact email
     user = get_user_by_email(identifier)
+    
+    # 2. Fallback to exact username
     if not user:
         user = get_user_by_username(identifier)
+
+    # 3. If identifier is an email (contains '@'), but account was registered with just username:
+    if not user and "@" in identifier:
+        prefix = identifier.split("@")[0].strip()
+        candidate = get_user_by_username(prefix)
+        if candidate and candidate.get("password_hash") and verify_password(payload.password, candidate["password_hash"]):
+            user = candidate
+            # Automatically persist this email if user had none
+            if not candidate.get("email"):
+                try:
+                    update_user_email(candidate["id"], identifier)
+                    user["email"] = identifier
+                except Exception:
+                    pass
+
+    # 4. If identifier does not have '@', check if unique user matches email prefix
+    if not user and "@" not in identifier:
+        candidate = get_user_by_email_prefix(identifier)
+        if candidate and candidate.get("password_hash") and verify_password(payload.password, candidate["password_hash"]):
+            user = candidate
 
     if not user or not user.get("password_hash"):
         dummy_verify(payload.password)

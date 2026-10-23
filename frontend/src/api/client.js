@@ -369,7 +369,7 @@ export async function reanalyzeDocument(docId) {
 
 export async function registerUser({ email, username, password, confirmPassword, name, displayName, role = 'student' }) {
   const cleanEmail = email?.trim() || (username && username.includes('@') ? username.trim() : undefined);
-  const cleanUsername = username && !username.includes('@') ? username.trim() : undefined;
+  const cleanUsername = username && !username.includes('@') ? username.trim() : (cleanEmail ? cleanEmail.split('@')[0] : undefined);
   const res = await apiFetch('/auth/register', {
     method: 'POST',
     body: JSON.stringify({
@@ -397,7 +397,7 @@ export async function registerUser({ email, username, password, confirmPassword,
 
 export async function loginUser({ email, username, password }) {
   const cleanEmail = email?.trim() || (username && username.includes('@') ? username.trim() : undefined);
-  const cleanUsername = username && !username.includes('@') ? username.trim() : undefined;
+  const cleanUsername = username?.trim() || undefined;
   const res = await apiFetch('/auth/login', {
     method: 'POST',
     body: JSON.stringify({

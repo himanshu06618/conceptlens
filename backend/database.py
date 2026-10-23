@@ -1206,6 +1206,7 @@ def create_user(
             "avatar_url": clean_avatar,
             "role": role,
             "has_password": password_hash is not None,
+            "password_hash": password_hash,
             "created_at": now_iso
         }
     finally:
@@ -1248,6 +1249,23 @@ def get_user_by_email(email: str) -> Optional[Dict[str, Any]]:
     finally:
         conn.close()
 
+def get_user_by_email_prefix(prefix: str) -> Optional[Dict[str, Any]]:
+    if not prefix:
+        return None
+    clean_prefix = prefix.strip().lower()
+    conn = get_connection()
+    try:
+        cursor = conn.execute(
+            "SELECT * FROM users WHERE LOWER(email) LIKE ? OR LOWER(email) LIKE ?",
+            (f"{clean_prefix}@%", f"{clean_prefix}.%@%")
+        )
+        rows = cursor.fetchall()
+        if len(rows) == 1:
+            return _normalize_user_row(rows[0])
+        return None
+    finally:
+        conn.close()
+
 def get_user_by_google_sub(google_sub: str) -> Optional[Dict[str, Any]]:
     if not google_sub:
         return None
@@ -1273,6 +1291,15 @@ def update_user_display_name(user_id: str, display_name: str) -> None:
     try:
         with conn:
             conn.execute("UPDATE users SET display_name = ?, name = ? WHERE id = ?", (display_name.strip(), display_name.strip(), user_id))
+    finally:
+        conn.close()
+
+def update_user_email(user_id: str, email: str) -> None:
+    clean_email = email.strip().lower() if email else None
+    conn = get_connection()
+    try:
+        with conn:
+            conn.execute("UPDATE users SET email = ? WHERE id = ?", (clean_email, user_id))
     finally:
         conn.close()
 

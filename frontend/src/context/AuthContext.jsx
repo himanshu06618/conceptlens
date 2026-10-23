@@ -125,10 +125,11 @@ export const AuthProvider = ({ children }) => {
   };
 
   const signIn = async (usernameOrEmail, password) => {
-    const isEmail = usernameOrEmail && usernameOrEmail.includes('@');
+    const cleanId = (usernameOrEmail || '').trim();
+    const isEmail = cleanId.includes('@');
     const res = await loginUser({
-      email: isEmail ? usernameOrEmail : undefined,
-      username: !isEmail ? usernameOrEmail : undefined,
+      email: isEmail ? cleanId : undefined,
+      username: cleanId,
       password,
     });
     const finalUser = res.user || res;
