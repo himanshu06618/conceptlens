@@ -140,3 +140,51 @@ def test_api_extractors_endpoint():
         data = resp.json()
         assert data.get("gemini") is True
         assert "yake" in data
+
+
+def test_yake_multi_page_pdf_extraction():
+    """
+    Verifies that YAKE extracts concepts across all pages of a multi-page PDF,
+    yielding > 30 concepts, proper page attribution, and complete page coverage.
+    """
+    pdf_path = Path("samples/sample_text_50p.pdf")
+    if not pdf_path.exists():
+        pytest.skip("sample_text_50p.pdf not found")
+
+    res = run_extraction(pdf_path, "yake")
+    assert res is not None
+    assert res.get("fallback") is False
+    assert res.get("extractor_used") == "yake"
+
+    concepts = res.get("concepts", [])
+    # 1. Must extract substantially more than the old hardcoded 30 concepts
+    assert len(concepts) > 30, f"Expected > 30 concepts, got {len(concepts)}"
+
+    # 2. Must span multiple distinct pages (not just Page 1)
+    distinct_pages = {c.get("page") for c in concepts}
+    assert len(distinct_pages) > 1, f"Expected multiple pages, got {distinct_pages}"
+
+    # 3. Must generate page coverage audit records for all pages
+    coverage = res.get("page_coverage", [])
+    assert len(coverage) >= 50, f"Expected coverage for >= 50 pages, got {len(coverage)}"
+
+    # 4. Each concept must have valid pages list and quotes
+    for c in concepts[:20]:
+        assert c["name"]
+        assert isinstance(c.get("pages"), list) and len(c["pages"]) > 0
+        assert c.get("source_page") is not None
+        assert c["definition"] is None
+        assert c["aliases"] == []
+
+
+def test_yake_single_page_coverage(sample_note_file):
+    """Verifies that single-page text files produce valid page coverage."""
+    res = run_extraction(sample_note_file, "yake")
+    assert res is not None
+    assert res.get("fallback") is False
+    assert "page_coverage" in res
+    coverage = res["page_coverage"]
+    assert len(coverage) == 1
+    assert coverage[0]["page"] == 1
+    assert coverage[0]["status"] == "done"
+

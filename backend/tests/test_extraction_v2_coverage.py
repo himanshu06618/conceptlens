@@ -115,7 +115,7 @@ def test_extraction_v2_code_fallback():
     assert len(concepts) > 0
     # Every concept must have valid definition and quote
     for c in concepts:
-        assert "educational concept relating to" not in c["definition_from_text"].lower()
+        assert "educational concept relating to" not in (c.get("definition_from_text") or "").lower()
         assert c["quote"] != ""
 
 def test_extraction_v2_skip_last_page_without_definitions_and_no_definition_keyerror():

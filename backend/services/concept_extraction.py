@@ -168,15 +168,16 @@ def extract_fallback_concepts(
         return []
 
     # 1. YAKE keyword extraction
+    effective_top = max(60, min(350, len(full_text.split()) // 20))
     try:
         kw_extractor = yake.KeywordExtractor(
             lan="en",
             n=3,
             dedupLim=0.85,
-            top=60,
+            top=effective_top,
             features=None
         )
-        extracted_kw = kw_extractor.extract_keywords(full_text[:40000])
+        extracted_kw = kw_extractor.extract_keywords(full_text)
     except Exception as e:
         logger.warning(f"YAKE extraction error: {e}")
         extracted_kw = []
@@ -184,7 +185,7 @@ def extract_fallback_concepts(
     if not extracted_kw:
         # Fallback to capitalized word runs
         caps = re.findall(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2}\b", full_text)
-        counts = Counter(caps).most_common(30)
+        counts = Counter(caps).most_common(50)
         extracted_kw = [(w, 1.0 / (c + 1)) for w, c in counts]
 
     # Map chunks to topics if available
@@ -203,7 +204,7 @@ def extract_fallback_concepts(
         seen_names.add(norm)
 
         clean_name = strip_leader_dots(kw_name).title()
-        def_sent, excerpt = detect_definition_sentence(clean_name, full_text[:40000])
+        def_sent, excerpt = detect_definition_sentence(clean_name, full_text)
 
         # Importance: 1 to 3
         # In YAKE, lower score means more significant keyphrase
@@ -215,11 +216,16 @@ def extract_fallback_concepts(
             importance = 1
 
         topic = "General"
+        page_val = 1
+        pages_val = [1]
         if chunks:
             # Find first chunk mentioning this concept
             for ch in chunks:
                 if clean_name.lower() in ch.get("text", "").lower():
                     topic = ch.get("heading", "General")
+                    ch_p = ch.get("page", 1)
+                    page_val = ch_p
+                    pages_val = [ch_p]
                     break
 
         concepts.append({
@@ -230,7 +236,9 @@ def extract_fallback_concepts(
             "definition": def_sent or f"Educational concept relating to {clean_name.lower()}.",
             "source_excerpt": excerpt or (def_sent[:60] if def_sent else clean_name),
             "score": round(1.0 / (1.0 + kw_score), 3),
-            "page": 1,
+            "page": page_val,
+            "source_page": page_val,
+            "pages": pages_val,
             "flow_order": idx,
             "flow_group": topic if topic and topic != "General" else "Key Concepts",
             "parent_name": None,

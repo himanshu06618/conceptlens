@@ -4,10 +4,10 @@ Configurable parameters at the top of the file.
 """
 
 import logging
-from typing import List
+from typing import List, Optional, Tuple
 import yake
 
-from .base import Extractor, clean_phrases
+from .base import Extractor, clean_phrases, clean_phrase, is_valid_phrase
 
 logger = logging.getLogger("conceptlens.extractor.yake")
 
@@ -40,16 +40,27 @@ class YakeExtractor(Extractor):
         self.top = top
         self.windows_size = windows_size
 
-    def extract(self, text: str) -> List[str]:
+    def _determine_effective_top(self, text: str, requested_top: Optional[int] = None) -> int:
+        if requested_top is not None and requested_top > 0:
+            return requested_top
+        # Scale dynamically for longer texts instead of arbitrarily capping at 30
+        word_count = len(text.split())
+        if word_count > 600:
+            return max(self.top, min(350, word_count // 25))
+        return self.top
+
+    def extract(self, text: str, top: Optional[int] = None) -> List[str]:
         if not text or not text.strip():
             return []
+
+        effective_top = self._determine_effective_top(text, requested_top=top)
 
         try:
             kw_extractor = yake.KeywordExtractor(
                 lan=self.lan,
                 n=self.n,
                 dedupLim=self.dedup_lim,
-                top=self.top,
+                top=effective_top,
                 windowsSize=self.windows_size,
                 features=None
             )
@@ -60,3 +71,36 @@ class YakeExtractor(Extractor):
         except Exception as e:
             logger.error(f"YAKE extraction error: {e}", exc_info=True)
             return []
+
+    def extract_with_scores(self, text: str, top: Optional[int] = None) -> List[Tuple[str, float]]:
+        """
+        Extracts keywords along with their YAKE scores (lower score = higher significance).
+        Returns deduplicated (clean_phrase, score) tuples.
+        """
+        if not text or not text.strip():
+            return []
+
+        effective_top = self._determine_effective_top(text, requested_top=top)
+
+        try:
+            kw_extractor = yake.KeywordExtractor(
+                lan=self.lan,
+                n=self.n,
+                dedupLim=self.dedup_lim,
+                top=effective_top,
+                windowsSize=self.windows_size,
+                features=None
+            )
+            raw_results = kw_extractor.extract_keywords(text)
+            results: List[Tuple[str, float]] = []
+            seen = set()
+            for kw, score in raw_results:
+                cleaned = clean_phrase(kw)
+                if is_valid_phrase(cleaned) and cleaned not in seen:
+                    seen.add(cleaned)
+                    results.append((cleaned, float(score)))
+            return results
+        except Exception as e:
+            logger.error(f"YAKE extraction error: {e}", exc_info=True)
+            return []
+

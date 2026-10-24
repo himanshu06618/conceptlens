@@ -499,6 +499,8 @@ def process_document_background(
                         concepts = choice_res["concepts"]
                         extractor_used = choice_res.get("extractor_used", clean_extractor)
                         provider_used = extractor_used
+                        if choice_res.get("page_coverage"):
+                            page_coverage_records = choice_res.get("page_coverage")
                     elif choice_res and choice_res.get("fallback"):
                         fallback = True
                         fallback_reason = choice_res.get("fallback_reason")
@@ -1619,6 +1621,8 @@ async def reanalyze_document_endpoint(
             if choice_res and not choice_res.get("fallback") and choice_res.get("concepts"):
                 concepts = choice_res["concepts"]
                 provider_used = choice_res.get("extractor_used", clean_extractor)
+                if choice_res.get("page_coverage"):
+                    page_coverage_records = choice_res.get("page_coverage")
 
     if not concepts:
         try:

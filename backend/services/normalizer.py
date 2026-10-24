@@ -362,6 +362,10 @@ def normalize_extracted_concepts(raw_concepts: List[Dict[str, Any]]) -> List[Dic
                 c_imp = 2
             c["importance"] = c_imp
             c["estimated_minutes"] = derive_estimated_minutes(c_imp, c.get("definition") or "", c.get("estimated_minutes"))
+            c_pages = c.get("pages") or [c.get("source_page") or c.get("page", 1)]
+            c["pages"] = sorted(list(set(int(p) for p in c_pages if isinstance(p, (int, str)) and str(p).isdigit()))) or [1]
+            c["page"] = c.get("page") or c["pages"][0]
+            c["source_page"] = c.get("source_page") or c["page"]
             canonical_map[norm_key] = c
         else:
             existing = canonical_map[norm_key]
@@ -373,6 +377,21 @@ def normalize_extracted_concepts(raw_concepts: List[Dict[str, Any]]) -> List[Dic
                 curr_imp = 2
             if curr_imp > existing.get("importance", 1):
                 existing["importance"] = curr_imp
+            # Merge pages
+            c_pages = c.get("pages") or [c.get("source_page") or c.get("page", 1)]
+            merged_pages = set(existing.get("pages") or [existing.get("page", 1)])
+            for p in c_pages:
+                if isinstance(p, (int, str)) and str(p).isdigit():
+                    merged_pages.add(int(p))
+            existing["pages"] = sorted(list(merged_pages))
+            if existing["pages"]:
+                existing["page"] = min(existing["pages"])
+            if not existing.get("source_page") and c.get("source_page"):
+                existing["source_page"] = c.get("source_page")
+            if not existing.get("source_quote") and c.get("source_quote"):
+                existing["source_quote"] = c.get("source_quote")
+            if not existing.get("source_excerpt") and c.get("source_excerpt"):
+                existing["source_excerpt"] = c.get("source_excerpt")
             # Merge: take longer definition
             c_def = str(c.get("definition") or "")
             ex_def = str(existing.get("definition") or "")
@@ -521,10 +540,12 @@ def normalize_extracted_concepts(raw_concepts: List[Dict[str, Any]]) -> List[Dic
         # Also ensure legacy compatibility fields:
         c["topic"] = c["chapter"]
         c["score"] = round(c["importance"] / 3.0, 3)
-        c["source_excerpt"] = c["definition"][:60] if c.get("definition") else ""
+        c["source_excerpt"] = c["definition"][:60] if c.get("definition") else c.get("source_excerpt", "")
         c["flow_order"] = c["stage_index"]
         c["flow_group"] = c["chapter"]
-        c["source_page"] = c.get("source_page")
+        c["source_page"] = c.get("source_page") or c.get("page", 1)
+        c["page"] = c.get("page") or c["source_page"]
+        c["pages"] = c.get("pages") or [c["page"]]
         c["source_quote"] = c.get("source_quote", "")
         c["source_verified"] = bool(c.get("source_verified", False))
         c["document_id"] = c.get("document_id")
