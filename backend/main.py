@@ -58,6 +58,7 @@ try:
         find_completed_document_by_hash,
         find_document_by_hash,
         find_document_by_idempotency_key,
+        normalize_extractor_choice,
         clone_cached_document,
         rename_document_by_id,
         get_concept_by_id_and_user,
@@ -148,6 +149,7 @@ except ImportError:
         find_completed_document_by_hash,
         find_document_by_hash,
         find_document_by_idempotency_key,
+        normalize_extractor_choice,
         clone_cached_document,
         rename_document_by_id,
         get_concept_by_id_and_user,
@@ -465,6 +467,7 @@ def process_document_background(
             )
 
             # EXTRACTOR-CHOICE-START
+            clean_extractor = normalize_extractor_choice(extractor)
             extractor_used = "gemini"
             fallback = False
             fallback_reason = None
@@ -474,13 +477,13 @@ def process_document_background(
             page_coverage_records = []
 
             enable_extractor_choice = os.getenv("ENABLE_EXTRACTOR_CHOICE", "true").strip().lower() not in ("0", "false", "no")
-            if enable_extractor_choice and extractor and extractor.strip().lower() != "gemini":
+            if enable_extractor_choice and clean_extractor != "gemini":
                 update_document_stage(
                     doc_id,
                     stage="extracting",
                     status="processing",
                     progress=35,
-                    stage_message=f"Extracting concepts using {extractor}..."
+                    stage_message=f"Extracting concepts using {clean_extractor.upper()}..."
                 )
                 try:
                     from backend.extractor_choice.service import run_extraction
@@ -491,15 +494,15 @@ def process_document_background(
                         run_extraction = None
 
                 if run_extraction:
-                    choice_res = run_extraction(file_path, extractor, pdf_password=pdf_password)
+                    choice_res = run_extraction(file_path, clean_extractor, pdf_password=pdf_password)
                     if choice_res and not choice_res.get("fallback") and choice_res.get("concepts"):
                         concepts = choice_res["concepts"]
-                        extractor_used = choice_res.get("extractor_used", extractor)
+                        extractor_used = choice_res.get("extractor_used", clean_extractor)
                         provider_used = extractor_used
                     elif choice_res and choice_res.get("fallback"):
                         fallback = True
                         fallback_reason = choice_res.get("fallback_reason")
-                        logger.info(f"Extractor '{extractor}' requested fallback: {fallback_reason}. Running Gemini.")
+                        logger.info(f"Extractor '{clean_extractor}' requested fallback: {fallback_reason}. Running Gemini.")
             # EXTRACTOR-CHOICE-END
 
             if not concepts:
@@ -921,7 +924,7 @@ async def upload_document(
 
     # Compute SHA-256 hash for deduplication and quota preservation
     file_hash = hashlib.sha256(content).hexdigest()
-    clean_extractor = (extractor or "gemini").strip().lower()
+    clean_extractor = normalize_extractor_choice(extractor)
 
     # Check database cache for instant return (both completed and in-flight processing) for the requested extractor
     existing_by_hash = find_document_by_hash(file_hash, user_id=actor["id"], include_failed=False, extractor=clean_extractor)
@@ -991,7 +994,7 @@ async def upload_document(
         file_hash=file_hash,
         subject_id=subject_id,
         idempotency_key=effective_key,
-        extractor_used=extractor or "gemini"
+        extractor_used=clean_extractor
     )
 
     # Persist file bytes directly into database BLOB for permanent durability across restarts
@@ -1038,7 +1041,7 @@ async def upload_document(
         prefer_cloud=prefer_cloud,
         user_id=actor["id"],
         # EXTRACTOR-CHOICE-START
-        extractor=extractor or "gemini"
+        extractor=clean_extractor
         # EXTRACTOR-CHOICE-END
     )
 
@@ -1587,7 +1590,7 @@ async def reanalyze_document_endpoint(
     if not file_path or not file_path.exists():
         raise HTTPException(status_code=404, detail="Source document file not found in database or server for re-analysis.")
 
-    clean_extractor = (extractor or doc.get("extractor_used") or "gemini").strip().lower()
+    clean_extractor = normalize_extractor_choice(extractor or doc.get("extractor_used") or "gemini")
 
     update_document_stage(
         doc_id,

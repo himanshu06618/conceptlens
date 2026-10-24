@@ -153,18 +153,16 @@ export default function MyFilesView({ onToast = () => {} }) {
       setProcessingDoc({ id: resp.id, filename: resp.filename });
 
       if (resp.status === 'completed') {
-        if (!completedJobsRef.current.has(resp.id)) {
-          completedJobsRef.current.add(resp.id);
-          setIsUploading(false);
-          setProcessingDoc(null);
-          setProcessingError(null);
-          await fetchDocuments();
-          onToast({
-            type: 'success',
-            message: 'Document loaded successfully!'
-          });
-          navigate(`/files/${resp.id}`);
-        }
+        completedJobsRef.current.add(resp.id);
+        setIsUploading(false);
+        setProcessingDoc(null);
+        setProcessingError(null);
+        await fetchDocuments();
+        onToast({
+          type: 'success',
+          message: 'Document loaded successfully!'
+        });
+        navigate(`/files/${resp.id}`);
       } else {
         startPolling(resp.id);
       }
@@ -189,6 +187,7 @@ export default function MyFilesView({ onToast = () => {} }) {
     setProcessingDoc(null);
     setProcessingError(null);
     setProcessingProgress(0);
+    uploadInFlightRef.current = false;
   };
 
   const handleDelete = async (docId) => {

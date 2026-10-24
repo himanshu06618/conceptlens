@@ -353,20 +353,18 @@ export default function StudentDashboard({ onToast = () => {} }) {
       setProcessingDoc({ id: resp.id, filename: resp.filename });
 
       if (resp.status === 'completed') {
-        if (!completedJobsRef.current.has(resp.id)) {
-          completedJobsRef.current.add(resp.id);
-          setIsUploading(false);
-          setProcessingDoc(null);
-          setProcessingError(null);
-          await loadDocResults(resp.id);
-          await loadOverview(selectedSubjectId);
-          loadDocumentsList();
-          onToast({
-            type: 'success',
-            message: 'Document loaded successfully!'
-          });
-          navigate(`/files/${resp.id}`);
-        }
+        completedJobsRef.current.add(resp.id);
+        setIsUploading(false);
+        setProcessingDoc(null);
+        setProcessingError(null);
+        await loadDocResults(resp.id);
+        await loadOverview(selectedSubjectId);
+        loadDocumentsList();
+        onToast({
+          type: 'success',
+          message: 'Document loaded successfully!'
+        });
+        navigate(`/files/${resp.id}`);
       } else {
         startPolling(resp.id);
       }

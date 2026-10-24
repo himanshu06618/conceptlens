@@ -508,27 +508,25 @@ export default function App() {
       }
 
       if (resp.status === 'completed') {
-        if (!completedJobsRef.current.has(resp.id)) {
-          completedJobsRef.current.add(resp.id);
-          setIsUploading(false);
-          await refreshDocumentsList();
-          await refreshGuestStatus();
-          try {
-            const [docDetail, conceptsResp] = await Promise.all([
-              getDocument(resp.id),
-              getDocumentConcepts(resp.id),
-            ]);
-            setActiveDocData(docDetail);
-            setActiveConcepts(conceptsResp.concepts || []);
-            setActiveTopics(conceptsResp.topics || []);
-            setActiveDocId(resp.id);
-            setProcessingDoc(null);
-            setProcessingError(null);
-            navigate('/app');
-            addToast('Document loaded successfully!', 'success');
-          } catch (err) {
-            setProcessingError(`Processing completed, but results could not be loaded: ${err.message}`);
-          }
+        completedJobsRef.current.add(resp.id);
+        setIsUploading(false);
+        await refreshDocumentsList();
+        await refreshGuestStatus();
+        try {
+          const [docDetail, conceptsResp] = await Promise.all([
+            getDocument(resp.id),
+            getDocumentConcepts(resp.id),
+          ]);
+          setActiveDocData(docDetail);
+          setActiveConcepts(conceptsResp.concepts || []);
+          setActiveTopics(conceptsResp.topics || []);
+          setActiveDocId(resp.id);
+          setProcessingDoc(null);
+          setProcessingError(null);
+          navigate('/app');
+          addToast('Document loaded successfully!', 'success');
+        } catch (err) {
+          setProcessingError(`Processing completed, but results could not be loaded: ${err.message}`);
         }
       } else {
         startPolling(resp.id);

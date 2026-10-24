@@ -613,6 +613,9 @@ def init_db() -> None:
                 conn.execute("ALTER TABLE documents ADD COLUMN IF NOT EXISTS file_data BYTEA;")
                 conn.execute("ALTER TABLE document_files ADD COLUMN IF NOT EXISTS file_data BYTEA;")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_idempotency_key ON documents(user_id, idempotency_key);")
+                conn.execute("DROP INDEX IF EXISTS uq_documents_user_file_hash;")
+                conn.execute("UPDATE documents SET extractor_used = 'gemini' WHERE extractor_used IS NULL OR extractor_used = '';")
+                conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_documents_user_file_hash_extractor ON documents(user_id, file_hash, extractor_used) WHERE file_hash IS NOT NULL AND file_hash != '';")
 
                 conn.execute("ALTER TABLE documents ADD COLUMN IF NOT EXISTS schema_version INTEGER DEFAULT 3;")
 
@@ -974,22 +977,24 @@ def apply_safe_unique_constraints(conn) -> Dict[str, Any]:
     applied = []
     skipped = []
 
-    # 1. documents (user_id, file_hash)
+    # 1. documents (user_id, file_hash, extractor_used)
     try:
+        conn.execute("DROP INDEX IF EXISTS uq_documents_user_file_hash;")
+        conn.execute("UPDATE documents SET extractor_used = 'gemini' WHERE extractor_used IS NULL OR extractor_used = '';")
         dup_docs = conn.execute("""
             SELECT COUNT(*) FROM (
-                SELECT user_id, file_hash FROM documents
+                SELECT user_id, file_hash, extractor_used FROM documents
                 WHERE file_hash IS NOT NULL AND file_hash != ''
-                GROUP BY user_id, file_hash HAVING COUNT(*) > 1
+                GROUP BY user_id, file_hash, extractor_used HAVING COUNT(*) > 1
             ) sub
         """).fetchone()[0]
         if dup_docs > 0:
-            logger.warning(f"Skipping UNIQUE constraint on documents(user_id, file_hash): {dup_docs} duplicate groups exist. Run scripts/dedupe_data.py to resolve.")
+            logger.warning(f"Skipping UNIQUE constraint on documents(user_id, file_hash, extractor_used): {dup_docs} duplicate groups exist. Run scripts/dedupe_data.py to resolve.")
             skipped.append(("documents", dup_docs))
         else:
-            conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_documents_user_file_hash ON documents(user_id, file_hash) WHERE file_hash IS NOT NULL AND file_hash != '';")
+            conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_documents_user_file_hash_extractor ON documents(user_id, file_hash, extractor_used) WHERE file_hash IS NOT NULL AND file_hash != '';")
             conn.commit()
-            applied.append("documents(user_id, file_hash)")
+            applied.append("documents(user_id, file_hash, extractor_used)")
     except Exception as e:
         logger.warning(f"Could not apply unique constraint on documents: {e}")
 
@@ -1375,6 +1380,15 @@ def delete_user_and_all_data(user_id: str) -> List[Dict[str, str]]:
 
 # ==================== Document Operations (Per-User) ====================
 
+def normalize_extractor_choice(ext: Optional[str]) -> str:
+    """Standardizes extractor name across frontend/backend: 'gemini', 'yake', 'rake_textrank'."""
+    val = (ext or "gemini").strip().lower()
+    if val in ("rake", "textrank", "rake_textrank"):
+        return "rake_textrank"
+    if val in ("yake",):
+        return "yake"
+    return "gemini"
+
 def find_completed_document_by_hash(
     file_hash: str,
     user_id: Optional[str] = None,
@@ -1401,11 +1415,14 @@ def find_completed_document_by_hash(
                 WHERE file_hash = ? AND status = 'completed' AND user_id IS NULL
             """
         if clean_ext:
-            if clean_ext == "gemini":
-                query += " AND (LOWER(COALESCE(extractor_used, 'gemini')) = 'gemini' OR LOWER(COALESCE(provider_used, '')) IN ('gemini', 'pipeline-v2', 'cloud', 'on-device'))"
+            norm_ext = normalize_extractor_choice(clean_ext)
+            if norm_ext == "gemini":
+                query += " AND LOWER(COALESCE(extractor_used, 'gemini')) NOT IN ('yake', 'rake', 'rake_textrank')"
+            elif norm_ext == "rake_textrank":
+                query += " AND LOWER(COALESCE(extractor_used, '')) IN ('rake', 'rake_textrank')"
             else:
-                query += " AND (LOWER(COALESCE(extractor_used, '')) = ? OR LOWER(COALESCE(provider_used, '')) LIKE ?)"
-                params.extend([clean_ext, f"%{clean_ext}%"])
+                query += " AND LOWER(COALESCE(extractor_used, '')) = ?"
+                params.append(norm_ext)
         query += " ORDER BY created_at DESC LIMIT 1"
         cursor = conn.execute(query, tuple(params))
         row = cursor.fetchone()
@@ -1522,11 +1539,14 @@ def find_document_by_hash(
         if not include_failed:
             query += " AND status != 'failed'"
         if clean_ext:
-            if clean_ext == "gemini":
-                query += " AND (LOWER(COALESCE(extractor_used, 'gemini')) = 'gemini' OR LOWER(COALESCE(provider_used, '')) IN ('gemini', 'pipeline-v2', 'cloud', 'on-device'))"
+            norm_ext = normalize_extractor_choice(clean_ext)
+            if norm_ext == "gemini":
+                query += " AND LOWER(COALESCE(extractor_used, 'gemini')) NOT IN ('yake', 'rake', 'rake_textrank')"
+            elif norm_ext == "rake_textrank":
+                query += " AND LOWER(COALESCE(extractor_used, '')) IN ('rake', 'rake_textrank')"
             else:
-                query += " AND (LOWER(COALESCE(extractor_used, '')) = ? OR LOWER(COALESCE(provider_used, '')) LIKE ?)"
-                params.extend([clean_ext, f"%{clean_ext}%"])
+                query += " AND LOWER(COALESCE(extractor_used, '')) = ?"
+                params.append(norm_ext)
         query += " ORDER BY created_at DESC LIMIT 1"
         cursor = conn.execute(query, tuple(params))
         row = cursor.fetchone()
@@ -1562,7 +1582,7 @@ def create_document(
     extractor_used: Optional[str] = "gemini"
 ) -> Dict[str, Any]:
     created_at = datetime.now(timezone.utc).isoformat()
-    clean_extractor = extractor_used or "gemini"
+    clean_extractor = normalize_extractor_choice(extractor_used)
     conn = get_connection()
     try:
         try:
@@ -1597,10 +1617,21 @@ def create_document(
             }
         except Exception as exc:
             # Handle conflict from concurrent uploads with same (user_id, file_hash, extractor) or idempotency_key
+            norm_ext = normalize_extractor_choice(clean_extractor)
             if file_hash:
+                if norm_ext == "gemini":
+                    ext_filter = "LOWER(COALESCE(extractor_used, 'gemini')) NOT IN ('yake', 'rake', 'rake_textrank')"
+                    p = (user_id, file_hash)
+                elif norm_ext == "rake_textrank":
+                    ext_filter = "LOWER(COALESCE(extractor_used, '')) IN ('rake', 'rake_textrank')"
+                    p = (user_id, file_hash)
+                else:
+                    ext_filter = "LOWER(COALESCE(extractor_used, '')) = ?"
+                    p = (user_id, file_hash, norm_ext)
+
                 cursor = conn.execute(
-                    "SELECT * FROM documents WHERE user_id = ? AND file_hash = ? AND LOWER(COALESCE(extractor_used, 'gemini')) = ? ORDER BY created_at DESC LIMIT 1",
-                    (user_id, file_hash, clean_extractor.lower())
+                    f"SELECT * FROM documents WHERE user_id = ? AND file_hash = ? AND {ext_filter} ORDER BY created_at DESC LIMIT 1",
+                    p
                 )
                 existing = cursor.fetchone()
                 if existing:
