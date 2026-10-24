@@ -680,7 +680,7 @@ export default function AuthModal({ onSuccess }) {
                         id="auth-display-name"
                         type="text"
                         autoComplete="name"
-                        placeholder="e.g. Himanshu"
+                        placeholder="e.g. Alex Johnson"
                         value={displayName}
                         onChange={(e) => {
                           setDisplayName(e.target.value);
@@ -710,7 +710,7 @@ export default function AuthModal({ onSuccess }) {
                       id="auth-email-field"
                       type={tab === 'signup' ? 'email' : 'text'}
                       autoComplete="email"
-                      placeholder={tab === 'signin' ? 'Enter your email' : 'e.g. himanshu06618@gmail.com'}
+                      placeholder={tab === 'signin' ? 'Enter your email' : 'e.g. alex@example.com'}
                       value={email}
                       onChange={(e) => {
                         setEmail(e.target.value);
