@@ -194,11 +194,16 @@ async def register_user(
         raw_username = re.sub(r"[^a-zA-Z0-9_.]", "", raw_username)
         if len(raw_username) < 3:
             raw_username = f"user_{raw_username}"
+        if len(raw_username) > 20:
+            raw_username = raw_username[:20]
         counter = 1
         base_u = raw_username
         while get_user_by_username(raw_username):
-            raw_username = f"{base_u}{counter}"
+            raw_username = f"{base_u[:18]}{counter}"
             counter += 1
+
+    if not raw_username:
+        raise HTTPException(status_code=400, detail="Username or email is required.")
 
     u_err = validate_username(raw_username)
     if u_err:

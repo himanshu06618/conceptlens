@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { GoogleLogin, GoogleOAuthProvider } from '@react-oauth/google';
 import { useAuth } from '../context/AuthContext';
-import { checkUsernameAvailability, getAuthConfig } from '../api/client';
+import { getAuthConfig } from '../api/client';
 import { Logo, BookshelfLoader } from './ui';
 import { OverlayPortal, lockBodyScroll, unlockBodyScroll } from './ui/Overlay';
 
@@ -78,7 +78,6 @@ export default function AuthModal({ onSuccess }) {
   } = useAuth();
 
   const [tab, setTab] = useState(authModalTab || 'signin');
-  const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -153,8 +152,7 @@ export default function AuthModal({ onSuccess }) {
     return () => window.removeEventListener('resize', calculateWidth);
   }, [activeGoogleClientId, tab]);
 
-  // Username availability status
-  const [usernameStatus, setUsernameStatus] = useState(null);
+
 
   const dialogRef = useRef(null);
   const firstInputRef = useRef(null);
@@ -222,7 +220,7 @@ export default function AuthModal({ onSuccess }) {
 
   // Safe close request
   const handleCloseRequest = useCallback(() => {
-    if (tab === 'signup' && (username || email || password || confirmPassword || displayName)) {
+    if (tab === 'signup' && (email || password || confirmPassword || displayName)) {
       if (!window.confirm('Discard unsaved registration details?')) {
         return;
       }
@@ -231,7 +229,6 @@ export default function AuthModal({ onSuccess }) {
     setTimeout(() => {
       closeAuthModal();
       setIsClosing(false);
-      setUsername('');
       setEmail('');
       setPassword('');
       setConfirmPassword('');
@@ -241,7 +238,7 @@ export default function AuthModal({ onSuccess }) {
       setGoogleNeedsRole(false);
       setGooglePendingUser(null);
     }, 160);
-  }, [tab, username, email, password, confirmPassword, displayName, closeAuthModal]);
+  }, [tab, email, password, confirmPassword, displayName, closeAuthModal]);
 
   // Focus trap and Escape key listener
   useEffect(() => {
@@ -298,36 +295,6 @@ export default function AuthModal({ onSuccess }) {
     }, 60);
   };
 
-  // Username blur check for registration
-  const handleUsernameBlur = async () => {
-    if (tab !== 'signup') return;
-    const clean = username.trim().toLowerCase();
-    if (!clean) {
-      setUsernameStatus(null);
-      return;
-    }
-    if (clean.length < 3 || clean.length > 24) {
-      setUsernameStatus({ valid: false, message: 'Must be 3 to 24 characters' });
-      return;
-    }
-    if (!/^[a-zA-Z0-9_.]+$/.test(clean)) {
-      setUsernameStatus({ valid: false, message: 'Letters, numbers, underscores, and dots only' });
-      return;
-    }
-
-    setUsernameStatus({ checking: true });
-    try {
-      const res = await checkUsernameAvailability(clean);
-      if (res.available) {
-        setUsernameStatus({ available: true, message: 'Available' });
-      } else {
-        setUsernameStatus({ available: false, message: res.message || 'Already taken' });
-      }
-    } catch {
-      setUsernameStatus({ available: false, message: 'Could not check availability' });
-    }
-  };
-
   // Submit Handler
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -336,19 +303,10 @@ export default function AuthModal({ onSuccess }) {
 
     if (tab === 'signup') {
       const cleanName = displayName.trim();
-      const cleanUsername = username.trim().toLowerCase();
       const cleanEmail = email.trim().toLowerCase();
 
       if (!cleanName) {
         errors.displayName = 'Please enter your name.';
-      }
-
-      if (!cleanUsername) {
-        errors.username = 'Please choose a username.';
-      } else if (cleanUsername.length < 3 || cleanUsername.length > 24) {
-        errors.username = 'Username must be between 3 and 24 characters.';
-      } else if (!/^[a-zA-Z0-9_.]+$/.test(cleanUsername)) {
-        errors.username = 'Username can only contain letters, numbers, underscores, and dots.';
       }
 
       if (!cleanEmail) {
@@ -369,9 +327,9 @@ export default function AuthModal({ onSuccess }) {
         errors.confirmPassword = 'Passwords do not match.';
       }
     } else {
-      const cleanInput = username.trim();
+      const cleanInput = email.trim();
       if (!cleanInput) {
-        errors.username = 'Please enter your username or email.';
+        errors.email = 'Please enter your email.';
       }
       if (!password) {
         errors.password = 'Please enter a password.';
@@ -392,14 +350,13 @@ export default function AuthModal({ onSuccess }) {
         userData = await signUp({
           name: displayName.trim(),
           displayName: displayName.trim(),
-          username: username.trim().toLowerCase(),
           email: email.trim().toLowerCase(),
           password,
           confirmPassword,
           role: role || 'student',
         });
       } else {
-        userData = await signIn(username.trim(), password);
+        userData = await signIn(email.trim(), password);
       }
 
       setIsSuccess(true);
@@ -413,7 +370,7 @@ export default function AuthModal({ onSuccess }) {
       if (err.status === 429 || message.toLowerCase().includes('rate limit') || message.toLowerCase().includes('too many')) {
         message = 'Too many requests. Please wait a minute and try again.';
       } else if (tab === 'signin' && (err.status === 400 || message.toLowerCase().includes('incorrect') || message.toLowerCase().includes('invalid'))) {
-        message = 'Invalid email/username or password.';
+        message = 'Invalid email or password.';
       }
       setServerError(message);
       triggerShake();
@@ -719,6 +676,7 @@ export default function AuthModal({ onSuccess }) {
                         Full Name
                       </label>
                       <input
+                        ref={tab === 'signup' ? firstInputRef : null}
                         id="auth-display-name"
                         type="text"
                         autoComplete="name"
@@ -742,76 +700,35 @@ export default function AuthModal({ onSuccess }) {
                     </div>
                   )}
 
-                  {/* Username Field (or Username/Email for sign in) */}
+                  {/* Email Field (for both sign in and sign up) */}
                   <div className="auth-field-group">
-                    <label htmlFor="auth-username-field" className="auth-field-label">
-                      {tab === 'signin' ? 'Username or Email' : 'Username'}
+                    <label htmlFor="auth-email-field" className="auth-field-label">
+                      Email
                     </label>
                     <input
-                      ref={firstInputRef}
-                      id="auth-username-field"
-                      type="text"
-                      autoComplete={tab === 'signin' ? 'username email' : 'username'}
-                      autoFocus
-                      placeholder={tab === 'signin' ? 'Enter your username or email' : 'Choose a username (e.g. himanshu06618)'}
-                      value={username}
+                      ref={tab === 'signin' ? firstInputRef : null}
+                      id="auth-email-field"
+                      type={tab === 'signup' ? 'email' : 'text'}
+                      autoComplete="email"
+                      placeholder={tab === 'signin' ? 'Enter your email' : 'e.g. himanshu06618@gmail.com'}
+                      value={email}
                       onChange={(e) => {
-                        setUsername(e.target.value);
-                        if (fieldErrors.username) {
-                          setFieldErrors((prev) => ({ ...prev, username: null }));
+                        setEmail(e.target.value);
+                        if (fieldErrors.email) {
+                          setFieldErrors((prev) => ({ ...prev, email: null }));
                         }
                       }}
-                      onBlur={handleUsernameBlur}
-                      className={`auth-pill-input ${fieldErrors.username ? 'has-field-error' : ''}`}
-                      aria-invalid={!!fieldErrors.username}
+                      className={`auth-pill-input ${fieldErrors.email ? 'has-field-error' : ''}`}
+                      aria-invalid={!!fieldErrors.email}
                       disabled={loading || isSuccess}
                     />
 
-                    {fieldErrors.username && (
+                    {fieldErrors.email && (
                       <span className="auth-field-error-pill" role="alert">
-                        {fieldErrors.username}
-                      </span>
-                    )}
-
-                    {tab === 'signup' && usernameStatus && (
-                      <span 
-                        className={`auth-username-status ${usernameStatus.available ? 'available' : 'taken'}`}
-                      >
-                        {usernameStatus.checking ? 'Checking...' : usernameStatus.available ? '✓ Available' : `✕ ${usernameStatus.message}`}
+                        {fieldErrors.email}
                       </span>
                     )}
                   </div>
-
-                  {/* Create Account: Email Field */}
-                  {tab === 'signup' && (
-                    <div className="auth-field-group">
-                      <label htmlFor="auth-email-field" className="auth-field-label">
-                        Email
-                      </label>
-                      <input
-                        id="auth-email-field"
-                        type="email"
-                        autoComplete="email"
-                        placeholder="e.g. himanshu06618@gmail.com"
-                        value={email}
-                        onChange={(e) => {
-                          setEmail(e.target.value);
-                          if (fieldErrors.email) {
-                            setFieldErrors((prev) => ({ ...prev, email: null }));
-                          }
-                        }}
-                        className={`auth-pill-input ${fieldErrors.email ? 'has-field-error' : ''}`}
-                        aria-invalid={!!fieldErrors.email}
-                        disabled={loading || isSuccess}
-                      />
-
-                      {fieldErrors.email && (
-                        <span className="auth-field-error-pill" role="alert">
-                          {fieldErrors.email}
-                        </span>
-                      )}
-                    </div>
-                  )}
 
                   {/* Password Field */}
                   <div className="auth-field-group">
