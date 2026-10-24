@@ -1375,34 +1375,39 @@ def delete_user_and_all_data(user_id: str) -> List[Dict[str, str]]:
 
 # ==================== Document Operations (Per-User) ====================
 
-def find_completed_document_by_hash(file_hash: str, user_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
-    """Finds an existing completed document with identical SHA-256 hash strictly belonging to user_id."""
+def find_completed_document_by_hash(
+    file_hash: str,
+    user_id: Optional[str] = None,
+    extractor: Optional[str] = None
+) -> Optional[Dict[str, Any]]:
+    """Finds an existing completed document with identical SHA-256 hash strictly belonging to user_id and matching extractor."""
     if not file_hash:
         return None
+    clean_ext = (extractor or "").strip().lower()
     conn = get_connection()
     try:
+        params = [file_hash]
         if user_id:
-            cursor = conn.execute(
-                """
-                SELECT id, filename, page_count, raw_text, tree_json, flow_json, provider_used
+            query = """
+                SELECT id, filename, page_count, raw_text, tree_json, flow_json, provider_used, extractor_used
                 FROM documents
                 WHERE file_hash = ? AND status = 'completed' AND user_id = ?
-                ORDER BY created_at DESC
-                LIMIT 1
-                """,
-                (file_hash, user_id)
-            )
+            """
+            params.append(user_id)
         else:
-            cursor = conn.execute(
-                """
-                SELECT id, filename, page_count, raw_text, tree_json, flow_json, provider_used
+            query = """
+                SELECT id, filename, page_count, raw_text, tree_json, flow_json, provider_used, extractor_used
                 FROM documents
                 WHERE file_hash = ? AND status = 'completed' AND user_id IS NULL
-                ORDER BY created_at DESC
-                LIMIT 1
-                """,
-                (file_hash,)
-            )
+            """
+        if clean_ext:
+            if clean_ext == "gemini":
+                query += " AND (LOWER(COALESCE(extractor_used, 'gemini')) = 'gemini' OR LOWER(COALESCE(provider_used, '')) IN ('gemini', 'pipeline-v2', 'cloud', 'on-device'))"
+            else:
+                query += " AND (LOWER(COALESCE(extractor_used, '')) = ? OR LOWER(COALESCE(provider_used, '')) LIKE ?)"
+                params.extend([clean_ext, f"%{clean_ext}%"])
+        query += " ORDER BY created_at DESC LIMIT 1"
+        cursor = conn.execute(query, tuple(params))
         row = cursor.fetchone()
         return dict(row) if row else None
     finally:
@@ -1500,17 +1505,30 @@ def clone_cached_document(source_doc_id: str, target_doc_id: str) -> bool:
     finally:
         conn.close()
 
-def find_document_by_hash(file_hash: str, user_id: str, include_failed: bool = False) -> Optional[Dict[str, Any]]:
-    """Finds an existing document with matching SHA-256 hash strictly belonging to user_id."""
+def find_document_by_hash(
+    file_hash: str,
+    user_id: str,
+    include_failed: bool = False,
+    extractor: Optional[str] = None
+) -> Optional[Dict[str, Any]]:
+    """Finds an existing document with matching SHA-256 hash strictly belonging to user_id (and matching extractor if specified)."""
     if not file_hash or not user_id:
         return None
+    clean_ext = (extractor or "").strip().lower()
     conn = get_connection()
     try:
         query = "SELECT * FROM documents WHERE file_hash = ? AND user_id = ?"
+        params = [file_hash, user_id]
         if not include_failed:
             query += " AND status != 'failed'"
+        if clean_ext:
+            if clean_ext == "gemini":
+                query += " AND (LOWER(COALESCE(extractor_used, 'gemini')) = 'gemini' OR LOWER(COALESCE(provider_used, '')) IN ('gemini', 'pipeline-v2', 'cloud', 'on-device'))"
+            else:
+                query += " AND (LOWER(COALESCE(extractor_used, '')) = ? OR LOWER(COALESCE(provider_used, '')) LIKE ?)"
+                params.extend([clean_ext, f"%{clean_ext}%"])
         query += " ORDER BY created_at DESC LIMIT 1"
-        cursor = conn.execute(query, (file_hash, user_id))
+        cursor = conn.execute(query, tuple(params))
         row = cursor.fetchone()
         return dict(row) if row else None
     finally:
@@ -1578,11 +1596,11 @@ def create_document(
                 "created_at": created_at
             }
         except Exception as exc:
-            # Handle conflict from concurrent uploads with same (user_id, file_hash) or idempotency_key
+            # Handle conflict from concurrent uploads with same (user_id, file_hash, extractor) or idempotency_key
             if file_hash:
                 cursor = conn.execute(
-                    "SELECT * FROM documents WHERE user_id = ? AND file_hash = ? ORDER BY created_at DESC LIMIT 1",
-                    (user_id, file_hash)
+                    "SELECT * FROM documents WHERE user_id = ? AND file_hash = ? AND LOWER(COALESCE(extractor_used, 'gemini')) = ? ORDER BY created_at DESC LIMIT 1",
+                    (user_id, file_hash, clean_extractor.lower())
                 )
                 existing = cursor.fetchone()
                 if existing:

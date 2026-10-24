@@ -921,14 +921,15 @@ async def upload_document(
 
     # Compute SHA-256 hash for deduplication and quota preservation
     file_hash = hashlib.sha256(content).hexdigest()
+    clean_extractor = (extractor or "gemini").strip().lower()
 
-    # Check database cache for instant return (both completed and in-flight processing)
-    existing_by_hash = find_document_by_hash(file_hash, user_id=actor["id"], include_failed=False)
+    # Check database cache for instant return (both completed and in-flight processing) for the requested extractor
+    existing_by_hash = find_document_by_hash(file_hash, user_id=actor["id"], include_failed=False, extractor=clean_extractor)
     if existing_by_hash:
         doc_id = existing_by_hash["id"]
         status = existing_by_hash.get("status", "processing")
         stage = existing_by_hash.get("stage", "reading")
-        logger.info(f"Upload duplicate HIT for hash {file_hash[:12]}... (doc {doc_id}, status={status})")
+        logger.info(f"Upload duplicate HIT for hash {file_hash[:12]}... (doc {doc_id}, status={status}, extractor={clean_extractor})")
         if status == "completed" and actor["is_authenticated"]:
             try:
                 link_document_to_curriculum(doc_id, actor["id"])
@@ -943,7 +944,8 @@ async def upload_document(
             status=status,
             stage=stage,
             message=msg,
-            guest_id=actor["id"] if not actor.get("is_authenticated") else None
+            guest_id=actor["id"] if not actor.get("is_authenticated") else None,
+            extractor_used=existing_by_hash.get("extractor_used", clean_extractor)
         )
 
     doc_id = str(uuid.uuid4())
@@ -1568,11 +1570,12 @@ def get_document_progress_endpoint(
 @app.post("/documents/{doc_id}/re-extract")
 async def reanalyze_document_endpoint(
     doc_id: str,
+    extractor: Optional[str] = Query(None),
     actor: Dict[str, Any] = Depends(get_current_user_or_guest)
 ):
     """
     Re-analyse action per document:
-    Bypasses the cache and re-runs extraction with Pipeline v2.
+    Bypasses the cache and re-runs extraction with chosen extractor or Pipeline v2.
     Respects rate limits and Gemini quota with friendly code-only fallback if exhausted.
     """
     doc = get_document_by_id(user_id=actor["id"], doc_id=doc_id)
@@ -1584,32 +1587,82 @@ async def reanalyze_document_endpoint(
     if not file_path or not file_path.exists():
         raise HTTPException(status_code=404, detail="Source document file not found in database or server for re-analysis.")
 
-    update_document_stage(doc_id, stage="extracting", status="processing", progress=20, stage_message="Re-analysing notes with Pipeline v2 (page-batched)...")
-    try:
-        pipeline_v2 = ExtractionV2Pipeline()
-        v2_res = pipeline_v2.extract_document(
-            file_path=file_path,
-            doc_id=doc_id,
-            user_id=actor["id"],
-            on_progress=lambda msg, pct: update_document_stage(
-                doc_id, stage="extracting", status="processing", progress=pct, stage_message=msg
-            )
-        )
-    except Exception as ex_gem:
-        update_document_stage(doc_id, stage="completed", status="completed", progress=100, stage_message="Re-analysis failed; existing concepts preserved.")
-        raise HTTPException(status_code=503, detail=f"Re-analysis failed: {str(ex_gem)}")
+    clean_extractor = (extractor or doc.get("extractor_used") or "gemini").strip().lower()
 
-    concepts = v2_res.get("concepts", [])
+    update_document_stage(
+        doc_id,
+        stage="extracting",
+        status="processing",
+        progress=20,
+        stage_message=f"Re-analysing notes with {clean_extractor.upper()}..."
+    )
+
+    concepts = []
+    page_coverage_records = []
+    coverage_summary = None
+    provider_used = clean_extractor
+
+    if clean_extractor != "gemini":
+        try:
+            from backend.extractor_choice.service import run_extraction
+        except ImportError:
+            try:
+                from extractor_choice.service import run_extraction
+            except ImportError:
+                run_extraction = None
+
+        if run_extraction:
+            choice_res = run_extraction(file_path, clean_extractor)
+            if choice_res and not choice_res.get("fallback") and choice_res.get("concepts"):
+                concepts = choice_res["concepts"]
+                provider_used = choice_res.get("extractor_used", clean_extractor)
+
     if not concepts:
+        try:
+            pipeline_v2 = ExtractionV2Pipeline()
+            v2_res = pipeline_v2.extract_document(
+                file_path=file_path,
+                doc_id=doc_id,
+                user_id=actor["id"],
+                on_progress=lambda msg, pct: update_document_stage(
+                    doc_id, stage="extracting", status="processing", progress=pct, stage_message=msg
+                )
+            )
+            concepts = v2_res.get("concepts", [])
+            page_coverage_records = v2_res.get("page_coverage", [])
+            coverage_summary = v2_res.get("coverage_summary")
+            provider_used = v2_res.get("provider_used", "Pipeline-v2")
+        except Exception as ex_gem:
+            update_document_stage(doc_id, stage="completed", status="completed", progress=100, stage_message="Re-analysis failed; existing concepts preserved.")
+            raise HTTPException(status_code=503, detail=f"Re-analysis failed: {str(ex_gem)}")
+
+    if not concepts:
+        update_document_stage(doc_id, stage="completed", status="completed", progress=100, stage_message="Re-analysis failed; existing concepts preserved.")
         raise HTTPException(status_code=500, detail="No concepts extracted during re-analysis.")
 
-    page_coverage_records = v2_res.get("page_coverage", [])
     if page_coverage_records:
         save_document_page_coverage(doc_id, page_coverage_records)
 
     save_concepts_and_relations(doc_id, concepts)
     tree_data = build_document_tree(doc_id, filename, concepts)
     save_document_tree(doc_id, tree_data)
+
+    try:
+        flow_data = build_document_flowchart(doc_id, concepts, doc.get("raw_text") or "", include_related=True)
+        save_document_flowchart(doc_id, flow_data)
+    except Exception as e_flow:
+        logger.warning(f"Could not build flowchart during re-analysis for {doc_id}: {e_flow}")
+
+    conn = get_connection()
+    try:
+        with conn:
+            meta_json = json.dumps({"extractor_used": clean_extractor, "fallback": False})
+            conn.execute(
+                "UPDATE documents SET extractor_used = ?, provider_used = ?, result_json = ? WHERE id = ?",
+                (clean_extractor, provider_used, meta_json, doc_id)
+            )
+    finally:
+        conn.close()
 
     update_document_stage(doc_id, stage="completed", status="completed", progress=100, stage_message="Re-analysis complete!")
 
@@ -1621,9 +1674,10 @@ async def reanalyze_document_endpoint(
 
     return {
         "success": True,
-        "message": f"Successfully re-analysed document with {len(concepts)} concepts.",
+        "message": f"Successfully re-analysed document with {len(concepts)} concepts using {clean_extractor.upper()}.",
         "concept_count": len(concepts),
-        "coverage_summary": v2_res.get("coverage_summary")
+        "extractor_used": clean_extractor,
+        "coverage_summary": coverage_summary
     }
 
 @app.get("/api/documents/{doc_id}/coverage")

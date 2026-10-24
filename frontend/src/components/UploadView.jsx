@@ -235,10 +235,11 @@ export default function UploadView({
 
     // EXTRACTOR-CHOICE-START
     try {
-      const chosenExtractor = (typeof window !== 'undefined' && window.__conceptlens_extractor) || 'gemini';
-      const uploadOpts = chosenExtractor !== 'gemini' ? { extractor: chosenExtractor } : {};
+      const chosenExtractor = (typeof window !== 'undefined' && window.__conceptlens_extractor)
+        || (typeof localStorage !== 'undefined' && localStorage.getItem('conceptlens_selected_extractor'))
+        || 'gemini';
+      const uploadOpts = { extractor: chosenExtractor };
       if (typeof window !== 'undefined') {
-        window.__conceptlens_extractor = 'gemini';
         window.dispatchEvent(new CustomEvent('conceptlens:upload-started'));
       }
       if (file.type.startsWith('image/')) {

@@ -98,19 +98,24 @@ const CompactUploadCard = React.forwardRef(function CompactUploadCard({
         return;
       }
 
+      const chosenExtractor = (typeof window !== 'undefined' && window.__conceptlens_extractor)
+        || (typeof localStorage !== 'undefined' && localStorage.getItem('conceptlens_selected_extractor'))
+        || 'gemini';
+      const uploadOpts = { extractor: chosenExtractor };
+
       if (file.type.startsWith('image/')) {
         setIsCompressing(true);
         try {
           const compressed = await compressImageIfNeeded(file);
-          await onUpload(compressed);
+          await onUpload(compressed, uploadOpts);
         } catch (err) {
           console.warn('Image compression fallback:', err);
-          await onUpload(file);
+          await onUpload(file, uploadOpts);
         } finally {
           setIsCompressing(false);
         }
       } else {
-        await onUpload(file);
+        await onUpload(file, uploadOpts);
       }
     } finally {
       inFlightRef.current = false;

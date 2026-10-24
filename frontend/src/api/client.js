@@ -352,8 +352,12 @@ export async function getDocumentProgress(docId) {
   return res.json();
 }
 
-export async function reanalyzeDocument(docId) {
-  const res = await apiFetch(`/documents/${encodeURIComponent(docId)}/reanalyze`, {
+export async function reanalyzeDocument(docId, extractor = null) {
+  const chosen = extractor
+    || (typeof window !== 'undefined' && window.__conceptlens_extractor)
+    || (typeof localStorage !== 'undefined' && localStorage.getItem('conceptlens_selected_extractor'));
+  const query = chosen ? `?extractor=${encodeURIComponent(chosen)}` : '';
+  const res = await apiFetch(`/documents/${encodeURIComponent(docId)}/reanalyze${query}`, {
     method: 'POST',
   });
   if (!res.ok) {

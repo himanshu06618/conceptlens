@@ -216,8 +216,10 @@ export default function GuestHomeScreen({
 
     try {
       setUploadProgress(35);
-      setUploadStage('Extracting concepts...');
-      const resp = await uploadDocument(fileToUpload);
+      const chosenExtractor = (typeof window !== 'undefined' && window.__conceptlens_extractor)
+        || (typeof localStorage !== 'undefined' && localStorage.getItem('conceptlens_selected_extractor'))
+        || 'gemini';
+      const resp = await uploadDocument(fileToUpload, { extractor: chosenExtractor });
 
       const docId = resp.id;
       if (resp.status === 'completed') {
