@@ -36,12 +36,42 @@ PRONOUNS_DETERMINERS = {
     "few", "many", "more", "most", "other", "another", "also", "which", "who", "whom"
 }
 
+COMMON_VERBS = {
+    "shows", "show", "showing", "shown",
+    "gives", "give", "giving", "given",
+    "using", "used", "use",
+    "based", "calls", "called", "callsd", "known", "termed", "named",
+    "making", "made", "make",
+    "having", "had", "has",
+    "become", "becomes", "became",
+    "contains", "contained", "contain", "containing",
+    "consists", "consisting", "consist", "consisted",
+    "includes", "included", "including", "include",
+    "represents", "representing", "represent", "represented",
+    "provides", "providing", "provide", "provided",
+    "takes", "taking", "taken", "take",
+    "finds", "finding", "found", "find",
+    "leads", "leading", "lead", "led",
+    "lies", "lying", "lay",
+    "occurs", "occurring", "occur", "occurred",
+    "produces", "producing", "produce", "produced",
+    "causes", "causing", "cause", "caused",
+    "depends", "depending", "depend", "depended",
+    "forms", "forming", "form", "formed",
+    "determines", "determining", "determine", "determined",
+    "relates", "relating", "relate", "related",
+    "describes", "describing", "describe", "described",
+    "defines", "defining", "define", "defined",
+    "considered", "considering", "consider", "considers"
+}
+
 LEADING_STRIP_WORDS = (
     ARTICLES
     | PREPOSITIONS
     | AUXILIARY_VERBS
     | CONJUNCTIONS
     | PRONOUNS_DETERMINERS
+    | COMMON_VERBS
     | {"then", "here", "there", "when", "where", "why", "how", "just", "only", "very"}
 )
 
@@ -50,31 +80,18 @@ TRAILING_STRIP_WORDS = (
     | PREPOSITIONS
     | AUXILIARY_VERBS
     | CONJUNCTIONS
+    | COMMON_VERBS
     | {"etc", "ie", "eg", "as"}
 )
 
-COMMON_VERBS = {
-    "shows", "show", "showing", "shown",
-    "gives", "give", "giving", "given",
-    "using", "used", "use",
-    "based", "calls", "called",
-    "making", "made", "make",
-    "having", "had", "has",
-    "become", "becomes", "became",
-    "contains", "contained", "contain",
-    "consists", "consisting", "consist",
-    "includes", "included", "including", "include",
-    "represents", "representing", "represent",
-    "provides", "providing", "provide",
-    "takes", "taking", "taken", "take",
-    "finds", "finding", "found", "find"
+SENTENCE_PIECE_MIDDLE = {
+    "is", "are", "was", "were", "can", "will", "called", "callsd", "known", "named", "termed", "shows", "gives", "leads"
 }
-
-SENTENCE_PIECE_MIDDLE = {"is", "are", "was", "were", "can", "will"}
 
 STOP_WORDS = LEADING_STRIP_WORDS | TRAILING_STRIP_WORDS | COMMON_VERBS
 
 UNICODE_DASHES = re.compile(r"[\u2010\u2012\u2013\u2014\u2015\u2212]")
+PREFIX_STRIP_PAT = re.compile(r"^(?:slide|chapter|section|module|unit|part|figure|fig)\s*\d*[:\.\-]?\s*", re.IGNORECASE)
 
 
 def _load_config(custom_config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -201,6 +218,7 @@ def _clean_and_strip_phrase(phrase: str) -> Optional[List[str]]:
 
     # Fix unicode dashes
     text = UNICODE_DASHES.sub(" - ", phrase)
+    text = PREFIX_STRIP_PAT.sub("", text).strip()
     text = re.sub(r"\s+", " ", text).strip()
     # Strip surrounding punctuation
     text = text.strip(".,;:!?'\"`()[]{}<>•*~_-\\/")
@@ -230,12 +248,12 @@ def _clean_and_strip_phrase(phrase: str) -> Optional[List[str]]:
             if cleaned_last != words[-1]:
                 words[-1] = cleaned_last
                 changed = True
-        # Strip leading stop words / prepositions / auxiliaries
-        if words and words[0].lower() in LEADING_STRIP_WORDS:
+        # Strip leading stop words / prepositions / auxiliaries (excluding all-caps acronyms)
+        if words and words[0].lower() in LEADING_STRIP_WORDS and not (words[0].isupper() and len(words[0]) >= 2):
             words.pop(0)
             changed = True
-        # Strip trailing stop words / auxiliaries / common linking words
-        if words and words[-1].lower() in TRAILING_STRIP_WORDS:
+        # Strip trailing stop words / auxiliaries / common linking words (excluding all-caps acronyms)
+        if words and words[-1].lower() in TRAILING_STRIP_WORDS and not (words[-1].isupper() and len(words[-1]) >= 2):
             words.pop()
             changed = True
 
@@ -265,14 +283,16 @@ def _passes_rule2_drop_patterns(phrase: str) -> bool:
     words = phrase.split()
     lower_words = [w.lower() for w in words]
 
-    # Phrases made only of stop words
-    if all(w in STOP_WORDS for w in lower_words):
+    # Phrases made only of stop words (exclude all-caps acronyms)
+    if all(w in STOP_WORDS and not (words[i].isupper() and len(words[i]) >= 2) for i, w in enumerate(lower_words)):
         return False
 
-    # Phrases ending with a stop word or common verb
+    # Phrases ending with a stop word or common verb (exclude all-caps acronyms like LED)
     last_word = lower_words[-1]
-    if last_word in STOP_WORDS or last_word in COMMON_VERBS:
-        return False
+    last_orig = words[-1]
+    if not (last_orig.isupper() and len(last_orig) >= 2):
+        if last_word in STOP_WORDS or last_word in COMMON_VERBS:
+            return False
 
     # Sentence piece fragments (middle words contains is, are, was, were, can, will)
     if len(lower_words) > 2:
