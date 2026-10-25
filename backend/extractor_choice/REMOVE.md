@@ -55,8 +55,6 @@ To remove just one method without removing the rest of the feature:
 
 1. **Delete the extractor file**:
    - For YAKE: delete `backend/extractor_choice/yake_ex.py`
-   - For RAKE / TextRank: delete `backend/extractor_choice/rake_textrank_ex.py`
-   - For spaCy: delete `backend/extractor_choice/spacy_ex.py`
 
 2. **Remove its registry entry**:
    - In `backend/extractor_choice/registry.py`, delete the `try/except` block registering that extractor, and remove its key from `available()`.

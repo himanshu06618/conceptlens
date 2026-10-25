@@ -57,7 +57,6 @@ def test_registry_availability():
     assert isinstance(avail, dict)
     assert avail.get("gemini") is True
     assert "yake" in avail
-    assert "rake_textrank" in avail
 
 
 def test_clean_phrases():
@@ -89,19 +88,6 @@ def test_yake_extraction(sample_note_file):
         assert c["definition"] is None
         assert c["definition_cue"] is None
         assert c["aliases"] == []
-        assert c["relations"] == []
-
-
-def test_rake_textrank_extraction(sample_note_file):
-    res = run_extraction(sample_note_file, "rake_textrank")
-    assert res is not None
-    assert res.get("fallback") is False
-    assert res.get("extractor_used") == "rake_textrank"
-    concepts = res.get("concepts", [])
-    assert len(concepts) > 0
-    for c in concepts:
-        assert c["name"]
-        assert c["definition"] is None
         assert c["relations"] == []
 
 

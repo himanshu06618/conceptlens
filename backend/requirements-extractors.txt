@@ -1,10 +1,6 @@
 # yake extractor: yake
 yake>=0.4.8
 
-# rake_textrank extractor: rake-nltk, nltk, summa
-rake-nltk>=1.0.6
-nltk>=3.8.1
-summa>=1.2.0
 
 # pdf reading: pymupdf (only add if not already in requirements.txt)
 # Note: pymupdf>=1.23.0 is already present in backend/requirements.txt

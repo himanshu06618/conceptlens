@@ -16,7 +16,7 @@ from .base import clean_phrase, is_valid_phrase
 
 logger = logging.getLogger("conceptlens.extractor.service")
 
-SUPPORTED_LOCAL_METHODS = {"yake", "rake_textrank"}
+SUPPORTED_LOCAL_METHODS = {"yake"}
 
 
 def _format_concept_item(
@@ -78,7 +78,7 @@ def run_extraction(
     Behavior:
     (a) Returns None immediately when method is 'gemini' or unknown,
         so the existing Gemini flow runs completely untouched.
-    (b) For other methods (yake, rake_textrank):
+    (b) For local methods (yake):
         - Validates library availability.
         - Reads page-by-page text from file via PyMuPDF or plain text reader.
         - Runs extractor across each page to ensure complete document coverage.

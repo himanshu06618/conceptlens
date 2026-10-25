@@ -20,18 +20,6 @@ try:
 except Exception as e:
     logger.warning(f"Could not register 'yake' extractor: {e}")
 
-# 2. RAKE + TextRank Extractor
-try:
-    import rake_nltk  # noqa: F401
-    import summa  # noqa: F401
-    import nltk  # noqa: F401
-    from .rake_textrank_ex import RakeTextRankExtractor
-    AVAILABLE_EXTRACTORS["rake_textrank"] = RakeTextRankExtractor
-    logger.info("Registered 'rake_textrank' extractor successfully.")
-except Exception as e:
-    logger.warning(f"Could not register 'rake_textrank' extractor: {e}")
-
-
 def available() -> Dict[str, bool]:
     """
     Returns dictionary of availability for all extraction methods.
@@ -39,8 +27,7 @@ def available() -> Dict[str, bool]:
     """
     return {
         "gemini": True,
-        "yake": "yake" in AVAILABLE_EXTRACTORS,
-        "rake_textrank": "rake_textrank" in AVAILABLE_EXTRACTORS
+        "yake": "yake" in AVAILABLE_EXTRACTORS
     }
 
 

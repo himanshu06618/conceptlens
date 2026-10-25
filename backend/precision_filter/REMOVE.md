@@ -1,6 +1,6 @@
-# How to Remove the Precision Filter (YAKE & RAKE)
+# How to Remove the Precision Filter (YAKE)
 
-If you ever wish to completely remove the precision filter and restore YAKE and RAKE extractions to their original, raw behavior, follow these 3 simple steps:
+If you ever wish to completely remove the precision filter and restore YAKE extraction to its original, raw behavior, follow these 3 simple steps:
 
 ---
 
@@ -17,32 +17,26 @@ Remove-Item -Recurse -Force backend\precision_filter
 
 ---
 
-### Step 2: Remove the Marked Blocks in the Extractors
+### Step 2: Remove the Marked Blocks in the Extractor
 Delete the blocks marked `# PRECISION-FILTER-START` / `# PRECISION-FILTER-END`:
 
 1. **In `backend/extractor_choice/yake_ex.py`**:
    - Inside `YakeExtractor.extract()`
    - Inside `YakeExtractor.extract_with_scores()`
 
-2. **In `backend/extractor_choice/rake_textrank_ex.py`**:
-   - Inside `RakeTextRankExtractor.extract()`
-   - Inside `RakeTextRankExtractor.extract_with_scores()`
-
 Simply delete those lines. The functions will return to their original baseline behavior (`clean_phrases(combined)` and `results`).
 
 ---
 
 ### Step 3: Remove or Unset the Environment Variables
-If you defined `YAKE_PRECISION` or `RAKE_PRECISION` in your `.env`, Render, or Vercel environment settings, remove or unset them:
+If you defined `YAKE_PRECISION` in your `.env`, Render, or Vercel environment settings, remove or unset it:
 
 ```bash
 # Linux / macOS
 unset YAKE_PRECISION
-unset RAKE_PRECISION
 
 # Windows PowerShell
 Remove-Item Env:\YAKE_PRECISION -ErrorAction SilentlyContinue
-Remove-Item Env:\RAKE_PRECISION -ErrorAction SilentlyContinue
 ```
 
 ---

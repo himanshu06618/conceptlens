@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, Check, AlertCircle, Zap, Layers } from 'lucide-react';
+import { Sparkles, Check, AlertCircle, Zap } from 'lucide-react';
 
 const getApiBase = () => {
   if (typeof window !== 'undefined' && window.__API_BASE__) {
@@ -39,14 +39,6 @@ const EXTRACTOR_OPTIONS = [
     badgeVariant: 'free',
     icon: Zap,
   },
-  {
-    id: 'rake_textrank',
-    title: 'RAKE / TextRank',
-    subtitle: 'Graph phrase ranking',
-    badge: 'Free',
-    badgeVariant: 'free',
-    icon: Layers,
-  },
 ];
 
 export default function ExtractorPicker({
@@ -57,9 +49,12 @@ export default function ExtractorPicker({
 }) {
   const [selectedMethod, setSelectedMethod] = useState(() => {
     try {
-      return (typeof window !== 'undefined' && window.__conceptlens_extractor)
-        || localStorage.getItem('conceptlens_selected_extractor')
-        || 'gemini';
+      const stored = (typeof window !== 'undefined' && window.__conceptlens_extractor)
+        || localStorage.getItem('conceptlens_selected_extractor');
+      if (stored && stored !== 'rake_textrank' && stored !== 'rake') {
+        return stored;
+      }
+      return 'gemini';
     } catch {
       return 'gemini';
     }
@@ -69,7 +64,6 @@ export default function ExtractorPicker({
   const [availableMethods, setAvailableMethods] = useState({
     gemini: true,
     yake: true,
-    rake_textrank: true,
   });
   const [isLoading, setIsLoading] = useState(true);
   const [lastExtraction, setLastExtraction] = useState(null);

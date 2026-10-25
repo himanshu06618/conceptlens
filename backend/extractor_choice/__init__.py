@@ -1,6 +1,6 @@
 """
 ConceptLens Extractor Choice Module
-Provides pluggable, flag-gated extraction methods (Gemini, YAKE, RAKE/TextRank, spaCy).
+Provides pluggable, flag-gated extraction methods (Gemini, YAKE).
 This module is isolated and self-contained.
 """
 
