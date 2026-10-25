@@ -237,7 +237,7 @@ def run_extraction(
     usable_pages = [p for p in pages if p.get("is_usable")]
     if usable_pages:
         full_text = "\n\n".join(p["text"] for p in usable_pages)
-        doc_top = max(40, min(250, len(pages) * 8))
+        doc_top = max(30, min(80, len(pages) * 2))
         try:
             global_phrases = extractor.extract(full_text, top=doc_top) if hasattr(extractor, "extract") else []
             for phrase in global_phrases:
@@ -277,9 +277,16 @@ def run_extraction(
             "fallback_reason": f"Extractor '{clean_method}' returned no concepts from the document."
         }
 
-    # (g) Sort concepts by first appearance, then importance
+    # (g) Sort concepts by quality/relevance, cap candidate count, and order by document flow.
+    # Prioritizes multi-page concepts and higher importance, capping to prevent downstream processing stalls
+    all_cands = list(candidates_by_name.values())
+    max_concepts = max(35, min(250, len(pages) * 5))
+    if len(all_cands) > max_concepts:
+        all_cands.sort(key=lambda x: (-len(x["pages"]), -x["importance"], x["first_page"], x["phrase"]))
+        all_cands = all_cands[:max_concepts]
+
     sorted_candidates = sorted(
-        candidates_by_name.values(),
+        all_cands,
         key=lambda x: (x["first_page"], -x["importance"], x["phrase"])
     )
 
