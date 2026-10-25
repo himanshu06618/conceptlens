@@ -1,0 +1,13 @@
+{
+  "rule1_clean": true,
+  "rule2_drop_patterns": true,
+  "rule3_generic_words": true,
+  "rule4_support_check": true,
+  "rule5_redundancy": true,
+  "rule6_size_limit": true,
+  "min_count": 2,
+  "max_heading_words": 10,
+  "min_size_limit": 15,
+  "max_size_limit": 80,
+  "words_per_concept": 40
+}

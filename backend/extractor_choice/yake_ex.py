@@ -67,6 +67,22 @@ class YakeExtractor(Extractor):
             raw_results = kw_extractor.extract_keywords(text)
             # raw_results is a list of (keyword, score)
             phrases = [kw[0] for kw in raw_results]
+
+            # PRECISION-FILTER-START
+            try:
+                import os
+                if os.getenv("YAKE_PRECISION", "on").lower() not in ("off", "0", "false"):
+                    try:
+                        from precision_filter.filter import filter_phrases
+                    except ImportError:
+                        from backend.precision_filter.filter import filter_phrases
+                    filtered = filter_phrases(raw_results, text)
+                    if filtered is not None:
+                        return filtered
+            except Exception as e:
+                logger.warning(f"Precision filter error in extract, falling back to raw YAKE: {e}")
+            # PRECISION-FILTER-END
+
             return clean_phrases(phrases)
         except Exception as e:
             logger.error(f"YAKE extraction error: {e}", exc_info=True)
@@ -99,6 +115,23 @@ class YakeExtractor(Extractor):
                 if is_valid_phrase(cleaned) and cleaned not in seen:
                     seen.add(cleaned)
                     results.append((cleaned, float(score)))
+
+            # PRECISION-FILTER-START
+            try:
+                import os
+                if os.getenv("YAKE_PRECISION", "on").lower() not in ("off", "0", "false"):
+                    try:
+                        from precision_filter.filter import filter_phrases
+                    except ImportError:
+                        from backend.precision_filter.filter import filter_phrases
+                    filtered = filter_phrases(raw_results, text)
+                    if filtered is not None:
+                        keep_set = {f.lower().strip() for f in filtered}
+                        return [(kw, score) for kw, score in results if kw.lower().strip() in keep_set]
+            except Exception as e:
+                logger.warning(f"Precision filter error in extract_with_scores, falling back to raw YAKE: {e}")
+            # PRECISION-FILTER-END
+
             return results
         except Exception as e:
             logger.error(f"YAKE extraction error: {e}", exc_info=True)
