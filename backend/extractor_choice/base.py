@@ -8,10 +8,17 @@ import string
 from typing import List, Set
 
 
+PREFIX_STRIP_PAT = re.compile(
+    r"^(?:slide|page|ch(?:apter)?|sec(?:tion)?|fig(?:ure)?|unit|part|module)\s*\d+[\s\:\.\-\–\—]*",
+    re.IGNORECASE
+)
+
+
 def clean_phrase(phrase: str) -> str:
     """
     Cleans an individual extracted phrase:
     - Lowercase
+    - Strip slide/chapter/figure labels (e.g. 'Slide 2: Polarization' -> 'polarization')
     - Strip surrounding punctuation, quotes, symbols
     - Collapse extra whitespace
     """
@@ -19,6 +26,10 @@ def clean_phrase(phrase: str) -> str:
         return ""
     # Lowercase
     cleaned = phrase.strip().lower()
+    # Strip leading slide/chapter/figure markers
+    cleaned = PREFIX_STRIP_PAT.sub("", cleaned).strip()
+    # Strip non-ascii replacement characters \ufffd or corrupted bullets
+    cleaned = re.sub(r"[\ufffd\u2022\u2023\u25e6\u2043\u2219]+", " ", cleaned)
     # Strip leading/trailing punctuation and quotation marks
     cleaned = cleaned.strip(string.punctuation + "“”‘’`'\"•-—–…")
     # Collapse multiple whitespaces

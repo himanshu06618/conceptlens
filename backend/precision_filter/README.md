@@ -1,9 +1,9 @@
-# YAKE Precision Post-Filter for ConceptLens
+# Precision Post-Filter for ConceptLens (YAKE & RAKE)
 
 ## Overview
-The **YAKE Precision Filter** is a modular, zero-dependency, rule-based post-filter designed to drastically improve the precision of keywords extracted by YAKE (Yet Another Keyword Extractor) in ConceptLens.
+The **Precision Filter** is a modular, zero-dependency, rule-based post-filter designed to drastically improve the precision of keywords extracted by YAKE (Yet Another Keyword Extractor) and RAKE (Rapid Automatic Keyword Extraction) in ConceptLens.
 
-It eliminates common statistical keyword artifacts—such as slide navigation labels, sentence fragments, and grammatical noise—without altering how the underlying YAKE algorithm executes or making any external LLM calls.
+It eliminates common statistical keyword artifacts—such as slide navigation labels, sentence fragments, and grammatical noise—without altering how the underlying statistical algorithms execute or making any external LLM calls.
 
 ---
 

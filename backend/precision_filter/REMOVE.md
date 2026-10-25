@@ -1,6 +1,6 @@
-# How to Remove the YAKE Precision Filter
+# How to Remove the Precision Filter (YAKE & RAKE)
 
-If you ever wish to completely remove the precision filter and restore YAKE extraction to its original, raw behavior, follow these 3 simple steps:
+If you ever wish to completely remove the precision filter and restore YAKE and RAKE extractions to their original, raw behavior, follow these 3 simple steps:
 
 ---
 
@@ -17,32 +17,32 @@ Remove-Item -Recurse -Force backend\precision_filter
 
 ---
 
-### Step 2: Remove the Marked Blocks in the YAKE Extractor
-Open `backend/extractor_choice/yake_ex.py` and delete the blocks marked:
+### Step 2: Remove the Marked Blocks in the Extractors
+Delete the blocks marked `# PRECISION-FILTER-START` / `# PRECISION-FILTER-END`:
 
-```python
-            # PRECISION-FILTER-START
-            ...
-            # PRECISION-FILTER-END
-```
+1. **In `backend/extractor_choice/yake_ex.py`**:
+   - Inside `YakeExtractor.extract()`
+   - Inside `YakeExtractor.extract_with_scores()`
 
-There are two marked blocks in `backend/extractor_choice/yake_ex.py`:
-1. Inside `YakeExtractor.extract()` (lines ~70–84).
-2. Inside `YakeExtractor.extract_with_scores()` (lines ~122–136).
+2. **In `backend/extractor_choice/rake_textrank_ex.py`**:
+   - Inside `RakeTextRankExtractor.extract()`
+   - Inside `RakeTextRankExtractor.extract_with_scores()`
 
-Simply delete those lines. The functions will return to their original baseline behavior (`clean_phrases(phrases)` and `results`).
+Simply delete those lines. The functions will return to their original baseline behavior (`clean_phrases(combined)` and `results`).
 
 ---
 
-### Step 3: Remove or Unset the Environment Variable
-If you defined `YAKE_PRECISION` in your `.env`, Render, or Vercel environment settings, remove or unset it:
+### Step 3: Remove or Unset the Environment Variables
+If you defined `YAKE_PRECISION` or `RAKE_PRECISION` in your `.env`, Render, or Vercel environment settings, remove or unset them:
 
 ```bash
 # Linux / macOS
 unset YAKE_PRECISION
+unset RAKE_PRECISION
 
 # Windows PowerShell
-Remove-Item Env:\YAKE_PRECISION
+Remove-Item Env:\YAKE_PRECISION -ErrorAction SilentlyContinue
+Remove-Item Env:\RAKE_PRECISION -ErrorAction SilentlyContinue
 ```
 
 ---
@@ -59,8 +59,8 @@ Remove-Item Env:\YAKE_PRECISION
    *(Should return 0 matches)*.
 3. Commit and push:
    ```bash
-   git commit -am "Remove YAKE precision filter"
-   git push origin <branch-name>
+   git commit -am "Remove precision filter"
+   git push origin main
    ```
 
-**Nothing else was modified.** No database migrations, no dependencies, and no Gemini components were touched.
+**Nothing else was modified.** No database migrations, no dependencies in `requirements.txt`, and no Gemini components were touched.

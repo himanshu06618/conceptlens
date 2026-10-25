@@ -6,12 +6,12 @@ Configurable parameters at the top of the file.
 
 import logging
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 import nltk
 from rake_nltk import Rake
 from summa import keywords as summa_keywords
 
-from .base import Extractor, clean_phrases
+from .base import Extractor, clean_phrases, clean_phrase, is_valid_phrase
 
 logger = logging.getLogger("conceptlens.extractor.rake_textrank")
 
@@ -70,7 +70,15 @@ class RakeTextRankExtractor(Extractor):
         self.max_length = max_length
         self.language = language
 
-    def _extract_rake(self, text: str) -> List[str]:
+    def _determine_effective_top(self, text: str, requested_top: Optional[int] = None) -> int:
+        if requested_top is not None and requested_top > 0:
+            return requested_top
+        word_count = len(text.split())
+        if word_count > 600:
+            return max(self.top_k, min(350, word_count // 25))
+        return self.top_k
+
+    def _extract_rake(self, text: str, top: Optional[int] = None) -> List[str]:
         """Extract phrases using RAKE."""
         try:
             try:
@@ -84,31 +92,35 @@ class RakeTextRankExtractor(Extractor):
                 max_length=self.max_length
             )
             r.extract_keywords_from_text(text)
-            return r.get_ranked_phrases()[:self.top_k]
+            limit = top if (top and top > 0) else self.top_k
+            return r.get_ranked_phrases()[:limit]
         except Exception as e:
             logger.warning(f"RAKE extraction error: {e}")
             return []
 
-    def _extract_textrank(self, text: str) -> List[str]:
+    def _extract_textrank(self, text: str, top: Optional[int] = None) -> List[str]:
         """Extract phrases using TextRank (Summa)."""
         try:
-            raw = summa_keywords.keywords(text, language=self.language, words=self.top_k)
+            limit = top if (top and top > 0) else self.top_k
+            raw = summa_keywords.keywords(text, language=self.language, words=limit)
             if not raw or not raw.strip():
                 return []
             return [line.strip() for line in raw.split("\n") if line.strip()]
         except Exception as e:
-            logger.warning(f"TextRank extraction error: {e}")
+            logger.debug(f"TextRank extraction skipped: {e}")
             return []
 
-    def extract(self, text: str) -> List[str]:
+    def extract(self, text: str, top: Optional[int] = None) -> List[str]:
         if not text or not text.strip():
             return []
 
         # Download/verify NLTK data on first extraction call
         ensure_nltk_resources()
 
-        rake_phrases = self._extract_rake(text)
-        textrank_phrases = self._extract_textrank(text)
+        effective_top = self._determine_effective_top(text, requested_top=top)
+
+        rake_phrases = self._extract_rake(text, top=effective_top)
+        textrank_phrases = self._extract_textrank(text, top=effective_top)
 
         # If TextRank returns nothing (e.g. short text), use RAKE only
         if not textrank_phrases:
@@ -125,5 +137,86 @@ class RakeTextRankExtractor(Extractor):
                 if i < len(textrank_phrases):
                     combined.append(textrank_phrases[i])
 
+        # PRECISION-FILTER-START
+        try:
+            import os
+            if os.getenv("RAKE_PRECISION", "on").lower() not in ("off", "0", "false"):
+                try:
+                    from precision_filter.filter import filter_phrases
+                except ImportError:
+                    from backend.precision_filter.filter import filter_phrases
+                filtered = filter_phrases(combined, text)
+                if filtered is not None:
+                    return filtered[:effective_top]
+        except Exception as e:
+            logger.warning(f"Precision filter error in RAKE extract, falling back to raw: {e}")
+        # PRECISION-FILTER-END
+
         cleaned = clean_phrases(combined)
-        return cleaned[:self.top_k]
+        return cleaned[:effective_top]
+
+    def extract_with_scores(self, text: str, top: Optional[int] = None) -> List[Tuple[str, float]]:
+        """
+        Extracts keywords along with RAKE scores.
+        Returns deduplicated (clean_phrase, score) tuples.
+        """
+        if not text or not text.strip():
+            return []
+
+        ensure_nltk_resources()
+        effective_top = self._determine_effective_top(text, requested_top=top)
+
+        try:
+            try:
+                stopwords_list = nltk.corpus.stopwords.words(self.language)
+            except Exception:
+                stopwords_list = None
+
+            r = Rake(
+                stopwords=stopwords_list,
+                min_length=self.min_length,
+                max_length=self.max_length
+            )
+            r.extract_keywords_from_text(text)
+            ranked = r.get_ranked_phrases_with_scores()[:effective_top * 2]
+            raw_tuples = [(phrase, float(score)) for score, phrase in ranked]
+
+            # PRECISION-FILTER-START
+            try:
+                import os
+                if os.getenv("RAKE_PRECISION", "on").lower() not in ("off", "0", "false"):
+                    try:
+                        from precision_filter.filter import filter_phrases
+                    except ImportError:
+                        from backend.precision_filter.filter import filter_phrases
+                    filtered = filter_phrases([t[0] for t in raw_tuples], text)
+                    if filtered is not None:
+                        keep_map = {f.lower().strip(): f for f in filtered}
+                        res: List[Tuple[str, float]] = []
+                        seen = set()
+                        for phrase, score in raw_tuples:
+                            cleaned = clean_phrase(phrase)
+                            k = cleaned.lower()
+                            if k in keep_map and k not in seen:
+                                seen.add(k)
+                                res.append((keep_map[k], score))
+                                if len(res) >= effective_top:
+                                    break
+                        return res
+            except Exception as e:
+                logger.warning(f"Precision filter error in RAKE extract_with_scores: {e}")
+            # PRECISION-FILTER-END
+
+            res: List[Tuple[str, float]] = []
+            seen = set()
+            for phrase, score in raw_tuples:
+                cleaned = clean_phrase(phrase)
+                if is_valid_phrase(cleaned) and cleaned not in seen:
+                    seen.add(cleaned)
+                    res.append((cleaned, score))
+                    if len(res) >= effective_top:
+                        break
+            return res
+        except Exception as e:
+            logger.error(f"RAKE extract_with_scores error: {e}", exc_info=True)
+            return []

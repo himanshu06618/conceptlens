@@ -90,7 +90,7 @@ SENTENCE_PIECE_MIDDLE = {
 
 STOP_WORDS = LEADING_STRIP_WORDS | TRAILING_STRIP_WORDS | COMMON_VERBS
 
-UNICODE_DASHES = re.compile(r"[\u2010\u2012\u2013\u2014\u2015\u2212]")
+UNICODE_DASHES = re.compile(r"[\u2010\u2012\u2013\u2014\u2015\u2212\ufffd]")
 PREFIX_STRIP_PAT = re.compile(r"^(?:slide|chapter|section|module|unit|part|figure|fig)\s*\d*[:\.\-]?\s*", re.IGNORECASE)
 
 

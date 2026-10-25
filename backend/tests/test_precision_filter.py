@@ -20,6 +20,7 @@ try:
         format_title_casing
     )
     from backend.extractor_choice.yake_ex import YakeExtractor
+    from backend.extractor_choice.rake_textrank_ex import RakeTextRankExtractor
 except ImportError:
     from precision_filter.filter import (
         filter_phrases,
@@ -29,6 +30,7 @@ except ImportError:
         format_title_casing
     )
     from extractor_choice.yake_ex import YakeExtractor
+    from extractor_choice.rake_textrank_ex import RakeTextRankExtractor
 
 
 DOCUMENT_TEXT = """
@@ -159,3 +161,50 @@ def test_yake_precision_env_switch(monkeypatch):
     monkeypatch.setenv("YAKE_PRECISION", "off")
     res_off = extractor.extract(sample_text)
     assert isinstance(res_off, list)
+
+
+def test_rake_precision_env_switch(monkeypatch):
+    """Verify RAKE_PRECISION=on|off switch behavior in RakeTextRankExtractor."""
+    sample_text = (
+        "Chapter 1: Polarization and Laser Optics.\n"
+        "This phenomenon is called polarisation. Another device is callsd polaride.\n"
+        "Total internal reflection occurs when angle of incidence exceeds critical angle.\n"
+        "Polarisation of light waves can be linear or circular.\n"
+        "Laser emission produces coherent monochromatic light."
+    )
+    extractor = RakeTextRankExtractor()
+
+    # With RAKE_PRECISION=on (default)
+    monkeypatch.setenv("RAKE_PRECISION", "on")
+    res_on = extractor.extract(sample_text)
+    # Junk phrases should be stripped or removed
+    assert not any(p.lower() == "called polarisation" for p in res_on)
+    assert not any(p.lower() == "callsd polaride" for p in res_on)
+    assert not any(p.lower() == "chapter 1" for p in res_on)
+    assert not any(p.lower() == "another device" for p in res_on)
+    # Legitimate concepts should be kept
+    assert any("polarisation" in p.lower() or "polarization" in p.lower() for p in res_on)
+    assert any("laser" in p.lower() for p in res_on)
+
+    # With RAKE_PRECISION=off
+    monkeypatch.setenv("RAKE_PRECISION", "off")
+    res_off = extractor.extract(sample_text)
+    assert isinstance(res_off, list)
+
+
+def test_rake_extract_with_scores():
+    """Verify extract_with_scores returns clean (phrase, score) tuples for RAKE."""
+    sample_text = (
+        "Optical fibre transmits light signals with total internal reflection. "
+        "Laser emission produces coherent monochromatic light in optical fibre."
+    )
+    extractor = RakeTextRankExtractor()
+    scores = extractor.extract_with_scores(sample_text)
+    assert isinstance(scores, list)
+    if scores:
+        for phrase, score in scores:
+            assert isinstance(phrase, str)
+            assert isinstance(score, float)
+            assert len(phrase) >= 2
+            assert not phrase.lower().startswith("called")
+
